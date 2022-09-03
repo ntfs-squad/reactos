@@ -13,6 +13,8 @@
 #define NDEBUG
 #include <debug.h>
 
+NtfsFormatData NtfsData;
+
 
 /* FUNCTIONS *****************************************************************/
 
@@ -35,7 +37,7 @@ NtfsGetSystemTimeAsFileTime(OUT PFILETIME lpFileTime)
 BYTE
 GetSectorsPerCluster()
 {
-    GET_LENGTH_INFORMATION* LengthInformation = NtfsFormatData.LengthInformation;
+    GET_LENGTH_INFORMATION* LengthInformation = NtfsData.LengthInformation;
 
     if (LengthInformation->Length.QuadPart < MB_TO_B(512))
     {
@@ -134,9 +136,9 @@ NtfsFormat(
     }
 
     // Setup global data
-    DISK_HANDLE = DiskHandle;
-    DISK_GEO    = &DiskGeometry;
-    DISK_LEN    = &LengthInformation;
+    NtfsData.DiskHandle = DiskHandle;
+    NtfsData.DiskGeometry = &DiskGeometry;
+    NtfsData.LengthInformation = &LengthInformation;
 
     // Lock volume
     NtFsControlFile(DiskHandle, 
@@ -173,9 +175,9 @@ NtfsFormat(
 end:
 
     // Clear global data structure
-    DISK_HANDLE = NULL;
-    DISK_GEO    = NULL;
-    DISK_LEN    = NULL;
+    NtfsData.DiskHandle = NULL;
+    NtfsData.DiskGeometry = NULL;
+    NtfsData.LengthInformation = NULL;
 
     // Dismount and unlock volume
     NtFsControlFile(DiskHandle, NULL, NULL, NULL, &Iosb, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0);

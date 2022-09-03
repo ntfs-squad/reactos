@@ -58,21 +58,17 @@
 
 /* DISK MACROSES *************************************************************/
 
-#define DISK_HANDLE (NtfsFormatData.DiskHandle)
-#define DISK_GEO    (NtfsFormatData.DiskGeometry)
-#define DISK_LEN    (NtfsFormatData.LengthInformation)
+#define BYTES_PER_SECTOR    (NtfsData.DiskGeometry->BytesPerSector)
 
-#define BYTES_PER_SECTOR    (DISK_GEO->BytesPerSector)
-
-#define SECTORS_PER_TRACK   (DISK_GEO->SectorsPerTrack)
+#define SECTORS_PER_TRACK   (NtfsData.DiskGeometry->SectorsPerTrack)
 #define SECTORS_PER_CLUSTER (GetSectorsPerCluster())
 #define BYTES_PER_CLUSTER   ((ULONGLONG)BYTES_PER_SECTOR * (ULONGLONG)SECTORS_PER_CLUSTER)
 
-#define SECTORS_COUNT ( ((ULONGLONG)DISK_GEO->SectorsPerTrack)    * \
-                        ((ULONGLONG)DISK_GEO->TracksPerCylinder)  * \
-                        ((ULONGLONG)DISK_GEO->Cylinders.QuadPart) )
+#define SECTORS_COUNT ( ((ULONGLONG)NtfsData.DiskGeometry->SectorsPerTrack)    * \
+                        ((ULONGLONG)NtfsData.DiskGeometry->TracksPerCylinder)  * \
+                        ((ULONGLONG)NtfsData.DiskGeometry->Cylinders.QuadPart) )
 
-#define IS_HARD_DRIVE (DISK_GEO->MediaType == FixedMedia)
+#define IS_HARD_DRIVE (NtfsData.DiskGeometry->MediaType == FixedMedia)
 
 
 /* DISK DEFINES **************************************************************/
@@ -177,12 +173,12 @@
 
 /* GLOBAL DATA ***************************************************************/
 
-struct
+typedef struct _NtfsFormatData
 {
     HANDLE                  DiskHandle;
     GET_LENGTH_INFORMATION* LengthInformation;
     PDISK_GEOMETRY          DiskGeometry;
-} NtfsFormatData;
+} NtfsFormatData, *PNtfsFormatData;
 
 
 /* BOOT SECTOR STRUCTURES ****************************************************/
