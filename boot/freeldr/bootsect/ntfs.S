@@ -413,7 +413,7 @@ StartSearch:
         xor   bx, bx
         inc   ecx
         cmp   ecx, edx
-        jbe   FreeLdrLoad
+        jnbe  FreeLdrLoad
 
     mov    dl, byte ptr [BootDrive]
     mov    dh, byte ptr [BootPartition]
