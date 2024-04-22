@@ -36,6 +36,7 @@ NTAPI
 NtfsGenericDispatch(_In_ PDEVICE_OBJECT DeviceObject,
                     _In_ PIRP Irp)
 {
+    FsRtlEnterFileSystem();
     PNTFS_IRP_CONTEXT IrpContext = NULL;
     NTSTATUS Status;
 
@@ -73,13 +74,10 @@ NtfsGenericDispatch(_In_ PDEVICE_OBJECT DeviceObject,
     }
     else
     {
-        FsRtlEnterFileSystem();
-
         if (IoGetTopLevelIrp() == NULL)
         {
             IoSetTopLevelIrp(Irp);
         }
-        Status = STATUS_UNSUCCESSFUL;
         switch (IrpContext->MajorFunction)
         {
             case IRP_MJ_QUERY_VOLUME_INFORMATION:
@@ -144,8 +142,8 @@ NtfsGenericDispatch(_In_ PDEVICE_OBJECT DeviceObject,
                 break;
 
             case IRP_MJ_CLEANUP:
-                     __debugbreak();
-                //Status = NtfsCleanup(IrpContext);
+                __debugbreak();
+                Status = STATUS_SUCCESS;
                 break;
 
             case IRP_MJ_CREATE:
@@ -183,10 +181,10 @@ NtfsGenericDispatch(_In_ PDEVICE_OBJECT DeviceObject,
         }
 
         IoSetTopLevelIrp(NULL);
-        FsRtlExitFileSystem();
 
     }
 
+    FsRtlExitFileSystem();
     return Status;
 }
 

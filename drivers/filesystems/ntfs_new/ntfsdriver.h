@@ -18,6 +18,7 @@ public:
     NTSTATUS MountVolume(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp);
 private:
     VOID NtfsGlobalDriver::CheckIfWeAreStupid(_In_ PUNICODE_STRING RegistryPath);   
+    NTSTATUS NtfsGlobalDriver::AreWeNtfs(PDEVICE_OBJECT DeviceToMount);
 public:
     PDRIVER_OBJECT PubDriverObject;
     PDEVICE_OBJECT PubDeviceObject;
