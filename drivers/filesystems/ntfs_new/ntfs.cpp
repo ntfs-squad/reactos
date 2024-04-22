@@ -154,8 +154,7 @@ NtfsGenericDispatch(_In_ PDEVICE_OBJECT DeviceObject,
                 break;
 
             case IRP_MJ_FILE_SYSTEM_CONTROL:
-                     __debugbreak();
-               // Status = NtfsFileSystemControl(IrpContext);
+                Status = PubNtfsDriver->FileSystemControl(IrpContext);
                 break;
         }
 
@@ -174,6 +173,7 @@ NtfsGenericDispatch(_In_ PDEVICE_OBJECT DeviceObject,
             /* Reset our status flags before queueing the IRP */
             IrpContext->Flags |= IRPCONTEXT_COMPLETE;
             IrpContext->Flags &= ~IRPCONTEXT_QUEUE;
+            DPRINT1("Queueing requests is unimplemented\r\n");
             __debugbreak();
           //  Status = NtfsQueueRequest(IrpContext);
         }
