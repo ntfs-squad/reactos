@@ -40,6 +40,7 @@ typedef struct
     BOOLEAN IsTopLevel;
     PDEVICE_OBJECT DeviceObject;
     PFILE_OBJECT FileObject;
+    CCHAR PriorityBoost;
 } NTFS_IRP_CONTEXT, *PNTFS_IRP_CONTEXT;
 
 /* fastio */

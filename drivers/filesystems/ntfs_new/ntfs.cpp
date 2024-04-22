@@ -54,6 +54,7 @@ NtfsGenericDispatch(_In_ PDEVICE_OBJECT DeviceObject,
     IrpContext->FileObject = IrpContext->Stack->FileObject;
     IrpContext->IsTopLevel = (IoGetTopLevelIrp() == Irp);
     IrpContext->Flags = IRPCONTEXT_COMPLETE;
+    IrpContext->PriorityBoost = IO_NO_INCREMENT;
     if (IrpContext->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL ||
         IrpContext->MajorFunction == IRP_MJ_DEVICE_CONTROL ||
         IrpContext->MajorFunction == IRP_MJ_SHUTDOWN ||
@@ -72,8 +73,118 @@ NtfsGenericDispatch(_In_ PDEVICE_OBJECT DeviceObject,
     }
     else
     {
-        __debugbreak();
-      //  Status = NtfsDispatch(IrpContext);
+        FsRtlEnterFileSystem();
+
+        if (IoGetTopLevelIrp() == NULL)
+        {
+            IoSetTopLevelIrp(Irp);
+        }
+        Status = STATUS_UNSUCCESSFUL;
+        switch (IrpContext->MajorFunction)
+        {
+            case IRP_MJ_QUERY_VOLUME_INFORMATION:
+                __debugbreak();
+               // Status = NtfsQueryVolumeInformation(IrpContext);
+                break;
+
+            case IRP_MJ_SET_VOLUME_INFORMATION:
+                __debugbreak();
+                //Status = NtfsSetVolumeInformation(IrpContext);
+                break;
+
+            case IRP_MJ_QUERY_INFORMATION:
+                __debugbreak();
+              //  Status = NtfsQueryInformation(IrpContext);
+                break;
+
+            case IRP_MJ_SET_INFORMATION:
+                 __debugbreak();
+                //if (!NtfsGlobalData->EnableWriteSupport)
+                //{
+                //    DPRINT1("NTFS write-support is EXPERIMENTAL and is disabled by default!\n");
+                //    Status = STATUS_ACCESS_DENIED;
+                //}
+                //else
+                //{
+                ////    Status = NtfsSetInformation(IrpContext);
+                //}
+                break;
+
+            case IRP_MJ_DIRECTORY_CONTROL:
+                __debugbreak();
+                //Status = NtfsDirectoryControl(IrpContext);
+                break;
+
+            case IRP_MJ_READ:
+                 __debugbreak();
+               // Status = NtfsRead(IrpContext);
+                break;
+
+            case IRP_MJ_DEVICE_CONTROL:
+            __debugbreak();
+                //Status = NtfsDeviceControl(IrpContext);
+                 break;
+
+            case IRP_MJ_WRITE:
+                __debugbreak();
+              // if (!EnableWriteSupport)
+              // {
+              //     DPRINT1("NTFS write-support is EXPERIMENTAL and is disabled by default!\n");
+              //     Status = STATUS_ACCESS_DENIED;
+              // }
+              // else
+              // {
+              //     //Status = NtfsWrite(IrpContext);
+              // }
+                break;
+
+            case IRP_MJ_CLOSE:
+                __debugbreak();
+               // Status = NtfsClose(IrpContext);
+                break;
+
+            case IRP_MJ_CLEANUP:
+                     __debugbreak();
+                //Status = NtfsCleanup(IrpContext);
+                break;
+
+            case IRP_MJ_CREATE:
+                     __debugbreak();
+                //Status = NtfsCreate(IrpContext);
+                break;
+
+            case IRP_MJ_FILE_SYSTEM_CONTROL:
+                     __debugbreak();
+               // Status = NtfsFileSystemControl(IrpContext);
+                break;
+        }
+
+        ASSERT((!(IrpContext->Flags & IRPCONTEXT_COMPLETE) && !(IrpContext->Flags & IRPCONTEXT_QUEUE)) ||
+               ((IrpContext->Flags & IRPCONTEXT_COMPLETE) && !(IrpContext->Flags & IRPCONTEXT_QUEUE)) ||
+               (!(IrpContext->Flags & IRPCONTEXT_COMPLETE) && (IrpContext->Flags & IRPCONTEXT_QUEUE)));
+
+        if (IrpContext->Flags & IRPCONTEXT_COMPLETE)
+        {
+            Irp->IoStatus.Status = Status;
+            IoCompleteRequest(Irp, IrpContext->PriorityBoost);
+        }
+
+        if (IrpContext->Flags & IRPCONTEXT_QUEUE)
+        {
+            /* Reset our status flags before queueing the IRP */
+            IrpContext->Flags |= IRPCONTEXT_COMPLETE;
+            IrpContext->Flags &= ~IRPCONTEXT_QUEUE;
+            __debugbreak();
+          //  Status = NtfsQueueRequest(IrpContext);
+        }
+        else
+        {
+            ExFreeToNPagedLookasideList(&NtfsGlobalData->IrpContextLookasideList, IrpContext);
+        }
+
+        IoSetTopLevelIrp(NULL);
+        FsRtlExitFileSystem();
+
     }
 
     return Status;
