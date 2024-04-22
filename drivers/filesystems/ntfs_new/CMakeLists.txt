@@ -5,6 +5,7 @@ list(APPEND SOURCE
     util.cpp
     fastio.cpp
     ntblockio.cpp
+    ntfspartition.cpp
     ntfs.h)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
