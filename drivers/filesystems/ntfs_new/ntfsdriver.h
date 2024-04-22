@@ -1,0 +1,24 @@
+/*
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     Source file for the ntfs_new entry point
+ * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
+ *              Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
+ */
+
+#pragma once
+
+class NtfsGlobalDriver {
+public:
+    NtfsGlobalDriver(_In_ PDRIVER_OBJECT DriverObject,
+                     _In_ PDEVICE_OBJECT DeviceObject,
+                     _In_ PUNICODE_STRING RegistryPath);
+    ~NtfsGlobalDriver();
+private:
+    VOID NtfsGlobalDriver::CheckIfWeAreStupid(_In_ PUNICODE_STRING RegistryPath);   
+public:
+    PDRIVER_OBJECT PubDriverObject;
+    PDEVICE_OBJECT PubDeviceObject;
+    PUNICODE_STRING PubRegistryPath;
+    BOOLEAN EnableWriteSupport;
+};
