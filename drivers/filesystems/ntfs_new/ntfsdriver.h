@@ -14,6 +14,8 @@ public:
                      _In_ PDEVICE_OBJECT DeviceObject,
                      _In_ PUNICODE_STRING RegistryPath);
     ~NtfsGlobalDriver();
+    NTSTATUS FileSystemControl(_In_ PNTFS_IRP_CONTEXT IrpContext);
+    NTSTATUS MountVolume(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp);
 private:
     VOID NtfsGlobalDriver::CheckIfWeAreStupid(_In_ PUNICODE_STRING RegistryPath);   
 public:
@@ -21,4 +23,5 @@ public:
     PDEVICE_OBJECT PubDeviceObject;
     PUNICODE_STRING PubRegistryPath;
     BOOLEAN EnableWriteSupport;
+    NtBlockIo* NtfsBlockIo;
 };

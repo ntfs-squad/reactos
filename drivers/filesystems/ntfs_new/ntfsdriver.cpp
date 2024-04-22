@@ -9,6 +9,60 @@
 #include "ntfs.h"
 #include <debug.h>
 
+
+NTSTATUS
+NtfsGlobalDriver::MountVolume(_In_ PDEVICE_OBJECT DeviceObject,
+                              _Inout_ PIRP Irp)
+{
+    DPRINT("NtfsGlobalDriver::MountVolume() - called\n");
+    return STATUS_UNRECOGNIZED_VOLUME;
+}
+
+NTSTATUS
+NtfsGlobalDriver::FileSystemControl(_In_ PNTFS_IRP_CONTEXT IrpContext)
+{
+    NTSTATUS Status;
+    PIRP Irp;
+    PDEVICE_OBJECT DeviceObject;
+
+    DPRINT("NtfsGlobalDriver::FileSystemControl() - called\n");
+
+    DeviceObject = IrpContext->DeviceObject;
+    Irp = IrpContext->Irp;
+    Irp->IoStatus.Information = 0;
+    Status = STATUS_INVALID_DEVICE_REQUEST;
+    switch (IrpContext->MinorFunction)
+    {
+        case IRP_MN_KERNEL_CALL:
+            DPRINT("FileSystemControl: IRP_MN_USER_FS_REQUEST\n");
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+            break;
+
+        case IRP_MN_USER_FS_REQUEST:
+            __debugbreak();
+            //Status = NtfsUserFsRequest(DeviceObject, Irp);
+            break;
+
+        case IRP_MN_MOUNT_VOLUME:
+            DPRINT("FileSystemControl: IRP_MN_MOUNT_VOLUME\n");
+            Status = MountVolume(DeviceObject, Irp);
+            break;
+
+        case IRP_MN_VERIFY_VOLUME:
+            __debugbreak();
+            DPRINT("FileSystemControl: IRP_MN_VERIFY_VOLUME\n");
+           // Status = NtfsVerifyVolume(DeviceObject, Irp);
+            break;
+
+        default:
+            DPRINT("FileSystemControl: MinorFunction %d\n", IrpContext->MinorFunction);
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+            break;
+    }
+
+    return Status;
+}
+ 
 NtfsGlobalDriver::NtfsGlobalDriver(_In_ PDRIVER_OBJECT DriverObject,
                                    _In_ PDEVICE_OBJECT DeviceObject,
                                    _In_ PUNICODE_STRING RegistryPath)
@@ -17,6 +71,7 @@ NtfsGlobalDriver::NtfsGlobalDriver(_In_ PDRIVER_OBJECT DriverObject,
     PubDeviceObject = DeviceObject;
     PubRegistryPath =  RegistryPath;
 
+    NtfsBlockIo = new(PagedPool) NtBlockIo();
     CheckIfWeAreStupid(RegistryPath);
 }
 

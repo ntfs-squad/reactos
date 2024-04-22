@@ -27,8 +27,6 @@
 #define IRPCONTEXT_COMPLETE 0x2
 #define IRPCONTEXT_QUEUE 0x4
 
-#include "ntfsdriver.h"
-
 typedef struct
 {
 
@@ -64,3 +62,6 @@ FAST_IO_WRITE NtfsFastIoWrite;
 
 /* Utilities */
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
+
+#include "ntblockio.h"
+#include "ntfsdriver.h"
