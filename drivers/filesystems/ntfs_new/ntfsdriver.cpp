@@ -138,7 +138,12 @@ NtfsGlobalDriver::MountVolume(_In_ PDEVICE_OBJECT DeviceObject,
     DPRINT1("AreWeNtfs() returned %lx\n", Status);
     if (Status != STATUS_SUCCESS)
         return Status;
-
+    
+    /* TEMPORARY FOR TESTING ---------------------------------------*/
+    NtfsPartition* LocNtfsPart;
+    LocNtfsPart = new(PagedPool) NtfsPartition(DeviceToMount);
+    LocNtfsPart->RunSanityChecks();
+    /* **************************************************************/
     Status = STATUS_UNRECOGNIZED_VOLUME;
     return Status;
 }
