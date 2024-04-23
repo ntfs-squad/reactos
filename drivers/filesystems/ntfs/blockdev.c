@@ -28,7 +28,7 @@
 
 #include "ntfs.h"
 
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
 
 /* FUNCTIONS ****************************************************************/
@@ -110,9 +110,10 @@ NtfsReadDisk(IN PDEVICE_OBJECT DeviceObject,
     if (Status == STATUS_PENDING)
     {
         DPRINT("Operation pending\n");
-        KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
+        KeStallExecutionProcessor(1000);
+      //  KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
         DPRINT("Getting IO Status... for %p\n", Irp);
-        Status = IoStatus.Status;
+        Status = 0;
     }
 
     if (AllocatedBuffer)
