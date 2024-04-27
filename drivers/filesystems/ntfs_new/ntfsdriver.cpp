@@ -244,7 +244,7 @@ NtfsGlobalDriver::CheckIfWeAreStupid(_In_ PUNICODE_STRING RegistryPath)
 
         if (NT_SUCCESS(Status) && Value->Data[0] == TRUE)
         {
-            DPRINT1("\tEnabling write support - may the lord have mercy on your hard drive.\n");
+            DPRINT1("\tEnabling write support - may the Lord have mercy on your hard drive.\n");
             EnableWriteSupport = TRUE;
         }
 
