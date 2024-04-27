@@ -75,3 +75,20 @@ class NonResidentAttribute : IAttribute
     ULONGLONG InitalizedDataSize;     // Offset 0x38, Size 8
     UCHAR     AttributeName;          // Offset 0x40
 };
+
+/* TODO: Where should this go? */
+enum MFT_Metadata_File_Records
+{
+    _MFT,
+    _MFTMirr,
+    _LogFile,
+    _Volume,
+    _AttrDef,
+    _Root,
+    _Bitmap,
+    _Boot,
+    _BadClus,
+    _Quota,
+    _UpCase,
+    _Extend
+};
