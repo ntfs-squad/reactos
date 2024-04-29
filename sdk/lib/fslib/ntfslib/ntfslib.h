@@ -24,7 +24,7 @@
 
 /* OTHER MACROSES ************************************************************/
 
-#define KeQuerySystemTime(t)  //GetSystemTimeAsFileTime((LPFILETIME)(t));
+#define KeQuerySystemTime(t)  NtfsGetSystemTimeAsFileTime((LPFILETIME)(t));
 
 #define FREE(p) if (p) RtlFreeHeap(RtlGetProcessHeap(), 0, p);
 
@@ -388,7 +388,7 @@ NTAPI NtGetTickCount(VOID);
 // ntfslib.c
 
 VOID
-GetSystemTimeAsFileTime(OUT PFILETIME lpFileTime);
+NtfsGetSystemTimeAsFileTime(OUT PFILETIME lpFileTime);
 
 BYTE GetSectorsPerCluster();
 
