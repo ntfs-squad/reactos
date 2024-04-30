@@ -144,7 +144,12 @@ NtfsGlobalDriver::MountVolume(_In_ PDEVICE_OBJECT DeviceObject,
     LocNtfsPart = new(PagedPool) NtfsPartition(DeviceToMount);
     LocNtfsPart->RunSanityChecks();
     /* **************************************************************/
+
+    /* Notify NT that the FS driver is ready */
+    //FsRtlNotifyVolumeEvent(LocNtfsPart->PubFileObject, FSRTL_VOLUME_MOUNT);
+
     Status = STATUS_UNRECOGNIZED_VOLUME;
+    //Status = STATUS_SUCCESS;
     return Status;
 }
 
