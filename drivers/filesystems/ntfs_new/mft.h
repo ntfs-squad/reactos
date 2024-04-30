@@ -1,24 +1,63 @@
 /*
  * PROJECT:     ReactOS Kernel
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     File record header
+ * PURPOSE:     Header for MFT Implementation
  * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
  *              Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
  */
 
 #include <ntifs.h>
 
-/* File Record Flags */
+/* NTFS file record numbers */
+enum FileRecordNumbers
+{
+    MFT     = 0,
+    MFTMirr = 1,
+    LogFile = 2,
+    Volume  = 3,
+    AttrDef = 4,
+    Root    = 5,
+    Bitmap  = 6,
+    Boot    = 7,
+    BadClus = 8,
+    Secure  = 9,
+    UpCase  = 10,
+    Extend  = 11,
+};
+
+/* Attribute types */
+enum AttributeType
+{
+    StandardInformation = 0x10,
+    AttributeList       = 0x20,
+    FileName            = 0x30,
+    ObjectId            = 0x40,
+    SecurityDescriptor  = 0x50,
+    VolumeName          = 0x60,
+    VolumeInformation   = 0x70,
+    Data                = 0x80,
+    IndexRoot           = 0x90,
+    IndexAllocation     = 0xA0,
+    Bitmap              = 0xB0,
+    ReparsePoint        = 0xC0,
+    EAInformation       = 0xD0,
+    EA                  = 0xE0,
+    LoggedUtilityStream = 0x100,
+};
+#define ATTR_END 0xFFFFFFFF
+
+/* File record flags */
 #define FR_IN_USE        0x01
 #define FR_IS_DIRECTORY  0x02
 #define FR_IS_EXTENSION  0x04
 #define FR_SPECIAL_INDEX 0x08
-/* Attribute Flags */
+
+/* Attribute flags */
 #define ATTR_COMPRESSED  0x0001
 #define ATTR_ENCRYPTED   0x4000
 #define ATTR_SPARSE      0x8000
 
-struct File_Record_Header
+struct FileRecordHeader
 {
     ULONG     TypeID;                 // Offset 0x00, Size 4 (Should be 'FILE')
     USHORT    UpdateSequenceOffset;   // Offset 0x04, Size 2
@@ -76,19 +115,20 @@ class NonResidentAttribute : IAttribute
     UCHAR     AttributeName;          // Offset 0x40
 };
 
-/* TODO: Where should this go? */
-enum MFT_Metadata_File_Records
+class MFT
 {
-    _MFT,
-    _MFTMirr,
-    _LogFile,
-    _Volume,
-    _AttrDef,
-    _Root,
-    _Bitmap,
-    _Boot,
-    _BadClus,
-    _Quota,
-    _UpCase,
-    _Extend
+    MFT::MFT();
+    NTSTATUS MFT::GetFileRecord(ULONGLONG FileRecordNumber,
+                                FileRecord* File);
+};
+
+class FileRecord
+{
+    FileRecordHeader Header;
+    FileRecord::FileRecord();
+    NTSTATUS FileRecord::FindUnnamedAttribute(ULONG Type, IAttribute* Attr);
+    NTSTATUS FileRecord::FindNamedAttribute(ULONG Type,
+                                            PCWSTR Name,
+                                            ULONG NameLength,
+                                            IAttribute* Attr);
 };

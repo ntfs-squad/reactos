@@ -1,12 +1,14 @@
 #include "ntfs.h"
 #include <ntdddisk.h>
 #include <debug.h>
+#include "contextblocks.h"
 
 NtfsPartition::NtfsPartition(PDEVICE_OBJECT DeviceToMount)
 {
     DISK_GEOMETRY DiskGeometry;
     NTSTATUS Status;
     ULONG Size;
+    UCHAR BootSector[512];
 
     PartDeviceObj = DeviceToMount;
     BlockIo = new(PagedPool) NtBlockIo();
@@ -26,6 +28,23 @@ NtfsPartition::NtfsPartition(PDEVICE_OBJECT DeviceToMount)
     }
 
     BytesPerSector = DiskGeometry.BytesPerSector;
+
+    /* Get Volume Information */
+    /* Get boot sector information */
+    DumpBlocks(BootSector, 0,1);
+
+    //memcpy(&BytesPerSector,         &BootSector[0x0B], sizeof(UINT16));
+    memcpy(&SectorsPerCluster,      &BootSector[0x0D], sizeof(UINT8 ));
+    memcpy(&SectorsInVolume,        &BootSector[0x28], sizeof(UINT64));
+    memcpy(&MFTLCN,                 &BootSector[0x30], sizeof(UINT64));
+    memcpy(&MFTMirrLCN,             &BootSector[0x38], sizeof(UINT64));
+    memcpy(&ClustersPerFileRecord,  &BootSector[0x40], sizeof(UINT32));
+    memcpy(&ClustersPerIndexRecord, &BootSector[0x44], sizeof(UINT32));
+    memcpy(&SerialNumber,           &BootSector[0x48], sizeof(UINT64));
+
+    /* Get $Volume information */
+
+    /* Get Root File Object */
 }
 
 NTSTATUS
@@ -112,32 +131,22 @@ NtfsPartition::RunSanityChecks()
     DumpBlocks(BootSector, 0,1);
 
     strcpy2(OEM_ID, BootSector, 0x03, 8);
-    memcpy(&BYTES_PER_SECTOR,          &BootSector[0x0B], sizeof(UINT16));
-    memcpy(&SECTORS_PER_CLUSTER,       &BootSector[0x0D], sizeof(UCHAR  ));
-    memcpy(&MEDIA_DESCRIPTOR,          &BootSector[0x15], sizeof(UCHAR  ));
-    memcpy(&SECTORS_PER_TRACK,         &BootSector[0x18], sizeof(UINT16 ));
-    memcpy(&NUM_OF_HEADS,              &BootSector[0x1A], sizeof(UINT16 ));
-    memcpy(&SECTORS_IN_VOLUME,         &BootSector[0x28], sizeof(UINT64));
-    memcpy(&LCN_FOR_MFT,               &BootSector[0x30], sizeof(UINT64));
-    memcpy(&LCN_FOR_MFT_MIRR,          &BootSector[0x38], sizeof(UINT64));
-    memcpy(&CLUSTERS_PER_MFT_RECORD,   &BootSector[0x40], sizeof(UINT32));
-    memcpy(&CLUSTERS_PER_INDEX_RECORD, &BootSector[0x44], sizeof(UINT32));
-    memcpy(&VOLUME_SERIAL_NUMBER,      &BootSector[0x48], sizeof(UINT64));
+    memcpy(&MEDIA_DESCRIPTOR,          &BootSector[0x15], sizeof(UCHAR ));
+    memcpy(&SECTORS_PER_TRACK,         &BootSector[0x18], sizeof(UINT16));
+    memcpy(&NUM_OF_HEADS,              &BootSector[0x1A], sizeof(UINT16));
 
-    DPRINT1("OEM ID          %s\n", OEM_ID);
-    DPRINT1("Bytes per sector %ld\n", BYTES_PER_SECTOR);
-    DPRINT1("Sectors per cluster %ld\n", SECTORS_PER_CLUSTER);
-   // PrintDetail("Media Descriptor", MediaDescriptorBuffer, false);
+    DPRINT1("OEM ID            %s\n", OEM_ID);
+    DPRINT1("Bytes per sector  %ld\n", BytesPerSector);
+    DPRINT1("Sectors/cluster   %ld\n", SectorsPerCluster);
     DPRINT1("Sectors per track %ld\n", SECTORS_PER_TRACK);
     DPRINT1("Number of heads   %ld\n", NUM_OF_HEADS);
-    DPRINT1("Sectors in volume %ld\n", SECTORS_IN_VOLUME);
-    DPRINT1("LBA for $MFT      %ld\n", LCN_FOR_MFT);
-    DPRINT1("LBA for $MFT_MIRR %ld\n", LCN_FOR_MFT_MIRR);
-    DPRINT1("Clusters/MFT Rec %ld\n", CLUSTERS_PER_MFT_RECORD);
-    DPRINT1("Clusters/IndexRec %ld\n", CLUSTERS_PER_INDEX_RECORD);
-    DPRINT1("Volume serial number 0x%X\n", VOLUME_SERIAL_NUMBER);
-  //  PrintDetail("Volume Size       ", VolumeSizeDescriptorBuffer, false);
-    __debugbreak();
+    DPRINT1("Sectors in volume %ld\n", SectorsInVolume);
+    DPRINT1("LCN for $MFT      %ld\n", MFTLCN);
+    DPRINT1("LCN for $MFT_MIRR %ld\n", MFTMirrLCN);
+    DPRINT1("Clusters/MFT Rec  %ld\n", ClustersPerFileRecord);
+    DPRINT1("Clusters/IndexRec %ld\n", ClustersPerIndexRecord);
+    DPRINT1("Serial number   0x%X\n", SerialNumber);
+    DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
 }
 
 NtfsPartition::~NtfsPartition()
