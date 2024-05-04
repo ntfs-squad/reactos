@@ -52,12 +52,12 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
                           _In_    ULONG Lba,
                           _In_    ULONG LbaCount)
 {
-    return BlockIo->ReadBlock(PartDeviceObj,
-                              Lba,
-                              LbaCount,
-                              VCB->BytesPerSector,
-                              (PUCHAR)Buffer,
-                              TRUE);
+    return PubNtfsDriver->NtfsBlockIo->ReadBlock(PartDeviceObj,
+                                                 Lba,
+                                                 LbaCount,
+                                                 VCB->BytesPerSector,
+                                                 (PUCHAR)Buffer,
+                                                 TRUE);
 }
 
 
@@ -151,7 +151,7 @@ NtfsPartition::RunSanityChecks()
     DPRINT1("LCN for $MFT_MIRR %ld\n", VCB->MFTMirrLCN);
     DPRINT1("Clusters/MFT Rec  %ld\n", VCB->ClustersPerFileRecord);
     DPRINT1("Clusters/IndexRec %ld\n", VCB->ClustersPerIndexRecord);
-    DPRINT1("Serial number   0x%X\n",  VCB->SerialNumber);
+    DPRINT1("Serial number     0x%X\n",  VCB->SerialNumber);
     //DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
 }
 

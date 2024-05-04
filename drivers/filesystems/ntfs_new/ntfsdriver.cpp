@@ -138,7 +138,7 @@ NtfsGlobalDriver::MountVolume(_In_ PDEVICE_OBJECT DeviceObject,
     DPRINT1("AreWeNtfs() returned %lx\n", Status);
     if (Status != STATUS_SUCCESS)
         return Status;
-    
+
     /* TEMPORARY FOR TESTING ---------------------------------------*/
     NtfsPartition* LocNtfsPart;
     LocNtfsPart = new(PagedPool) NtfsPartition(DeviceToMount);
@@ -197,7 +197,7 @@ NtfsGlobalDriver::FileSystemControl(_In_ PNTFS_IRP_CONTEXT IrpContext)
 
     return Status;
 }
- 
+
 NtfsGlobalDriver::NtfsGlobalDriver(_In_ PDRIVER_OBJECT DriverObject,
                                    _In_ PDEVICE_OBJECT DeviceObject,
                                    _In_ PUNICODE_STRING RegistryPath)
@@ -255,4 +255,18 @@ NtfsGlobalDriver::CheckIfWeAreStupid(_In_ PUNICODE_STRING RegistryPath)
 
         ZwClose(DriverKey);
     }
+}
+
+NTSTATUS
+NtfsGlobalDriver::DumpBlocks(_Inout_ PUCHAR Buffer,
+                             _In_    ULONG Lba,
+                             _In_    ULONG LbaCount,
+                             _In_    ULONG SectorSize)
+{
+    return NtfsBlockIo->ReadBlock(PubDeviceObject,
+                                  Lba,
+                                  LbaCount,
+                                  SectorSize,
+                                  (PUCHAR)Buffer,
+                                  TRUE);
 }

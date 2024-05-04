@@ -106,3 +106,5 @@ void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 #include "ntblockio.h"
 #include "ntfsdriver.h"
 #include "ntfspartition.h"
+
+extern NtfsGlobalDriver* PubNtfsDriver;

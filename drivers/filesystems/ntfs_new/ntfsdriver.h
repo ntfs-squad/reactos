@@ -16,8 +16,12 @@ public:
     ~NtfsGlobalDriver();
     NTSTATUS FileSystemControl(_In_ PNTFS_IRP_CONTEXT IrpContext);
     NTSTATUS MountVolume(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp);
+    NTSTATUS DumpBlocks(_Inout_ PUCHAR Buffer,
+                        _In_    ULONG Lba,
+                        _In_    ULONG LbaCount,
+                        _In_    ULONG SectorSize);
 private:
-    VOID NtfsGlobalDriver::CheckIfWeAreStupid(_In_ PUNICODE_STRING RegistryPath);   
+    VOID NtfsGlobalDriver::CheckIfWeAreStupid(_In_ PUNICODE_STRING RegistryPath);
     NTSTATUS NtfsGlobalDriver::AreWeNtfs(PDEVICE_OBJECT DeviceToMount);
 public:
     PDRIVER_OBJECT PubDriverObject;
