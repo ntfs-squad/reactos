@@ -1,7 +1,7 @@
 #include "ntfs.h"
 #include <ntdddisk.h>
 #include <debug.h>
-#include "contextblocks.h"
+//#include "mft.h"
 
 NtfsPartition::NtfsPartition(PDEVICE_OBJECT DeviceToMount)
 {
@@ -27,20 +27,20 @@ NtfsPartition::NtfsPartition(PDEVICE_OBJECT DeviceToMount)
         __debugbreak(); //ASSERT?
     }
 
-    BytesPerSector = DiskGeometry.BytesPerSector;
+    VCB->BytesPerSector = DiskGeometry.BytesPerSector;
 
     /* Get Volume Information */
     /* Get boot sector information */
     DumpBlocks(BootSector, 0,1);
 
     //memcpy(&BytesPerSector,         &BootSector[0x0B], sizeof(UINT16));
-    memcpy(&SectorsPerCluster,      &BootSector[0x0D], sizeof(UINT8 ));
-    memcpy(&SectorsInVolume,        &BootSector[0x28], sizeof(UINT64));
-    memcpy(&MFTLCN,                 &BootSector[0x30], sizeof(UINT64));
-    memcpy(&MFTMirrLCN,             &BootSector[0x38], sizeof(UINT64));
-    memcpy(&ClustersPerFileRecord,  &BootSector[0x40], sizeof(UINT32));
-    memcpy(&ClustersPerIndexRecord, &BootSector[0x44], sizeof(UINT32));
-    memcpy(&SerialNumber,           &BootSector[0x48], sizeof(UINT64));
+    memcpy(&VCB->SectorsPerCluster,      &BootSector[0x0D], sizeof(UINT8 ));
+    memcpy(&VCB->SectorsInVolume,        &BootSector[0x28], sizeof(UINT64));
+    memcpy(&VCB->MFTLCN,                 &BootSector[0x30], sizeof(UINT64));
+    memcpy(&VCB->MFTMirrLCN,             &BootSector[0x38], sizeof(UINT64));
+    memcpy(&VCB->ClustersPerFileRecord,  &BootSector[0x40], sizeof(UINT32));
+    memcpy(&VCB->ClustersPerIndexRecord, &BootSector[0x44], sizeof(UINT32));
+    memcpy(&VCB->SerialNumber,           &BootSector[0x48], sizeof(UINT64));
 
     /* Get $Volume information */
 
@@ -55,7 +55,7 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
     return BlockIo->ReadBlock(PartDeviceObj,
                               Lba,
                               LbaCount,
-                              BytesPerSector,
+                              VCB->BytesPerSector,
                               (PUCHAR)Buffer,
                               TRUE);
 }
@@ -125,6 +125,8 @@ NtfsPartition::RunSanityChecks()
 {
     DPRINT1("RunSanityChecks() called\n");
     UCHAR BootSector[512];
+    // FileRecord* MFTFileRecord = new(NonPagedPool) FileRecord();
+    // FileRecord* VolumeFileRecord = new(NonPagedPool) FileRecord();
 
     OEM_ID = new(NonPagedPool) char[9];
     //ReadSector(BootSector, 0);
@@ -135,18 +137,22 @@ NtfsPartition::RunSanityChecks()
     memcpy(&SECTORS_PER_TRACK,         &BootSector[0x18], sizeof(UINT16));
     memcpy(&NUM_OF_HEADS,              &BootSector[0x1A], sizeof(UINT16));
 
+    // MFT *mft = new(NonPagedPool) MFT(this);
+    // mft->GetFileRecord(_MFT, MFTFileRecord);
+    // mft->GetFileRecord(_Volume, VolumeFileRecord);
+
     DPRINT1("OEM ID            %s\n", OEM_ID);
-    DPRINT1("Bytes per sector  %ld\n", BytesPerSector);
-    DPRINT1("Sectors/cluster   %ld\n", SectorsPerCluster);
+    DPRINT1("Bytes per sector  %ld\n", VCB->BytesPerSector);
+    DPRINT1("Sectors/cluster   %ld\n", VCB->SectorsPerCluster);
     DPRINT1("Sectors per track %ld\n", SECTORS_PER_TRACK);
     DPRINT1("Number of heads   %ld\n", NUM_OF_HEADS);
-    DPRINT1("Sectors in volume %ld\n", SectorsInVolume);
-    DPRINT1("LCN for $MFT      %ld\n", MFTLCN);
-    DPRINT1("LCN for $MFT_MIRR %ld\n", MFTMirrLCN);
-    DPRINT1("Clusters/MFT Rec  %ld\n", ClustersPerFileRecord);
-    DPRINT1("Clusters/IndexRec %ld\n", ClustersPerIndexRecord);
-    DPRINT1("Serial number   0x%X\n", SerialNumber);
-    DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
+    DPRINT1("Sectors in volume %ld\n", VCB->SectorsInVolume);
+    DPRINT1("LCN for $MFT      %ld\n", VCB->MFTLCN);
+    DPRINT1("LCN for $MFT_MIRR %ld\n", VCB->MFTMirrLCN);
+    DPRINT1("Clusters/MFT Rec  %ld\n", VCB->ClustersPerFileRecord);
+    DPRINT1("Clusters/IndexRec %ld\n", VCB->ClustersPerIndexRecord);
+    DPRINT1("Serial number   0x%X\n",  VCB->SerialNumber);
+    //DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
 }
 
 NtfsPartition::~NtfsPartition()

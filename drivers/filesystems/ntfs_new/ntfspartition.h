@@ -1,6 +1,11 @@
+#pragma once
+#include "contextblocks.h"
+
 class NtfsPartition
 {
 public:
+    VolumeContextBlock* VCB = new(NonPagedPool) VolumeContextBlock();
+
     NtfsPartition(PDEVICE_OBJECT DeviceToMount);
     ~NtfsPartition();
     void CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject);
@@ -10,20 +15,9 @@ public:
     void RunSanityChecks();
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
-    //NTSTATUS NtfsPartition::PrepareMount();
 
 private:
     NtBlockIo* BlockIo; /* Raw BlockIo - DONT USE */
-    USHORT    BytesPerSector;
-
-    UINT8  SectorsPerCluster;
-    UINT64 SectorsInVolume;
-    UINT64 MFTLCN;
-    UINT64 MFTMirrLCN;
-    UINT32 ClustersPerFileRecord;
-    UINT32 ClustersPerIndexRecord;
-    UINT64 SerialNumber;
-
     PVPB VolumeParameterBlock;
 
 
