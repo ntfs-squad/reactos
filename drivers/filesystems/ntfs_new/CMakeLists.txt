@@ -1,5 +1,6 @@
 
 list(APPEND SOURCE
+    mft.cpp
     ntfs.cpp
     ntfsdriver.cpp
     util.cpp
