@@ -33,18 +33,15 @@ NtfsPartition::NtfsPartition(PDEVICE_OBJECT DeviceToMount)
     /* Get boot sector information */
     DumpBlocks(BootSector, 0,1);
 
-    //memcpy(&BytesPerSector,         &BootSector[0x0B], sizeof(UINT16));
-    memcpy(&VCB->SectorsPerCluster,      &BootSector[0x0D], sizeof(UINT8 ));
-    memcpy(&VCB->SectorsInVolume,        &BootSector[0x28], sizeof(UINT64));
-    memcpy(&VCB->MFTLCN,                 &BootSector[0x30], sizeof(UINT64));
-    memcpy(&VCB->MFTMirrLCN,             &BootSector[0x38], sizeof(UINT64));
-    memcpy(&VCB->ClustersPerFileRecord,  &BootSector[0x40], sizeof(UINT32));
-    memcpy(&VCB->ClustersPerIndexRecord, &BootSector[0x44], sizeof(UINT32));
-    memcpy(&VCB->SerialNumber,           &BootSector[0x48], sizeof(UINT64));
+    // RtlCopyMemory(&BytesPerSector,              &BootSector[0x0B], sizeof(UINT16));
+    RtlCopyMemory(&VCB->SectorsPerCluster,      &BootSector[0x0D], sizeof(UINT8 ));
+    RtlCopyMemory(&VCB->SectorsInVolume,        &BootSector[0x28], sizeof(UINT64));
+    RtlCopyMemory(&VCB->MFTLCN,                 &BootSector[0x30], sizeof(UINT64));
+    RtlCopyMemory(&VCB->MFTMirrLCN,             &BootSector[0x38], sizeof(UINT64));
+    RtlCopyMemory(&VCB->ClustersPerFileRecord,  &BootSector[0x40], sizeof(UINT32));
+    RtlCopyMemory(&VCB->ClustersPerIndexRecord, &BootSector[0x44], sizeof(UINT32));
+    RtlCopyMemory(&VCB->SerialNumber,           &BootSector[0x48], sizeof(UINT64));
 
-    /* Get $Volume information */
-
-    /* Get Root File Object */
 }
 
 NTSTATUS
@@ -125,18 +122,20 @@ NtfsPartition::RunSanityChecks()
 {
     DPRINT1("RunSanityChecks() called\n");
     UCHAR BootSector[512];
+    // UCHAR VolName[256]; // Hack: define max vol name in mft.h
     FileRecord* MFTFileRecord;
     FileRecord* VolumeFileRecord;
     MFT *mft;
+    // ResidentAttribute* VolNameAttr;
 
     OEM_ID = new(NonPagedPool) char[9];
     //ReadSector(BootSector, 0);
     DumpBlocks(BootSector, 0,1);
 
     strcpy2(OEM_ID, BootSector, 0x03, 8);
-    memcpy(&MEDIA_DESCRIPTOR,          &BootSector[0x15], sizeof(UCHAR ));
-    memcpy(&SECTORS_PER_TRACK,         &BootSector[0x18], sizeof(UINT16));
-    memcpy(&NUM_OF_HEADS,              &BootSector[0x1A], sizeof(UINT16));
+    RtlCopyMemory(&MEDIA_DESCRIPTOR,  &BootSector[0x15], sizeof(UCHAR ));
+    RtlCopyMemory(&SECTORS_PER_TRACK, &BootSector[0x18], sizeof(UINT16));
+    RtlCopyMemory(&NUM_OF_HEADS,      &BootSector[0x1A], sizeof(UINT16));
 
     DPRINT1("OEM ID            %s\n", OEM_ID);
     DPRINT1("Bytes per sector  %ld\n", VCB->BytesPerSector);
@@ -157,7 +156,12 @@ NtfsPartition::RunSanityChecks()
     mft->GetFileRecord(_MFT, MFTFileRecord);
     mft->GetFileRecord(_Volume, VolumeFileRecord);
 
-    //DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
+    // VolNameAttr = new(NonPagedPool) ResidentAttribute;
+
+    // VolumeFileRecord->FindUnnamedAttribute(VolumeName, VolNameAttr, VolName);
+
+    // DPRINT1("Volume label      \"%s\"\n", VolName);
+
 }
 
 NtfsPartition::~NtfsPartition()
