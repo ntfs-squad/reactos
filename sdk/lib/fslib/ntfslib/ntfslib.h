@@ -24,7 +24,7 @@
 
 /* OTHER MACROSES ************************************************************/
 
-#define KeQuerySystemTime(t)  GetSystemTimeAsFileTime((LPFILETIME)(t));
+#define KeQuerySystemTime(t)  //GetSystemTimeAsFileTime((LPFILETIME)(t));
 
 #define FREE(p) if (p) RtlFreeHeap(RtlGetProcessHeap(), 0, p);
 
