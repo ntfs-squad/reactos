@@ -1,7 +1,7 @@
 #include "ntfs.h"
 #include <ntdddisk.h>
 #include <debug.h>
-//#include "mft.h"
+#include "mft.h"
 
 NtfsPartition::NtfsPartition(PDEVICE_OBJECT DeviceToMount)
 {
@@ -125,8 +125,9 @@ NtfsPartition::RunSanityChecks()
 {
     DPRINT1("RunSanityChecks() called\n");
     UCHAR BootSector[512];
-    // FileRecord* MFTFileRecord = new(NonPagedPool) FileRecord();
-    // FileRecord* VolumeFileRecord = new(NonPagedPool) FileRecord();
+    FileRecord* MFTFileRecord;
+    FileRecord* VolumeFileRecord;
+    MFT *mft;
 
     OEM_ID = new(NonPagedPool) char[9];
     //ReadSector(BootSector, 0);
@@ -136,10 +137,6 @@ NtfsPartition::RunSanityChecks()
     memcpy(&MEDIA_DESCRIPTOR,          &BootSector[0x15], sizeof(UCHAR ));
     memcpy(&SECTORS_PER_TRACK,         &BootSector[0x18], sizeof(UINT16));
     memcpy(&NUM_OF_HEADS,              &BootSector[0x1A], sizeof(UINT16));
-
-    // MFT *mft = new(NonPagedPool) MFT(this);
-    // mft->GetFileRecord(_MFT, MFTFileRecord);
-    // mft->GetFileRecord(_Volume, VolumeFileRecord);
 
     DPRINT1("OEM ID            %s\n", OEM_ID);
     DPRINT1("Bytes per sector  %ld\n", VCB->BytesPerSector);
@@ -151,7 +148,15 @@ NtfsPartition::RunSanityChecks()
     DPRINT1("LCN for $MFT_MIRR %ld\n", VCB->MFTMirrLCN);
     DPRINT1("Clusters/MFT Rec  %ld\n", VCB->ClustersPerFileRecord);
     DPRINT1("Clusters/IndexRec %ld\n", VCB->ClustersPerIndexRecord);
-    DPRINT1("Serial number     0x%X\n",  VCB->SerialNumber);
+    DPRINT1("Serial number     0x%X\n", VCB->SerialNumber);
+
+    mft = new(NonPagedPool) MFT(VCB);
+    MFTFileRecord = new(NonPagedPool) FileRecord();
+    VolumeFileRecord = new(NonPagedPool) FileRecord();
+
+    mft->GetFileRecord(_MFT, MFTFileRecord);
+    mft->GetFileRecord(_Volume, VolumeFileRecord);
+
     //DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
 }
 
