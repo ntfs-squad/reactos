@@ -39,11 +39,11 @@ FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length)
 {
     AttrLength = Length - sizeof(FileRecordHeader);
 
-    memcpy(&Header, &FileRecordData, sizeof(FileRecordHeader));
+    RtlCopyMemory(&Header, &FileRecordData, sizeof(FileRecordHeader));
 
-    memcpy(&AttrData,
-           &FileRecordData[sizeof(FileRecordHeader)],
-           AttrLength);
+    RtlCopyMemory(&AttrData,
+                  &FileRecordData[sizeof(FileRecordHeader)],
+                  AttrLength);
 
     return STATUS_SUCCESS;
 }
@@ -68,9 +68,9 @@ FileRecord::FindNamedAttribute(ULONG Type,
     while (AttrDataPointer < AttrLength)
     {
         // Get Attribute Header
-        memcpy(&TempAttr,
-               &AttrData[AttrDataPointer],
-               sizeof(IAttribute));
+        RtlCopyMemory(&TempAttr,
+                      &AttrData[AttrDataPointer],
+                      sizeof(IAttribute));
 
         if (TempAttr.AttributeType == Type)
         {
@@ -78,9 +78,9 @@ FileRecord::FindNamedAttribute(ULONG Type,
             // Get name, if applicable.
             if (Name && TempAttr.NameLength)
             {
-                memcpy(&Name,
-                       &AttrData[AttrDataPointer + TempAttr.NameOffset],
-                       TempAttr.NameLength);
+                RtlCopyMemory(&Name,
+                              &AttrData[AttrDataPointer + TempAttr.NameOffset],
+                              TempAttr.NameLength);
             }
 
             // Figure out if resident or non-resident.
@@ -88,9 +88,9 @@ FileRecord::FindNamedAttribute(ULONG Type,
             {
                 // Non-resident. Return non-resident data type.
                 Attr = new(NonPagedPool) NonResidentAttribute();
-                memcpy(&Attr,
-                       &AttrData[AttrDataPointer],
-                       TempAttr.NameOffset);
+                RtlCopyMemory(&Attr,
+                              &AttrData[AttrDataPointer],
+                              TempAttr.NameOffset);
                 // No attribute data because the attribute is non-resident.
             }
             else
@@ -98,14 +98,14 @@ FileRecord::FindNamedAttribute(ULONG Type,
                 // Resident. Return resident data type.
                 Attr = new(NonPagedPool) ResidentAttribute();
                 // Get header
-                memcpy(&Attr,
-                       &AttrData[AttrDataPointer],
-                       TempAttr.NameOffset);
+                RtlCopyMemory(&Attr,
+                              &AttrData[AttrDataPointer],
+                              TempAttr.NameOffset);
                 // Get data
-                memcpy(&Data,
-                       &AttrData[AttrDataPointer +
-                                 ((ResidentAttribute*)Attr)->AttributeOffset],
-                                 ((ResidentAttribute*)Attr)->AttributeLength);
+                RtlCopyMemory(&Data,
+                              &AttrData[AttrDataPointer +
+                              ((ResidentAttribute*)Attr)->AttributeOffset],
+                              ((ResidentAttribute*)Attr)->AttributeLength);
 
             }
             return STATUS_SUCCESS;
