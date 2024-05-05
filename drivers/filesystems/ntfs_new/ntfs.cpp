@@ -200,7 +200,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
     PDEVICE_OBJECT DeviceObject;
 
     DPRINT("DriverEntry(%p, '%wZ')\n", DriverObject, RegistryPath);
-
+    __debugbreak();
     Status = IoCreateDevice(DriverObject,
                             sizeof(PNTFS_GLOBAL_DATA), // We're not gonna use this yet.
                             &DeviceName,

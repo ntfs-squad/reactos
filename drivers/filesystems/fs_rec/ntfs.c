@@ -19,14 +19,12 @@
 BOOLEAN
 NTAPI
 FsRecIsNtfsVolume(IN PPACKED_BOOT_SECTOR BootSector,
-                  IN ULONG BytesPerSector,
-                  IN PLARGE_INTEGER  NumberOfSectors)
+                  IN ULONG BytesPerSector)
 {
     /* Assume failure */
     BOOLEAN Result = FALSE;
 
     UNREFERENCED_PARAMETER(BytesPerSector);
-    UNREFERENCED_PARAMETER(NumberOfSectors);
 
     PAGED_CODE();
 
@@ -57,7 +55,7 @@ FsRecNtfsFsControl(IN PDEVICE_OBJECT DeviceObject,
     PDEVICE_OBJECT MountDevice;
     PPACKED_BOOT_SECTOR Bpb = NULL;
     ULONG SectorSize;
-    LARGE_INTEGER Offset = {{0, 0}}, Offset2, Offset3, SectorCount;
+    LARGE_INTEGER Offset = {{0, 0}};
     PAGED_CODE();
 
     /* Get the I/O Stack and check the function type */
@@ -71,14 +69,8 @@ FsRecNtfsFsControl(IN PDEVICE_OBJECT DeviceObject,
 
             /* Get the device object and request the sector size */
             MountDevice = Stack->Parameters.MountVolume.DeviceObject;
-            if ((FsRecGetDeviceSectorSize(MountDevice, &SectorSize)) &&
-                (FsRecGetDeviceSectors(MountDevice, SectorSize, &SectorCount)))
+            if ((FsRecGetDeviceSectorSize(MountDevice, &SectorSize)))
             {
-                /* Setup other offsets to try */
-                Offset2.QuadPart = SectorCount.QuadPart >> 1;
-                Offset2.QuadPart *= SectorSize;
-                Offset3.QuadPart = (SectorCount.QuadPart - 1) * SectorSize;
-
                 /* Try to read the BPB */
                 if (FsRecReadBlock(MountDevice,
                                    &Offset,
@@ -88,35 +80,7 @@ FsRecNtfsFsControl(IN PDEVICE_OBJECT DeviceObject,
                                    NULL))
                 {
                     /* Check if it's an actual NTFS volume */
-                    if (FsRecIsNtfsVolume(Bpb, SectorSize, &SectorCount))
-                    {
-                        /* It is! */
-                        Status = STATUS_FS_DRIVER_REQUIRED;
-                    }
-                }
-                else if (FsRecReadBlock(MountDevice,
-                                        &Offset2,
-                                        512,
-                                        SectorSize,
-                                        (PVOID)&Bpb,
-                                        NULL))
-                {
-                    /* Check if it's an actual NTFS volume */
-                    if (FsRecIsNtfsVolume(Bpb, SectorSize, &SectorCount))
-                    {
-                        /* It is! */
-                        Status = STATUS_FS_DRIVER_REQUIRED;
-                    }
-                }
-                else if (FsRecReadBlock(MountDevice,
-                                        &Offset3,
-                                        512,
-                                        SectorSize,
-                                        (PVOID)&Bpb,
-                                        NULL))
-                {
-                    /* Check if it's an actual NTFS volume */
-                    if (FsRecIsNtfsVolume(Bpb, SectorSize, &SectorCount))
+                    if (FsRecIsNtfsVolume(Bpb, SectorSize))
                     {
                         /* It is! */
                         Status = STATUS_FS_DRIVER_REQUIRED;
