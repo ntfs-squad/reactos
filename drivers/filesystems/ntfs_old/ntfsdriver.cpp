@@ -22,13 +22,13 @@ NtfsGlobalDriver::AreWeNtfs(PDEVICE_OBJECT DeviceToMount)
     DPRINT("NtfsHasFileSystem() called\n");
 
     Size = sizeof(DISK_GEOMETRY);
-    Status = NtfsBlockIo->DeviceIoControl(DeviceToMount,
-                                          IOCTL_DISK_GET_DRIVE_GEOMETRY,
-                                          NULL,
-                                          0,
-                                          &DiskGeometry,
-                                          &Size,
-                                          TRUE);
+    Status = DeviceIoControl(DeviceToMount,
+                            IOCTL_DISK_GET_DRIVE_GEOMETRY,
+                            NULL,
+                            0,
+                            &DiskGeometry,
+                            &Size,
+                            TRUE);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("NtfsDeviceIoControl() failed (Status %lx)\n", Status);
@@ -36,20 +36,24 @@ NtfsGlobalDriver::AreWeNtfs(PDEVICE_OBJECT DeviceToMount)
     }
 
     DPRINT1("BytesPerSector: %lu\n", DiskGeometry.BytesPerSector);
+    if (DiskGeometry.BytesPerSector > 512)
+        Status = STATUS_UNRECOGNIZED_VOLUME;
+
     BootSector = (PBOOT_SECTOR)ExAllocatePoolWithTag(NonPagedPool,
                                        DiskGeometry.BytesPerSector,
                                        TAG_NTFS);
+                                       
     if (BootSector == NULL)
     {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    Status = NtfsBlockIo->ReadBlock(DeviceToMount,
-                                    0,
-                                    1,
-                                    DiskGeometry.BytesPerSector,
-                                    (PUCHAR)BootSector,
-                                    TRUE);
+    ReadBlock(DeviceToMount,
+              0,
+              1,
+              DiskGeometry.BytesPerSector,
+              (PUCHAR)BootSector,
+              TRUE);
     if (!NT_SUCCESS(Status))
     {
         goto ByeBye;
@@ -111,7 +115,6 @@ ByeBye:
     return Status;
 }
 
-//NtfsBlockIo
 NTSTATUS
 NtfsGlobalDriver::MountVolume(_In_ PDEVICE_OBJECT DeviceObject,
                               _Inout_ PIRP Irp)
@@ -206,7 +209,6 @@ NtfsGlobalDriver::NtfsGlobalDriver(_In_ PDRIVER_OBJECT DriverObject,
     PubDeviceObject = DeviceObject;
     PubRegistryPath =  RegistryPath;
 
-    NtfsBlockIo = new(PagedPool) NtBlockIo();
     CheckIfWeAreStupid(RegistryPath);
 }
 
@@ -255,18 +257,4 @@ NtfsGlobalDriver::CheckIfWeAreStupid(_In_ PUNICODE_STRING RegistryPath)
 
         ZwClose(DriverKey);
     }
-}
-
-NTSTATUS
-NtfsGlobalDriver::DumpBlocks(_Inout_ PUCHAR Buffer,
-                             _In_    ULONG Lba,
-                             _In_    ULONG LbaCount,
-                             _In_    ULONG SectorSize)
-{
-    return NtfsBlockIo->ReadBlock(PubDeviceObject,
-                                  Lba,
-                                  LbaCount,
-                                  SectorSize,
-                                  (PUCHAR)Buffer,
-                                  TRUE);
 }

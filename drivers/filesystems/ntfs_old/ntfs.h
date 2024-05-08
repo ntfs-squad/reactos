@@ -103,8 +103,31 @@ typedef struct _BOOT_SECTOR
 /* Utilities */
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 
-#include "ntblockio.h"
+
 #include "ntfsdriver.h"
 #include "ntfspartition.h"
 
-extern NtfsGlobalDriver* PubNtfsDriver;
+NTSTATUS
+ReadDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
+         _In_    LONGLONG StartingOffset,
+         _In_    ULONG AmountOfSectors,
+         _In_    ULONG SectorSize,
+         _Inout_ PUCHAR Buffer,
+         _In_    BOOLEAN Override);
+
+NTSTATUS
+ReadBlock(_In_    PDEVICE_OBJECT DeviceObject,
+          _In_    ULONG DiskSector,
+          _In_    ULONG SectorCount,
+          _In_    ULONG SectorSize,
+          _Inout_ PUCHAR Buffer,
+          _In_    BOOLEAN Override);
+
+NTSTATUS
+DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
+                           _In_    ULONG ControlCode,
+                           _In_    PVOID InputBuffer,
+                           _In_    ULONG InputBufferSize,
+                           _Inout_ PVOID OutputBuffer,
+                           _Inout_ PULONG OutputBufferSize,
+                           _In_    BOOLEAN Override);

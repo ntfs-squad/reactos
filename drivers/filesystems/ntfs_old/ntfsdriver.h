@@ -28,5 +28,4 @@ public:
     PDEVICE_OBJECT PubDeviceObject;
     PUNICODE_STRING PubRegistryPath;
     BOOLEAN EnableWriteSupport;
-    NtBlockIo* NtfsBlockIo;
 };
