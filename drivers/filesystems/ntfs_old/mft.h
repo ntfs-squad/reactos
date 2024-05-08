@@ -139,9 +139,10 @@ private:
 class MFT
 {
 public:
-    MFT::MFT(VolumeContextBlock* VCB);
+    MFT::MFT(VolumeContextBlock* VCB, PDEVICE_OBJECT DeviceObj);
     NTSTATUS MFT::GetFileRecord(ULONGLONG FileRecordNumber, FileRecord* File);
 private:
     NtfsPartition* CurrentPartition;
     VolumeContextBlock* VCB;
+    PDEVICE_OBJECT PartDeviceObj;
 };

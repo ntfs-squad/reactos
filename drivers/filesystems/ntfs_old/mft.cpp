@@ -2,32 +2,43 @@
 #include "ntfs.h"
 #include "mft.h"
 
+
 /* *** MFT IMPLEMENTATIONS *** */
 
-MFT::MFT(VolumeContextBlock* _In_ VolCB)
+MFT::MFT(VolumeContextBlock* _In_ VolCB, PDEVICE_OBJECT DeviceObj)
 {
     VCB = VolCB;
+    PartDeviceObj = DeviceObj;
 }
 
 NTSTATUS
 MFT::GetFileRecord(ULONGLONG FileRecordNumber,
                    FileRecord* File)
 {
+    PAGED_CODE();
     unsigned FileRecordBufferLength = VCB->ClustersPerFileRecord *
                                       VCB->SectorsPerCluster *
                                       VCB->BytesPerSector;
 
-    UCHAR FileRecordBuffer[1024]; //Hack, define FileRecordSizeMax
+    UCHAR FileRecordBuffer[0xf6000]; //Hack, define FileRecordSizeMax
+    __debugbreak();
 
-    PubNtfsDriver->DumpBlocks(FileRecordBuffer,
-                              ((FileRecordNumber *
-                              VCB->ClustersPerFileRecord) +
-                              VCB->MFTLCN) *
-                              VCB->SectorsPerCluster,
-                              VCB->ClustersPerFileRecord *
-                              VCB->SectorsPerCluster,
-                              VCB->BytesPerSector);
-
+        ReadBlock(PartDeviceObj,
+              0,1,512,FileRecordBuffer,
+              TRUE);
+#if 0
+    ReadBlock(PartDeviceObj,
+              ((FileRecordNumber *
+              VCB->ClustersPerFileRecord) +
+              VCB->MFTLCN) *
+              VCB->SectorsPerCluster,
+              VCB->ClustersPerFileRecord *
+              VCB->SectorsPerCluster,
+              VCB->BytesPerSector,
+              FileRecordBuffer,
+              TRUE);
+#endif
+    __debugbreak();
     File->LoadData(FileRecordBuffer, FileRecordBufferLength);
 
     return STATUS_SUCCESS;

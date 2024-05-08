@@ -17,7 +17,6 @@ public:
     PDEVICE_OBJECT PartDeviceObj;
 
 private:
-    NtBlockIo* BlockIo; /* Raw BlockIo - DONT USE */
     PVPB VolumeParameterBlock;
 
 

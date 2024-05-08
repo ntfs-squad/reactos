@@ -1,4 +1,4 @@
-#include "ntfsprocs.h"
+#include "ntfs.h"
 
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType)
 {

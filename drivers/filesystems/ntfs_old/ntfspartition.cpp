@@ -3,6 +3,9 @@
 #include <debug.h>
 #include "mft.h"
 
+
+extern NtfsGlobalDriver* PubNtfsDriver;
+
 NtfsPartition::NtfsPartition(PDEVICE_OBJECT DeviceToMount)
 {
     DISK_GEOMETRY DiskGeometry;
@@ -11,10 +14,9 @@ NtfsPartition::NtfsPartition(PDEVICE_OBJECT DeviceToMount)
     UCHAR BootSector[512];
 
     PartDeviceObj = DeviceToMount;
-    BlockIo = new(PagedPool) NtBlockIo();
 
     Size = sizeof(DISK_GEOMETRY);
-    Status = BlockIo->DeviceIoControl(DeviceToMount,
+    Status = DeviceIoControl(DeviceToMount,
                                           IOCTL_DISK_GET_DRIVE_GEOMETRY,
                                           NULL,
                                           0,
@@ -49,45 +51,13 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
                           _In_    ULONG Lba,
                           _In_    ULONG LbaCount)
 {
-    return PubNtfsDriver->NtfsBlockIo->ReadBlock(PartDeviceObj,
-                                                 Lba,
-                                                 LbaCount,
-                                                 VCB->BytesPerSector,
-                                                 (PUCHAR)Buffer,
-                                                 TRUE);
+    return ReadBlock(PartDeviceObj,
+                     Lba,
+                     LbaCount,
+                     VCB->BytesPerSector,
+                     (PUCHAR)Buffer,
+                     TRUE);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -120,6 +90,7 @@ void strcpy2(char* destination,
 void
 NtfsPartition::RunSanityChecks()
 {
+    PAGED_CODE();
     DPRINT1("RunSanityChecks() called\n");
     UCHAR BootSector[512];
     // UCHAR VolName[256]; // Hack: define max vol name in mft.h
@@ -148,20 +119,16 @@ NtfsPartition::RunSanityChecks()
     DPRINT1("Clusters/MFT Rec  %ld\n", VCB->ClustersPerFileRecord);
     DPRINT1("Clusters/IndexRec %ld\n", VCB->ClustersPerIndexRecord);
     DPRINT1("Serial number     0x%X\n", VCB->SerialNumber);
-
-    mft = new(NonPagedPool) MFT(VCB);
+    mft = new(NonPagedPool) MFT(VCB, PartDeviceObj);
     MFTFileRecord = new(NonPagedPool) FileRecord();
     VolumeFileRecord = new(NonPagedPool) FileRecord();
-
     mft->GetFileRecord(_MFT, MFTFileRecord);
+    __debugbreak();
+#if 0
     mft->GetFileRecord(_Volume, VolumeFileRecord);
-
-    // VolNameAttr = new(NonPagedPool) ResidentAttribute;
-
-    // VolumeFileRecord->FindUnnamedAttribute(VolumeName, VolNameAttr, VolName);
-
-    // DPRINT1("Volume label      \"%s\"\n", VolName);
-
+    __debugbreak();
+#endif
+    //DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
 }
 
 NtfsPartition::~NtfsPartition()
