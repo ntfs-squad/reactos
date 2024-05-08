@@ -10,7 +10,10 @@ list(APPEND SOURCE
      create.cpp
      close.cpp
      fileinfo.cpp
+     ntblockio.cpp
      fsctrl.cpp
+     ntfslogic/mft.cpp
+     ntfslogic/ntfspartition.cpp
      ntfsprocs.h)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
