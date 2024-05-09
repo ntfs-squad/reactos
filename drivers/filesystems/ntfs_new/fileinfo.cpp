@@ -33,7 +33,7 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                         _Inout_ PIRP Irp)
 {
     __debugbreak();
-    return 1;
+    return 0;
 }
 
 _Function_class_(IRP_MJ_SET_INFORMATION)
@@ -45,7 +45,7 @@ NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                       _Inout_ PIRP Irp)
 {
     __debugbreak();
-    return 1;
+    return 0;
 }
 
 _Function_class_(IRP_MJ_DIRECTORY_CONTROL)
@@ -57,5 +57,5 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                         _Inout_ PIRP Irp)
 {
     __debugbreak();
-    return 1;
+    return 0;
 }
