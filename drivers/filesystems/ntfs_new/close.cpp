@@ -31,5 +31,5 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
              _Inout_ PIRP Irp)
 {
     __debugbreak();
-    return 1;
+    return 0;
 }

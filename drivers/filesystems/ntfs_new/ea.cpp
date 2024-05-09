@@ -31,8 +31,8 @@ NTAPI
 NtfsFsdQueryEa(_In_ PDEVICE_OBJECT VolumeDeviceObject,
               _Inout_ PIRP Irp)
 {
-    __debugbreak();
-    return 1;
+    DPRINT1("NtfsFsdQueryEa() called\n");
+    return 0;
 }
 
 _Function_class_(IRP_MJ_SET_EA)
@@ -43,6 +43,6 @@ NTAPI
 NtfsFsdSetEa(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             _Inout_ PIRP Irp)
 {
-    __debugbreak();
-    return 1;
+    DPRINT1("NtfsFsdSetEa() called\n");
+    return 0;
 }

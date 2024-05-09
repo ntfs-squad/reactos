@@ -21,6 +21,7 @@
 #endif
 
 /* FUNCTIONS ****************************************************************/
+extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 
 _Function_class_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
@@ -30,6 +31,12 @@ NTAPI
 NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
               _Inout_ PIRP Irp)
 {
-    __debugbreak();
-    return 1;
+    if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
+    {
+        /* DeviceObject represents FileSystem instead of logical volume */
+        DPRINT("Opening file system\n");
+        Irp->IoStatus.Information = FILE_OPENED;
+        return STATUS_SUCCESS;
+    }
+    return STATUS_SUCCESS;
 }

@@ -132,7 +132,7 @@ public:
                                             PUCHAR Data);
 private:
     FileRecordHeader *Header;
-    PUCHAR AttrData;
+    UCHAR AttrData[0x1000]; //TODO:
     ULONG AttrLength;
 };
 

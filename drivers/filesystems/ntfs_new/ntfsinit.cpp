@@ -30,13 +30,14 @@ PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 #define TAG_IRP_CTXT 'iftN'
 #define TAG_ATT_CTXT 'aftN'
 #define TAG_FILE_REC 'rftN'
+#define TAG_FCB 'FftN'
 
 CACHE_MANAGER_CALLBACKS CacheMgrCallbacks;
 FAST_IO_DISPATCH FastIoDispatch;
 NPAGED_LOOKASIDE_LIST IrpContextLookasideList;
 NPAGED_LOOKASIDE_LIST FcbLookasideList;
 NPAGED_LOOKASIDE_LIST AttrCtxtLookasideList;
-
+PDRIVER_OBJECT NtfsDriverObject;
 /* FUNCTIONS ****************************************************************/
 
 EXTERN_C
@@ -47,7 +48,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
 {
     NTSTATUS Status;
     UNICODE_STRING UnicodeString;
-
+    NtfsDriverObject = DriverObject;
     UNREFERENCED_PARAMETER(RegistryPath);
     RtlInitUnicodeString(&UnicodeString, L"\\Ntfs");
     Status = IoCreateDevice(DriverObject,
@@ -80,7 +81,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
     DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL]             = NtfsFsdLockControl;
     DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL]           = NtfsFsdDeviceControl;
     DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = NtfsFsdShutdown;
-    DriverObject->MajorFunction[IRP_MJ_PNP]                      = NtfsFsdPnp;
+    //DriverObject->MajorFunction[IRP_MJ_PNP]                      = NtfsFsdPnp;
 
     NtfsDiskFileSystemDeviceObject->Flags |= DO_DIRECT_IO;
 
@@ -88,6 +89,12 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
     /* Initialize lookaside list for IRP contexts */
     ExInitializeNPagedLookasideList(&IrpContextLookasideList,
                                     NULL, NULL, 0, sizeof(NTFS_IRP_CONTEXT), TAG_IRP_CTXT, 0);
+        /* Initialize lookaside list for FCBs */
+    ExInitializeNPagedLookasideList(&FcbLookasideList,
+                                    NULL, NULL, 0, sizeof(NTFS_FCB), TAG_FCB, 0);
+    /* Initialize lookaside list for attributes contexts */
+    ExInitializeNPagedLookasideList(&AttrCtxtLookasideList,
+                                    NULL, NULL, 0, sizeof(NTFS_ATTR_CONTEXT), TAG_ATT_CTXT, 0);
     /* Register file system */
     IoRegisterFileSystem(NtfsDiskFileSystemDeviceObject);
     ObReferenceObject(NtfsDiskFileSystemDeviceObject);
@@ -104,10 +111,10 @@ NTAPI
 NtfsFsdLockControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                    _Inout_ PIRP Irp)
 {
-    __debugbreak();
-    return 1;
+   DPRINT1("NtfsFsdLockControl: called\r\n");
+    return 0;
 }
-
+extern PDEVICE_OBJECT StorageDevice; //HACKHACKHACK
 _Function_class_(IRP_MJ_DEVICE_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -116,8 +123,10 @@ NTAPI
 NtfsFsdDeviceControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                      _Inout_ PIRP Irp)
 {
-    __debugbreak();
-    return 1;
+    IoSkipCurrentIrpStackLocation(Irp);
+
+
+    return IoCallDriver(StorageDevice, Irp);
 }
 
 _Function_class_(IRP_MJ_SHUTDOWN)
@@ -128,8 +137,8 @@ NTAPI
 NtfsFsdShutdown (_In_ PDEVICE_OBJECT VolumeDeviceObject,
                  _Inout_ PIRP Irp)
 {
-    __debugbreak();
-    return 1;
+    DPRINT1("NtfsFsdShutdown: called\r\n");
+    return 0;
 }
 
 _Function_class_(DRIVER_UNLOAD)
@@ -151,6 +160,6 @@ NTAPI
 NtfsFsdCleanup(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                _Inout_ PIRP Irp)
 {
-    __debugbreak();
-    return 1;
+    DPRINT1("NtfsFsdCleanup: called\r\n");
+    return 0;
 }

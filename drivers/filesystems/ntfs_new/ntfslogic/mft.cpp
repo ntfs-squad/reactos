@@ -31,9 +31,8 @@ MFT::GetFileRecord(ULONGLONG FileRecordNumber,
               VCB->BytesPerSector,
               FileRecordBuffer,
               TRUE);
-    __debugbreak();
+
     File->LoadData(FileRecordBuffer, FileRecordBufferLength);
-    __debugbreak();
     return STATUS_SUCCESS;
 }
 
@@ -41,14 +40,14 @@ MFT::GetFileRecord(ULONGLONG FileRecordNumber,
 NTSTATUS
 FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length)
 {
+    PAGED_CODE();
     AttrLength = Length - sizeof(FileRecordHeader);
 
     memcpy(&Header, &FileRecordData, sizeof(FileRecordHeader));
-
     memcpy(&AttrData,
            &FileRecordData[sizeof(FileRecordHeader)],
            AttrLength);
-
+    __debugbreak();
     return STATUS_SUCCESS;
 }
 

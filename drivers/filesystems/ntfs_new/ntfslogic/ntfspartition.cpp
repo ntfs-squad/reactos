@@ -61,19 +61,6 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 #include <debug.h>
 
 /* SEPERATING OUT FOR SNAITY */
@@ -121,12 +108,9 @@ NtfsPartition::RunSanityChecks()
     mft = new(NonPagedPool) MFT(VCB, PartDeviceObj);
     MFTFileRecord = new(NonPagedPool) FileRecord();
     VolumeFileRecord = new(NonPagedPool) FileRecord();
-    mft->GetFileRecord(_MFT, MFTFileRecord);
-    __debugbreak();
-#if 0
-    mft->GetFileRecord(_Volume, VolumeFileRecord);
-    __debugbreak();
-#endif
+   /// mft->GetFileRecord(_MFT, MFTFileRecord);
+   // mft->GetFileRecord(_Volume, VolumeFileRecord);
+
     //DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
 }
 

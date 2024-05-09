@@ -508,7 +508,7 @@ typedef struct _NTFS_ATTR_CONTEXT
 #define FCB_CACHE_INITIALIZED   0x0001
 #define FCB_IS_VOLUME_STREAM    0x0002
 #define FCB_IS_VOLUME           0x0004
-#define MAX_PATH                260
+#define `MAX_PATH                260
 
 typedef struct _FCB
 {
