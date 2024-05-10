@@ -15,7 +15,7 @@ public:
     UINT64 SectorsInVolume;
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;
-    UINT32 ClustersPerFileRecord;
-    UINT32 ClustersPerIndexRecord;
+    INT32  ClustersPerFileRecord;
+    INT32  ClustersPerIndexRecord;
     UINT64 SerialNumber;
 };
