@@ -1,6 +1,8 @@
 #pragma once
 #include <ntfsprocs.h>
+#include <debug.h>
 #include "mft.h"
+#include "ntfsdbgprint.h"
 
 
 /* *** MFT IMPLEMENTATIONS *** */
@@ -37,17 +39,20 @@ MFT::GetFileRecord(ULONGLONG FileRecordNumber,
 }
 
 /* *** FILE RECORD IMPLEMENTATIONS *** */
+
 NTSTATUS
 FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length)
 {
     PAGED_CODE();
     AttrLength = Length - sizeof(FileRecordHeader);
 
-    memcpy(&Header, &FileRecordData, sizeof(FileRecordHeader));
-    memcpy(&AttrData,
-           &FileRecordData[sizeof(FileRecordHeader)],
-           AttrLength);
-    __debugbreak();
+    RtlCopyMemory(&Header, &FileRecordData, sizeof(FileRecordHeader));
+    RtlCopyMemory(&AttrData,
+                  &FileRecordData[sizeof(FileRecordHeader)],
+                  AttrLength);
+
+    PrintFileRecordHeader(Header);
+    // __debugbreak();
     return STATUS_SUCCESS;
 }
 
@@ -66,34 +71,39 @@ FileRecord::FindNamedAttribute(ULONG Type,
                                PUCHAR Data)
 {
     ULONG AttrDataPointer = 0;
-    IAttribute TempAttr;
+
+    DPRINT1("Attribute Length: %d\n", AttrLength);
+
+    __debugbreak();
 
     while (AttrDataPointer < AttrLength)
     {
         // Get Attribute Header
-        memcpy(&TempAttr,
-               &AttrData[AttrDataPointer],
-               sizeof(IAttribute));
+        RtlCopyMemory(&Attr,
+                      &AttrData[AttrDataPointer],
+                      sizeof(IAttribute));
 
-        if (TempAttr.AttributeType == Type)
+        PrintAttributeHeader(Attr);
+
+        if (Attr->AttributeType == Type)
         {
             // We found the right type of attribute!
             // Get name, if applicable.
-            if (Name && TempAttr.NameLength)
+            if (Name && Attr->NameLength)
             {
-                memcpy(&Name,
-                       &AttrData[AttrDataPointer + TempAttr.NameOffset],
-                       TempAttr.NameLength);
+                RtlCopyMemory(&Name,
+                              &AttrData[AttrDataPointer + Attr->NameOffset],
+                              Attr->NameLength);
             }
 
             // Figure out if resident or non-resident.
-            if (TempAttr.NonResidentFlag)
+            if (Attr->NonResidentFlag)
             {
                 // Non-resident. Return non-resident data type.
                 Attr = new(NonPagedPool) NonResidentAttribute();
-                memcpy(&Attr,
-                       &AttrData[AttrDataPointer],
-                       TempAttr.NameOffset);
+                RtlCopyMemory(&Attr,
+                              &AttrData[AttrDataPointer],
+                              Attr->NameOffset);
                 // No attribute data because the attribute is non-resident.
             }
             else
@@ -101,14 +111,14 @@ FileRecord::FindNamedAttribute(ULONG Type,
                 // Resident. Return resident data type.
                 Attr = new(NonPagedPool) ResidentAttribute();
                 // Get header
-                memcpy(&Attr,
-                       &AttrData[AttrDataPointer],
-                       TempAttr.NameOffset);
+                RtlCopyMemory(&Attr,
+                              &AttrData[AttrDataPointer],
+                              Attr->NameOffset);
                 // Get data
-                memcpy(&Data,
-                       &AttrData[AttrDataPointer +
-                                 ((ResidentAttribute*)Attr)->AttributeOffset],
-                                 ((ResidentAttribute*)Attr)->AttributeLength);
+                RtlCopyMemory(&Data,
+                              &AttrData[AttrDataPointer +
+                                       ((ResidentAttribute*)Attr)->AttributeOffset],
+                              ((ResidentAttribute*)Attr)->AttributeLength);
 
             }
             return STATUS_SUCCESS;
@@ -116,7 +126,7 @@ FileRecord::FindNamedAttribute(ULONG Type,
         else
         {
             // Wrong attribute, go to the next one.
-            AttrDataPointer += TempAttr.Length;
+            AttrDataPointer += Attr->Length;
         }
     }
 

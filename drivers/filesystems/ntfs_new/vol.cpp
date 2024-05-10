@@ -310,7 +310,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     Fcb->RFCB.FileSize.QuadPart = LocNtfsPart->VCB->SectorsInVolume * LocNtfsPart->VCB->BytesPerSector;
     Fcb->RFCB.ValidDataLength.QuadPart = LocNtfsPart->VCB->SectorsInVolume * LocNtfsPart->VCB->BytesPerSector;
     Fcb->RFCB.AllocationSize.QuadPart = LocNtfsPart->VCB->SectorsInVolume * LocNtfsPart->VCB->BytesPerSector;
-    
+
     ExInitializeResourceLite(&Vcb->DirResource);
 
     KeInitializeSpinLock(&Vcb->FcbListLock);
