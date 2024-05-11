@@ -48,11 +48,10 @@ FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length)
 
     RtlCopyMemory(&Header, &FileRecordData, sizeof(FileRecordHeader));
     RtlCopyMemory(&AttrData,
-                  &FileRecordData[sizeof(FileRecordHeader)],
+                  &FileRecordData[Header->AttributeOffset],
                   AttrLength);
 
     PrintFileRecordHeader(Header);
-    // __debugbreak();
     return STATUS_SUCCESS;
 }
 
@@ -74,12 +73,10 @@ FileRecord::FindNamedAttribute(ULONG Type,
 
     DPRINT1("Attribute Length: %d\n", AttrLength);
 
-    __debugbreak();
-
     while (AttrDataPointer < AttrLength)
     {
         // Get Attribute Header
-        RtlCopyMemory(&Attr,
+        RtlCopyMemory(Attr,
                       &AttrData[AttrDataPointer],
                       sizeof(IAttribute));
 
@@ -87,6 +84,7 @@ FileRecord::FindNamedAttribute(ULONG Type,
 
         if (Attr->AttributeType == Type)
         {
+            DPRINT1("able to check attr type, correct!\n");
             // We found the right type of attribute!
             // Get name, if applicable.
             if (Name && Attr->NameLength)
@@ -101,7 +99,7 @@ FileRecord::FindNamedAttribute(ULONG Type,
             {
                 // Non-resident. Return non-resident data type.
                 Attr = new(NonPagedPool) NonResidentAttribute();
-                RtlCopyMemory(&Attr,
+                RtlCopyMemory(Attr,
                               &AttrData[AttrDataPointer],
                               Attr->NameOffset);
                 // No attribute data because the attribute is non-resident.
@@ -111,11 +109,11 @@ FileRecord::FindNamedAttribute(ULONG Type,
                 // Resident. Return resident data type.
                 Attr = new(NonPagedPool) ResidentAttribute();
                 // Get header
-                RtlCopyMemory(&Attr,
+                RtlCopyMemory(Attr,
                               &AttrData[AttrDataPointer],
                               Attr->NameOffset);
                 // Get data
-                RtlCopyMemory(&Data,
+                RtlCopyMemory(Data,
                               &AttrData[AttrDataPointer +
                                        ((ResidentAttribute*)Attr)->AttributeOffset],
                               ((ResidentAttribute*)Attr)->AttributeLength);
@@ -127,6 +125,7 @@ FileRecord::FindNamedAttribute(ULONG Type,
         {
             // Wrong attribute, go to the next one.
             AttrDataPointer += Attr->Length;
+            DPRINT1("Trying next attribute!\n");
         }
     }
 
