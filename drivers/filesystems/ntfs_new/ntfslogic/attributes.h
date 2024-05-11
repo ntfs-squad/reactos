@@ -79,7 +79,7 @@ struct NonResidentAttribute : IAttribute
     UINT64 InitalizedDataSize;     // Offset 0x38, Size 8
 };
 
-struct FileNameAttr : ResidentAttribute
+struct FilenameAttr : ResidentAttribute
 {
     UINT64 ParentDirectory;    // Offset 0x00, Size 8
     UINT64 FileCreation;       // Offset 0x08, Size 8

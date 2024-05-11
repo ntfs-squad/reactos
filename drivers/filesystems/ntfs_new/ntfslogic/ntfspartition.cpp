@@ -1,6 +1,7 @@
 #include <ntfsprocs.h>
 #include <ntdddisk.h>
 #include <debug.h>
+#include "ntfsdbgprint.h"
 #include "mft.h"
 
 
@@ -79,12 +80,13 @@ void
 NtfsPartition::RunSanityChecks()
 {
     PAGED_CODE();
-    DPRINT1("RunSanityChecks() called\n");
     UCHAR BootSector[512];
+    WCHAR Filename[128];
     FileRecord* VolumeFileRecord;
-    ResidentAttribute* VolNameAttr;
+    FilenameAttr* FilenameAttrib;
     MFT *mft;
 
+    DPRINT1("RunSanityChecks() called\n");
     OEM_ID = new(NonPagedPool) char[9];
     DumpBlocks(BootSector, 0,1);
 
@@ -109,16 +111,16 @@ NtfsPartition::RunSanityChecks()
 
     mft->GetFileRecord(_Volume, VolumeFileRecord);
 
-    DPRINT1("We set up the $Volume file record...\n");
+    DPRINT1("We set up the file record...\n");
 
-    UCHAR VolumeLabel[256];
-    VolNameAttr = new(NonPagedPool) ResidentAttribute();
+    FilenameAttrib = new(NonPagedPool) FilenameAttr();
     DPRINT1("Finding Attribute...\n");
-    VolumeFileRecord->FindUnnamedAttribute(FileName, VolNameAttr, VolumeLabel);
-    //RtlCopyMemory(VolumeParameterBlock->VolumeLabel, VolumeLabel, VolNameAttr->AttributeLength);
-    VolumeLabel[VolNameAttr->AttributeLength] = '\0';
-    DPRINT1("File name: \"%ls\"", VolumeLabel);
-    //DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
+    VolumeFileRecord->FindFilenameAttribute(FilenameAttrib, Filename);
+
+    PrintFilenameAttrHeader(FilenameAttrib);
+
+    Filename[(FilenameAttrib->FilenameChars)] = '\0';
+    DPRINT1("File name: \"%S\"\n", Filename);
 }
 
 NtfsPartition::~NtfsPartition()

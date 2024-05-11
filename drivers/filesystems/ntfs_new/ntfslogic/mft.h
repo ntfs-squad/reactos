@@ -56,17 +56,16 @@ struct FileRecordHeader
 class FileRecord
 {
 public:
-    NTSTATUS FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length);
-    NTSTATUS FileRecord::FindUnnamedAttribute(ULONG Type,
-                                              IAttribute* Attr,
-                                              PUCHAR Data);
-    NTSTATUS FileRecord::FindNamedAttribute(ULONG Type,
-                                            PCWSTR Name,
-                                            IAttribute* Attr,
-                                            PUCHAR Data);
+    NTSTATUS LoadData(PUCHAR FileRecordData, unsigned Length);
+    NTSTATUS FindAttribute(AttributeType Type,
+                           ULONG HeaderSize,
+                           PCWSTR Name,
+                           IAttribute* Attr,
+                           PUCHAR Data);
+    NTSTATUS FindFilenameAttribute(FilenameAttr* Attr, WCHAR* Data);
 private:
     FileRecordHeader *Header;
-    UCHAR AttrData[0x1000]; //TODO:
+    UCHAR AttrData[0x1000]; //TODO: Figure out proper size
     ULONG AttrLength;
 };
 
