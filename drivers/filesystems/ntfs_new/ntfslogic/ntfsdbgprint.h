@@ -8,6 +8,12 @@ static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 
 static inline void PrintAttributeHeader(IAttribute* Attr)
 {
+    if (!Attr)
+    {
+        DPRINT1("attr pointer is NULL!");
+        return;
+    }
+
     DPRINT1("Attribute Type:   0x%X\n", Attr->AttributeType);
     DPRINT1("Length:           %ld\n", Attr->Length);
     DPRINT1("Nonresident Flag: %ld\n", Attr->NonResidentFlag);

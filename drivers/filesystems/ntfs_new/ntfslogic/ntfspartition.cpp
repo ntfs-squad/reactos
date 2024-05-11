@@ -114,10 +114,11 @@ NtfsPartition::RunSanityChecks()
     UCHAR VolumeLabel[256];
     VolNameAttr = new(NonPagedPool) ResidentAttribute();
     DPRINT1("Finding Attribute...\n");
-    VolumeFileRecord->FindUnnamedAttribute(VolumeName, VolNameAttr, VolumeLabel);
-    RtlCopyMemory(VolumeParameterBlock->VolumeLabel, VolumeLabel, VolNameAttr->AttributeLength);
+    VolumeFileRecord->FindUnnamedAttribute(FileName, VolNameAttr, VolumeLabel);
+    //RtlCopyMemory(VolumeParameterBlock->VolumeLabel, VolumeLabel, VolNameAttr->AttributeLength);
     VolumeLabel[VolNameAttr->AttributeLength] = '\0';
-    DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
+    DPRINT1("File name: \"%ls\"", VolumeLabel);
+    //DPRINT1("Volume label      \"%s\"\n", VolumeParameterBlock->VolumeLabel);
 }
 
 NtfsPartition::~NtfsPartition()
