@@ -56,18 +56,18 @@ FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length)
 }
 
 NTSTATUS
-FileRecord::FindUnnamedAttribute(ULONG Type,
-                                 IAttribute* Attr,
-                                 PUCHAR Data)
+FileRecord::FindFilenameAttribute(FilenameAttr* Attr,
+                                  WCHAR* Data)
 {
-    return FindNamedAttribute(Type, NULL, Attr, Data);
+    return FindAttribute(FileName, sizeof(FilenameAttr), NULL, Attr, (PUCHAR)Data);
 }
 
 NTSTATUS
-FileRecord::FindNamedAttribute(ULONG Type,
-                               PCWSTR Name,
-                               IAttribute* Attr,
-                               PUCHAR Data)
+FileRecord::FindAttribute(AttributeType Type,
+                          ULONG HeaderSize,
+                          PCWSTR Name,
+                          IAttribute* Attr,
+                          PUCHAR Data)
 {
     ULONG AttrDataPointer = 0;
 
@@ -84,8 +84,13 @@ FileRecord::FindNamedAttribute(ULONG Type,
 
         if (Attr->AttributeType == Type)
         {
-            DPRINT1("able to check attr type, correct!\n");
+            DPRINT1("Found attribute!\n");
+
             // We found the right type of attribute!
+            RtlCopyMemory(Attr,
+                          &AttrData[AttrDataPointer],
+                          HeaderSize);
+
             // Get name, if applicable.
             if (Name && Attr->NameLength)
             {
@@ -94,36 +99,23 @@ FileRecord::FindNamedAttribute(ULONG Type,
                               Attr->NameLength);
             }
 
-            // Figure out if resident or non-resident.
-            if (Attr->NonResidentFlag)
+            // Get attribute data if resident
+            if (!Attr->NonResidentFlag)
             {
-                // Non-resident. Return non-resident data type.
-                Attr = new(NonPagedPool) NonResidentAttribute();
-                RtlCopyMemory(Attr,
-                              &AttrData[AttrDataPointer],
-                              Attr->NameOffset);
-                // No attribute data because the attribute is non-resident.
-            }
-            else
-            {
-                // Resident. Return resident data type.
-                Attr = new(NonPagedPool) ResidentAttribute();
-                // Get header
-                RtlCopyMemory(Attr,
-                              &AttrData[AttrDataPointer],
-                              Attr->NameOffset);
-                // Get data
                 RtlCopyMemory(Data,
-                              &AttrData[AttrDataPointer +
-                                       ((ResidentAttribute*)Attr)->AttributeOffset],
+                              &AttrData[AttrDataPointer + HeaderSize - 6], // HACK: Find a better way to do this
                               ((ResidentAttribute*)Attr)->AttributeLength);
-
             }
+
             return STATUS_SUCCESS;
         }
+
         else
         {
             // Wrong attribute, go to the next one.
+            if (!Attr->Length)
+                return STATUS_UNSUCCESSFUL;
+
             AttrDataPointer += Attr->Length;
             DPRINT1("Trying next attribute!\n");
         }

@@ -8,12 +8,6 @@ static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 
 static inline void PrintAttributeHeader(IAttribute* Attr)
 {
-    if (!Attr)
-    {
-        DPRINT1("attr pointer is NULL!");
-        return;
-    }
-
     DPRINT1("Attribute Type:   0x%X\n", Attr->AttributeType);
     DPRINT1("Length:           %ld\n", Attr->Length);
     DPRINT1("Nonresident Flag: %ld\n", Attr->NonResidentFlag);
@@ -21,4 +15,15 @@ static inline void PrintAttributeHeader(IAttribute* Attr)
     DPRINT1("Name Offset:      %ld\n", Attr->NameOffset);
     DPRINT1("Flags:            0x%X\n", Attr->Flags);
     DPRINT1("Attribute ID:     %ld\n", Attr->AttributeID);
+}
+
+static inline void PrintFilenameAttrHeader(FilenameAttr* Attr)
+{
+    DPRINT1("FileCreation: %ld\n", Attr->FileCreation);
+    DPRINT1("FileChanged: %ld\n", Attr->FileChanged);
+    DPRINT1("MftChanged: %ld\n", Attr->MftChanged);
+    DPRINT1("FileRead: %ld\n", Attr->FileRead);
+    DPRINT1("AllocatedSize: %ld\n", Attr->AllocatedSize);
+    DPRINT1("RealSize: %ld\n", Attr->RealSize);
+    DPRINT1("FilenameChars: %ld\n", Attr->FilenameChars);
 }
