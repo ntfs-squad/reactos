@@ -1,4 +1,4 @@
-#include <ntfsprocs.h>
+#include "io/ntfsprocs.h"
 #include <ntdddisk.h>
 #include <debug.h>
 #include "ntfsdbgprint.h"
@@ -85,34 +85,22 @@ NtfsPartition::RunSanityChecks()
     WCHAR Filename[256];
     WCHAR VolumeName[128];
 
-    FileRecord* VolumeFileRecord;
-
-    ResidentAttribute* FilenameAttrib;
-    FilenameAttr* FilenameAttribExt;
-
-    ResidentAttribute* VolumeNameAttr;
     MFT *mft;
+    FileRecord* VolumeFileRecord;
+    ResidentAttribute* VolumeNameAttr;
+    ResidentAttribute* FilenameAttrib;
+    FILE_NAME* FilenameExtAttr;
 
     DPRINT1("RunSanityChecks() called\n");
     OEM_ID = new(NonPagedPool) char[9];
     DumpBlocks(BootSector, 0,1);
 
     strcpy2(OEM_ID, BootSector, 0x03, 8);
-    memcpy(&MEDIA_DESCRIPTOR,  &BootSector[0x15], sizeof(UCHAR ));
-    memcpy(&SECTORS_PER_TRACK, &BootSector[0x18], sizeof(UINT16));
-    memcpy(&NUM_OF_HEADS,      &BootSector[0x1A], sizeof(UINT16));
+    RtlCopyMemory(&MEDIA_DESCRIPTOR,  &BootSector[0x15], sizeof(UCHAR ));
+    RtlCopyMemory(&SECTORS_PER_TRACK, &BootSector[0x18], sizeof(UINT16));
+    RtlCopyMemory(&NUM_OF_HEADS,      &BootSector[0x1A], sizeof(UINT16));
 
-    DPRINT1("OEM ID            %s\n", OEM_ID);
-    DPRINT1("Bytes per sector  %ld\n", VCB->BytesPerSector);
-    DPRINT1("Sectors/cluster   %ld\n", VCB->SectorsPerCluster);
-    DPRINT1("Sectors per track %ld\n", SECTORS_PER_TRACK);
-    DPRINT1("Number of heads   %ld\n", NUM_OF_HEADS);
-    DPRINT1("Sectors in volume %ld\n", VCB->SectorsInVolume);
-    DPRINT1("LCN for $MFT      %ld\n", VCB->MFTLCN);
-    DPRINT1("LCN for $MFT_MIRR %ld\n", VCB->MFTMirrLCN);
-    DPRINT1("Clusters/MFT Rec  %d\n", VCB->ClustersPerFileRecord);
-    DPRINT1("Clusters/IndexRec %d\n", VCB->ClustersPerIndexRecord);
-    DPRINT1("Serial number     0x%X\n", VCB->SerialNumber);
+    PrintVCB(VCB, OEM_ID, SECTORS_PER_TRACK, NUM_OF_HEADS);
 
     mft = new(NonPagedPool) MFT(VCB, PartDeviceObj);
     VolumeFileRecord = new(NonPagedPool) FileRecord();
@@ -122,12 +110,12 @@ NtfsPartition::RunSanityChecks()
     DPRINT1("We set up the file record...\n");
 
     FilenameAttrib = new(NonPagedPool) ResidentAttribute();
-    FilenameAttribExt = new(NonPagedPool) FilenameAttr();
+    FilenameExtAttr = new(NonPagedPool) FILE_NAME();
     VolumeNameAttr = new(NonPagedPool) ResidentAttribute();
 
     DPRINT1("Finding Attribute...\n");
 
-    VolumeFileRecord->FindFilenameAttribute(FilenameAttrib, FilenameAttribExt, Filename);
+    VolumeFileRecord->FindFilenameAttribute(FilenameAttrib, FilenameExtAttr, Filename);
     VolumeFileRecord->FindVolumenameAttribute(VolumeNameAttr, VolumeName);
 
     DPRINT1("Volume Name is: \"%S\"\n", VolumeName);

@@ -1,5 +1,5 @@
 #pragma once
-#include <ntfsprocs.h>
+#include "io/ntfsprocs.h"
 #include <debug.h>
 #include "mft.h"
 #include "ntfsdbgprint.h"
@@ -57,7 +57,7 @@ FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length)
 
 NTSTATUS
 FileRecord::FindFilenameAttribute(_In_ ResidentAttribute* Attr,
-                                  _In_ FilenameAttr* ExtAttrHeader,
+                                  _In_ FILE_NAME* ExtAttrHeader,
                                   _In_ PWSTR Filename)
 {
     NTSTATUS Status;
@@ -69,9 +69,9 @@ FileRecord::FindFilenameAttribute(_In_ ResidentAttribute* Attr,
     {
         RtlCopyMemory(ExtAttrHeader,
                       &Buffer,
-                      sizeof(FilenameAttr));
+                      sizeof(FILE_NAME));
         RtlCopyMemory(Filename,
-                      &Buffer[sizeof(FilenameAttr)],
+                      &Buffer[sizeof(FILE_NAME)],
                       ExtAttrHeader->FilenameChars * sizeof(WCHAR));
 
         // Add null terminator to filename
