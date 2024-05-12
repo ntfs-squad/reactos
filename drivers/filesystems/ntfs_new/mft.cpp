@@ -16,13 +16,13 @@ MFT::MFT(VolumeContextBlock* _In_ VolCB, PDEVICE_OBJECT DeviceObj)
 UCHAR FileRecordBuffer[0x100000];
 
 NTSTATUS
-MFT::GetFileRecord(ULONGLONG FileRecordNumber,
-                   FileRecord* File)
+MFT::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
+                   _Out_ FileRecord* File)
 {
     PAGED_CODE();
     unsigned FileRecordBufferLength = VCB->ClustersPerFileRecord *
-                                     VCB->SectorsPerCluster *
-                                     VCB->BytesPerSector;
+                                      VCB->SectorsPerCluster *
+                                      VCB->BytesPerSector;
 
     ReadBlock(PartDeviceObj,
               ((FileRecordNumber *
@@ -42,7 +42,8 @@ MFT::GetFileRecord(ULONGLONG FileRecordNumber,
 /* *** FILE RECORD IMPLEMENTATIONS *** */
 
 NTSTATUS
-FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length)
+FileRecord::LoadData(_In_ PUCHAR FileRecordData,
+                     _In_ unsigned Length)
 {
     PAGED_CODE();
     AttrLength = Length - sizeof(FileRecordHeader);
@@ -59,10 +60,10 @@ FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length)
 /* Find Attribute Functions */
 
 NTSTATUS
-FileRecord::FindAttribute(AttributeType Type,
-                          PCWSTR Name,
-                          IAttribute* Attr,
-                          PUCHAR Data)
+FileRecord::FindAttribute(_In_ AttributeType Type,
+                          _Out_ PCWSTR Name,
+                          _Out_ IAttribute* Attr,
+                          _Out_ PUCHAR Data)
 {
     ULONG AttrDataPointer = 0;
 
@@ -132,9 +133,9 @@ FileRecord::FindAttribute(AttributeType Type,
 }
 
 NTSTATUS
-FileRecord::FindFileNameAttribute(_In_ ResidentAttribute* Attr,
-                                  _In_ FileNameEx* AttrHeaderEx,
-                                  _In_ PWSTR Filename)
+FileRecord::FindFileNameAttribute(_Out_ ResidentAttribute* Attr,
+                                  _Out_ FileNameEx* AttrHeaderEx,
+                                  _Out_ PWSTR Filename)
 {
     NTSTATUS Status;
     UCHAR Buffer[512];
@@ -158,7 +159,8 @@ FileRecord::FindFileNameAttribute(_In_ ResidentAttribute* Attr,
 }
 
 NTSTATUS
-FileRecord::FindVolumeNameAttribute(ResidentAttribute* Attr, PWSTR Data)
+FileRecord::FindVolumeNameAttribute(_Out_ ResidentAttribute* Attr,
+                                    _Out_ PWSTR Data)
 {
     NTSTATUS Status;
 
@@ -172,8 +174,8 @@ FileRecord::FindVolumeNameAttribute(ResidentAttribute* Attr, PWSTR Data)
 }
 
 NTSTATUS
-FileRecord::FindStandardInformationAttribute(ResidentAttribute* Attr,
-                                             StandardInformationEx* AttrHeaderEx)
+FileRecord::FindStandardInformationAttribute(_Out_ ResidentAttribute* Attr,
+                                             _Out_ StandardInformationEx* AttrHeaderEx)
 {
     return FindAttribute(StandardInformation, NULL, Attr, (PUCHAR)AttrHeaderEx);
 }
