@@ -80,10 +80,17 @@ void
 NtfsPartition::RunSanityChecks()
 {
     PAGED_CODE();
+
     UCHAR BootSector[512];
-    WCHAR Filename[128];
+    WCHAR Filename[256];
+    WCHAR VolumeName[128];
+
     FileRecord* VolumeFileRecord;
-    FilenameAttr* FilenameAttrib;
+
+    ResidentAttribute* FilenameAttrib;
+    FilenameAttr* FilenameAttribExt;
+
+    ResidentAttribute* VolumeNameAttr;
     MFT *mft;
 
     DPRINT1("RunSanityChecks() called\n");
@@ -106,6 +113,7 @@ NtfsPartition::RunSanityChecks()
     DPRINT1("Clusters/MFT Rec  %d\n", VCB->ClustersPerFileRecord);
     DPRINT1("Clusters/IndexRec %d\n", VCB->ClustersPerIndexRecord);
     DPRINT1("Serial number     0x%X\n", VCB->SerialNumber);
+
     mft = new(NonPagedPool) MFT(VCB, PartDeviceObj);
     VolumeFileRecord = new(NonPagedPool) FileRecord();
 
@@ -113,13 +121,16 @@ NtfsPartition::RunSanityChecks()
 
     DPRINT1("We set up the file record...\n");
 
-    FilenameAttrib = new(NonPagedPool) FilenameAttr();
+    FilenameAttrib = new(NonPagedPool) ResidentAttribute();
+    FilenameAttribExt = new(NonPagedPool) FilenameAttr();
+    VolumeNameAttr = new(NonPagedPool) ResidentAttribute();
+
     DPRINT1("Finding Attribute...\n");
-    VolumeFileRecord->FindFilenameAttribute(FilenameAttrib, Filename);
 
-    PrintFilenameAttrHeader(FilenameAttrib);
+    VolumeFileRecord->FindFilenameAttribute(FilenameAttrib, FilenameAttribExt, Filename);
+    VolumeFileRecord->FindVolumenameAttribute(VolumeNameAttr, VolumeName);
 
-    Filename[(FilenameAttrib->FilenameChars)] = '\0';
+    DPRINT1("Volume Name is: \"%S\"\n", VolumeName);
     DPRINT1("File name: \"%S\"\n", Filename);
 }
 
