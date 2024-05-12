@@ -57,16 +57,17 @@ class FileRecord
 {
 public:
     NTSTATUS LoadData(PUCHAR FileRecordData, unsigned Length);
-    NTSTATUS FindAttribute(AttributeType Type,
-                           PCWSTR Name,
-                           IAttribute* Attr,
-                           PUCHAR Data);
-    NTSTATUS FindFileNameAttribute(_In_ ResidentAttribute* Attr,
-                                   _In_ FileNameEx* AttrHeaderEx,
-                                   _In_ PWSTR Filename);
-    NTSTATUS FindVolumeNameAttribute(ResidentAttribute* Attr, PWSTR Data);
-    NTSTATUS FindStandardInformationAttribute(ResidentAttribute* Attr,
-                                              StandardInformationEx* AttrHeaderEx);
+    NTSTATUS FindAttribute(_In_ AttributeType Type,
+                           _Out_ PCWSTR Name,
+                           _Out_ IAttribute* Attr,
+                           _Out_ PUCHAR Data);
+    NTSTATUS FindFileNameAttribute(_Out_ ResidentAttribute* Attr,
+                                   _Out_ FileNameEx* AttrHeaderEx,
+                                   _Out_ PWSTR Filename);
+    NTSTATUS FindVolumeNameAttribute(_Out_ ResidentAttribute* Attr,
+                                     _Out_ PWSTR Data);
+    NTSTATUS FindStandardInformationAttribute(_Out_ ResidentAttribute* Attr,
+                                              _Out_ StandardInformationEx* AttrHeaderEx);
 private:
     FileRecordHeader *Header;
     UCHAR AttrData[0x1000]; //TODO: Figure out proper size
