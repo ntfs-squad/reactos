@@ -14,6 +14,7 @@ MFT::MFT(VolumeContextBlock* _In_ VolCB, PDEVICE_OBJECT DeviceObj)
 }
 
 UCHAR FileRecordBuffer[0x100000];
+
 NTSTATUS
 MFT::GetFileRecord(ULONGLONG FileRecordNumber,
                    FileRecord* File)
@@ -55,45 +56,7 @@ FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
-FileRecord::FindFilenameAttribute(_In_ ResidentAttribute* Attr,
-                                  _In_ FILE_NAME* ExtAttrHeader,
-                                  _In_ PWSTR Filename)
-{
-    NTSTATUS Status;
-    UCHAR Buffer[512];
-
-    Status = FindAttribute(FileName, NULL, Attr, Buffer);
-
-    if (Status == STATUS_SUCCESS)
-    {
-        RtlCopyMemory(ExtAttrHeader,
-                      &Buffer,
-                      sizeof(FILE_NAME));
-        RtlCopyMemory(Filename,
-                      &Buffer[sizeof(FILE_NAME)],
-                      ExtAttrHeader->FilenameChars * sizeof(WCHAR));
-
-        // Add null terminator to filename
-        Filename[ExtAttrHeader->FilenameChars] = '\0';
-    }
-
-    return Status;
-}
-
-NTSTATUS
-FileRecord::FindVolumenameAttribute(ResidentAttribute* Attr, PWSTR Data)
-{
-    NTSTATUS Status;
-
-    Status = FindAttribute(VolumeName, NULL, Attr, (PUCHAR)Data);
-
-    //Add null terminator
-    if (Status == STATUS_SUCCESS)
-        Data[Attr->AttributeLength / sizeof(WCHAR)] = '\0';
-
-    return Status;
-}
+/* Find Attribute Functions */
 
 NTSTATUS
 FileRecord::FindAttribute(AttributeType Type,
@@ -166,4 +129,51 @@ FileRecord::FindAttribute(AttributeType Type,
     }
 
     return STATUS_NOT_FOUND;
+}
+
+NTSTATUS
+FileRecord::FindFileNameAttribute(_In_ ResidentAttribute* Attr,
+                                  _In_ FileNameEx* AttrHeaderEx,
+                                  _In_ PWSTR Filename)
+{
+    NTSTATUS Status;
+    UCHAR Buffer[512];
+
+    Status = FindAttribute(FileName, NULL, Attr, Buffer);
+
+    if (Status == STATUS_SUCCESS)
+    {
+        RtlCopyMemory(AttrHeaderEx,
+                      &Buffer,
+                      sizeof(FileNameEx));
+        RtlCopyMemory(Filename,
+                      &Buffer[sizeof(FileNameEx)],
+                      AttrHeaderEx->FilenameChars * sizeof(WCHAR));
+
+        // Add null terminator to filename
+        Filename[AttrHeaderEx->FilenameChars] = '\0';
+    }
+
+    return Status;
+}
+
+NTSTATUS
+FileRecord::FindVolumeNameAttribute(ResidentAttribute* Attr, PWSTR Data)
+{
+    NTSTATUS Status;
+
+    Status = FindAttribute(VolumeName, NULL, Attr, (PUCHAR)Data);
+
+    //Add null terminator
+    if (Status == STATUS_SUCCESS)
+        Data[Attr->AttributeLength / sizeof(WCHAR)] = '\0';
+
+    return Status;
+}
+
+NTSTATUS
+FileRecord::FindStandardInformationAttribute(ResidentAttribute* Attr,
+                                             StandardInformationEx* AttrHeaderEx)
+{
+    return FindAttribute(StandardInformation, NULL, Attr, (PUCHAR)AttrHeaderEx);
 }

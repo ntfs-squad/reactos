@@ -76,19 +76,6 @@ typedef struct _BOOT_SECTOR
 
 typedef struct
 {
-    ATTRIBUTE_TYPE AttributeType;
-    USHORT Length;
-    UCHAR NameLength;
-    UCHAR NameOffset;
-    ULONGLONG StartVcn; // LowVcn
-    ULONGLONG FileReferenceNumber;
-    USHORT AttributeNumber;
-    USHORT AlignmentOrReserved[3];
-} ATTRIBUTE_LIST, *PATTRIBUTE_LIST;
-
-
-typedef struct
-{
     ULONGLONG DirectoryFileReferenceNumber;
     ULONGLONG CreationTime;
     ULONGLONG ChangeTime;

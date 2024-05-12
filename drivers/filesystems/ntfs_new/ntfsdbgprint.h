@@ -26,7 +26,7 @@ static inline void PrintResidentAttributeHeader(ResidentAttribute* Attr)
     DPRINT1("IndexedFlag:      %ld\n", Attr->IndexedFlag);
 }
 
-static inline void PrintFilenameAttrHeader(FILE_NAME* Attr)
+static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
 {
     DPRINT1("FileCreation: %ld\n", Attr->FileCreation);
     DPRINT1("FileChanged: %ld\n", Attr->FileChanged);
