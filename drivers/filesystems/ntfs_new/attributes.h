@@ -21,6 +21,14 @@
 #define FN_NOTINDEXED 0x2000
 #define FN_ENCRYPTED  0x4000
 
+/* Volume Information Flags */
+#define VOL_DIRTY          0x0001
+#define VOL_RESIZE_LOG     0x0002
+#define VOL_UPGRADE_ON_MNT 0x0004
+#define VOL_USN_DEL_INPROG 0x0010
+#define VOL_REPAIR_OBJ_IDS 0x0020
+#define VOL_CHECKED        0x8000
+
 /* Attribute types */
 enum AttributeType
 {
@@ -39,6 +47,15 @@ enum AttributeType
     EAInformation       = 0xD0,
     EA                  = 0xE0,
     LoggedUtilityStream = 0x100,
+};
+
+struct IndexNodeHeader
+{
+    UINT32 IndexOffset;     // Offset 0x00, Size 4
+    UINT32 TotalIndexSize;  // Offset 0x04, Size 4
+    UINT32 AllocNodeSize;   // Offset 0x08, Size 4
+    UINT8  NodeFlags;       // Offset 0x0C, Size 1
+    UCHAR  Padding[3];      // Offset 0x0D, Size 3
 };
 
 struct IAttribute
@@ -79,8 +96,35 @@ struct NonResidentAttribute : IAttribute
     UINT64 InitalizedDataSize;     // Offset 0x38, Size 8
 };
 
+/* $STANDARD_INFORMATION (0x10) */
 #pragma pack(1)
-struct FilenameAttr
+struct STANDARD_INFORMATION
+{
+    UINT64 FileCreation;          // Offset 0x00, Size 8
+    UINT64 FileAltered;           // Offset 0x08, Size 8
+    UINT64 MFTChanged;            // Offset 0x10, Size 8
+    UINT64 FileRead;              // Offset 0x18, Size 8
+    UINT32 FilePermissions;       // Offset 0x20, Size 4
+    UINT32 MaxVersions;           // Offset 0x24, Size 4
+    UINT32 VersionNum;            // Offset 0x28, Size 4
+    UINT32 ClassId;               // Offset 0x2C, Size 4
+    UINT32 OwnerId;               // Offset 0x30, Size 4
+    UINT32 SecurityId;            // Offset 0x34, Size 4
+    UINT64 QuotaCharged;          // Offset 0x38, Size 8
+    UINT64 UpdateSequenceNumber;  // Offset 0x40, Size 8
+};
+
+/* *** EXTENDED ATTRIBUTE HEADERS *** */
+
+/*$ATTRIBUTE_LIST (0x20) */
+/*struct ATTRIBUTE_LIST
+{
+    // TODO: Complete
+};*/
+
+/*$FILE_NAME (0x30) */
+#pragma pack(1)
+struct FILE_NAME
 {
     UINT64 ParentDirectory;    // Offset 0x00, Size 8
     UINT64 FileCreation;       // Offset 0x08, Size 8
@@ -95,3 +139,60 @@ struct FilenameAttr
     UINT8  FilenameNamespace;  // Offset 0x41, Size 1
 };
 
+/*$OBJECT_ID (0x40) */
+struct OBJECT_ID
+{
+    GUID ObjectId;    // Offset 0x00, Size 16
+    GUID BirthVolId;  // Offset 0x10, Size 16
+    GUID BirthObjId;  // Offset 0x20, Size 16
+    GUID DomainId;    // Offset 0x30, Size 16
+};
+
+/*$SECURITY_DESCRIPTOR (0x50) */
+/*struct SECURITY_DESCRIPTOR
+{
+    // TODO: Complete
+};*/
+
+/*$VOLUME_INFORMATION (0x70) */
+struct VOLUME_INFORMATION
+{
+    UINT64 Reserved1;     // Offset 0x00, Size 8
+    UINT8  MajorVersion;  // Offset 0x08, Size 1
+    UINT8  MinorVersion;  // Offset 0x09, Size 1
+    UINT16 Flags;         // Offset 0x0A, Size 2
+    UINT32 Reserved2;     // Offset 0x0C, Size 4
+};
+
+/*$INDEX_ROOT (0x90)  */
+struct INDEX_ROOT
+{
+    UINT32 AttrType;             // Offset 0x00, Size 4
+    UINT32 CollationRule;        // Offset 0x04, Size 4
+    UINT32 BytesPerIndexRec;     // Offset 0x08, Size 4
+    UINT8  ClusPerIndexRec;      // Offset 0x0C, Size 1
+    IndexNodeHeader NodeHeader;  // Offset 0x10, Size 16
+};
+
+/*$REPARSE_POINT (0xC0) */
+struct REPARSE_POINT
+{
+    // TODO: Complete
+};
+
+/*$EA_INFORMATION (0xD0) */
+struct EA_INFORMATION
+{
+    UINT16 PackedEASize;      // Offset 0x00, Size 2
+    UINT16 NumEAWithNEED_EA;  // Offset 0x02, Size 2
+    UINT32 UnpackedEASize;    // Offset 0x04, Size 4
+};
+
+/*$EA (0xE0) */
+struct EA
+{
+    UINT32 OffsetNextEA;  // Offset 0x00, Size 4
+    UINT8  Flags;         // Offset 0x04, Size 1
+    UINT8  NameLength;    // Offset 0x05, Size 1
+    UINT16 ValueLength;   // Offset 0x06, Size 2
+};

@@ -26,7 +26,7 @@ static inline void PrintResidentAttributeHeader(ResidentAttribute* Attr)
     DPRINT1("IndexedFlag:      %ld\n", Attr->IndexedFlag);
 }
 
-static inline void PrintFilenameAttrHeader(FilenameAttr* Attr)
+static inline void PrintFilenameAttrHeader(FILE_NAME* Attr)
 {
     DPRINT1("FileCreation: %ld\n", Attr->FileCreation);
     DPRINT1("FileChanged: %ld\n", Attr->FileChanged);
@@ -35,4 +35,22 @@ static inline void PrintFilenameAttrHeader(FilenameAttr* Attr)
     DPRINT1("AllocatedSize: %ld\n", Attr->AllocatedSize);
     DPRINT1("RealSize: %ld\n", Attr->RealSize);
     DPRINT1("FilenameChars: %ld\n", Attr->FilenameChars);
+}
+
+static inline void PrintVCB(VolumeContextBlock* VCB,
+                            char* OEM_ID,
+                            UINT16 SECTORS_PER_TRACK,
+                            UINT16 NUM_OF_HEADS)
+{
+    DPRINT1("OEM ID            %s\n", OEM_ID);
+    DPRINT1("Bytes per sector  %ld\n", VCB->BytesPerSector);
+    DPRINT1("Sectors/cluster   %ld\n", VCB->SectorsPerCluster);
+    DPRINT1("Sectors per track %ld\n", SECTORS_PER_TRACK);
+    DPRINT1("Number of heads   %ld\n", NUM_OF_HEADS);
+    DPRINT1("Sectors in volume %ld\n", VCB->SectorsInVolume);
+    DPRINT1("LCN for $MFT      %ld\n", VCB->MFTLCN);
+    DPRINT1("LCN for $MFT_MIRR %ld\n", VCB->MFTMirrLCN);
+    DPRINT1("Clusters/MFT Rec  %d\n", VCB->ClustersPerFileRecord);
+    DPRINT1("Clusters/IndexRec %d\n", VCB->ClustersPerIndexRecord);
+    DPRINT1("Serial number     0x%X\n", VCB->SerialNumber);
 }

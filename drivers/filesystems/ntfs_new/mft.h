@@ -62,7 +62,7 @@ public:
                            IAttribute* Attr,
                            PUCHAR Data);
     NTSTATUS FindFilenameAttribute(_In_ ResidentAttribute* Attr,
-                                   _In_ FilenameAttr* ExtAttrHeader,
+                                   _In_ FILE_NAME* ExtAttrHeader,
                                    _In_ PWSTR Filename);
     NTSTATUS FindVolumenameAttribute(ResidentAttribute* Attr, PWSTR Data);
 private:
