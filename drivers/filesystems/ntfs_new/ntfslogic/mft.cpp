@@ -56,15 +56,47 @@ FileRecord::LoadData(PUCHAR FileRecordData, unsigned Length)
 }
 
 NTSTATUS
-FileRecord::FindFilenameAttribute(FilenameAttr* Attr,
-                                  WCHAR* Data)
+FileRecord::FindFilenameAttribute(_In_ ResidentAttribute* Attr,
+                                  _In_ FilenameAttr* ExtAttrHeader,
+                                  _In_ PWSTR Filename)
 {
-    return FindAttribute(FileName, sizeof(FilenameAttr), NULL, Attr, (PUCHAR)Data);
+    NTSTATUS Status;
+    UCHAR Buffer[512];
+
+    Status = FindAttribute(FileName, NULL, Attr, Buffer);
+
+    if (Status == STATUS_SUCCESS)
+    {
+        RtlCopyMemory(ExtAttrHeader,
+                      &Buffer,
+                      sizeof(FilenameAttr));
+        RtlCopyMemory(Filename,
+                      &Buffer[sizeof(FilenameAttr)],
+                      ExtAttrHeader->FilenameChars * sizeof(WCHAR));
+
+        // Add null terminator to filename
+        Filename[ExtAttrHeader->FilenameChars] = '\0';
+    }
+
+    return Status;
+}
+
+NTSTATUS
+FileRecord::FindVolumenameAttribute(ResidentAttribute* Attr, PWSTR Data)
+{
+    NTSTATUS Status;
+
+    Status = FindAttribute(VolumeName, NULL, Attr, (PUCHAR)Data);
+
+    //Add null terminator
+    if (Status == STATUS_SUCCESS)
+        Data[Attr->AttributeLength / sizeof(WCHAR)] = '\0';
+
+    return Status;
 }
 
 NTSTATUS
 FileRecord::FindAttribute(AttributeType Type,
-                          ULONG HeaderSize,
                           PCWSTR Name,
                           IAttribute* Attr,
                           PUCHAR Data)
@@ -86,10 +118,30 @@ FileRecord::FindAttribute(AttributeType Type,
         {
             DPRINT1("Found attribute!\n");
 
-            // We found the right type of attribute!
-            RtlCopyMemory(Attr,
-                          &AttrData[AttrDataPointer],
-                          HeaderSize);
+            // Copy to correct attribute header
+            // Check if Non Resident
+            if (Attr->NonResidentFlag)
+            {
+                RtlCopyMemory(Attr,
+                              &AttrData[AttrDataPointer],
+                              sizeof(NonResidentAttribute));
+            }
+
+            // File is resident
+            else
+            {
+                RtlCopyMemory(Attr,
+                              &AttrData[AttrDataPointer],
+                              sizeof(ResidentAttribute));
+
+                 // Get attribute data if resident and data is not null
+                if (Data)
+                {
+                    RtlCopyMemory(Data,
+                                  &AttrData[AttrDataPointer + ((ResidentAttribute*)Attr)->AttributeOffset],
+                                  ((ResidentAttribute*)Attr)->AttributeLength);
+                }
+            }
 
             // Get name, if applicable.
             if (Name && Attr->NameLength)
@@ -97,14 +149,6 @@ FileRecord::FindAttribute(AttributeType Type,
                 RtlCopyMemory(&Name,
                               &AttrData[AttrDataPointer + Attr->NameOffset],
                               Attr->NameLength);
-            }
-
-            // Get attribute data if resident
-            if (!Attr->NonResidentFlag)
-            {
-                RtlCopyMemory(Data,
-                              &AttrData[AttrDataPointer + HeaderSize - 6], // HACK: Find a better way to do this
-                              ((ResidentAttribute*)Attr)->AttributeLength);
             }
 
             return STATUS_SUCCESS;

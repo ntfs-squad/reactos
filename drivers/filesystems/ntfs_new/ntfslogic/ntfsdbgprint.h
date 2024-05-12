@@ -17,6 +17,15 @@ static inline void PrintAttributeHeader(IAttribute* Attr)
     DPRINT1("Attribute ID:     %ld\n", Attr->AttributeID);
 }
 
+static inline void PrintResidentAttributeHeader(ResidentAttribute* Attr)
+{
+    PrintAttributeHeader(Attr);
+
+    DPRINT1("Attribute Length: %ld\n", Attr->AttributeLength);
+    DPRINT1("Attribute Offset: 0x%X\n", Attr->AttributeOffset);
+    DPRINT1("IndexedFlag:      %ld\n", Attr->IndexedFlag);
+}
+
 static inline void PrintFilenameAttrHeader(FilenameAttr* Attr)
 {
     DPRINT1("FileCreation: %ld\n", Attr->FileCreation);
