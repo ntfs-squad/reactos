@@ -61,10 +61,12 @@ public:
                            PCWSTR Name,
                            IAttribute* Attr,
                            PUCHAR Data);
-    NTSTATUS FindFilenameAttribute(_In_ ResidentAttribute* Attr,
-                                   _In_ FILE_NAME* ExtAttrHeader,
+    NTSTATUS FindFileNameAttribute(_In_ ResidentAttribute* Attr,
+                                   _In_ FileNameEx* AttrHeaderEx,
                                    _In_ PWSTR Filename);
-    NTSTATUS FindVolumenameAttribute(ResidentAttribute* Attr, PWSTR Data);
+    NTSTATUS FindVolumeNameAttribute(ResidentAttribute* Attr, PWSTR Data);
+    NTSTATUS FindStandardInformationAttribute(ResidentAttribute* Attr,
+                                              StandardInformationEx* AttrHeaderEx);
 private:
     FileRecordHeader *Header;
     UCHAR AttrData[0x1000]; //TODO: Figure out proper size

@@ -98,7 +98,7 @@ struct NonResidentAttribute : IAttribute
 
 /* $STANDARD_INFORMATION (0x10) */
 #pragma pack(1)
-struct STANDARD_INFORMATION
+struct StandardInformationEx
 {
     UINT64 FileCreation;          // Offset 0x00, Size 8
     UINT64 FileAltered;           // Offset 0x08, Size 8
@@ -116,15 +116,21 @@ struct STANDARD_INFORMATION
 
 /* *** EXTENDED ATTRIBUTE HEADERS *** */
 
-/*$ATTRIBUTE_LIST (0x20) */
-/*struct ATTRIBUTE_LIST
+/* $ATTRIBUTE_LIST (0x20) */
+struct AttributeListEx
 {
-    // TODO: Complete
-};*/
+    UINT32 Type;          // Offset 0x00, Size 4
+    UINT16 RecordLength;  // Offset 0x04, Size 2
+    UINT8  NameLength;    // Offset 0x06, Size 1
+    UINT8  NameOffset;    // Offset 0x07, Size 1
+    UINT64 FirstVCN;      // Offset 0x08, Size 8
+    UINT64 BaseFileRef;   // Offset 0x10, Size 2
+    UINT16 AttributeId;   // Offset 0x18, Size 2
+};
 
-/*$FILE_NAME (0x30) */
+/* $FILE_NAME (0x30) */
 #pragma pack(1)
-struct FILE_NAME
+struct FileNameEx
 {
     UINT64 ParentDirectory;    // Offset 0x00, Size 8
     UINT64 FileCreation;       // Offset 0x08, Size 8
@@ -139,8 +145,8 @@ struct FILE_NAME
     UINT8  FilenameNamespace;  // Offset 0x41, Size 1
 };
 
-/*$OBJECT_ID (0x40) */
-struct OBJECT_ID
+/* $OBJECT_ID (0x40) */
+struct ObjectIdEx
 {
     GUID ObjectId;    // Offset 0x00, Size 16
     GUID BirthVolId;  // Offset 0x10, Size 16
@@ -148,14 +154,14 @@ struct OBJECT_ID
     GUID DomainId;    // Offset 0x30, Size 16
 };
 
-/*$SECURITY_DESCRIPTOR (0x50) */
+/* $SECURITY_DESCRIPTOR (0x50) */
 /*struct SECURITY_DESCRIPTOR
 {
     // TODO: Complete
 };*/
 
 /*$VOLUME_INFORMATION (0x70) */
-struct VOLUME_INFORMATION
+struct VolumeInformationEx
 {
     UINT64 Reserved1;     // Offset 0x00, Size 8
     UINT8  MajorVersion;  // Offset 0x08, Size 1
@@ -164,8 +170,8 @@ struct VOLUME_INFORMATION
     UINT32 Reserved2;     // Offset 0x0C, Size 4
 };
 
-/*$INDEX_ROOT (0x90)  */
-struct INDEX_ROOT
+/* $INDEX_ROOT (0x90)  */
+struct IndexRootEx
 {
     UINT32 AttrType;             // Offset 0x00, Size 4
     UINT32 CollationRule;        // Offset 0x04, Size 4
@@ -174,22 +180,29 @@ struct INDEX_ROOT
     IndexNodeHeader NodeHeader;  // Offset 0x10, Size 16
 };
 
-/*$REPARSE_POINT (0xC0) */
-struct REPARSE_POINT
+/* $REPARSE_POINT (0xC0) */
+struct ReparsePointEx
 {
-    // TODO: Complete
+    UINT32 ReparseType;        // Offset 0x00, Size 4
+    UINT16 ReparseDataLength;  // Offset 0x04, Size 2
+    UINT16 Padding;            // Offset 0x06, Size 2
 };
 
-/*$EA_INFORMATION (0xD0) */
-struct EA_INFORMATION
+struct ThirdPartyReparsePointEx : ReparsePointEx
+{
+    GUID ReparseGUID;          // Offset 0x08, Size 16
+};
+
+/* $EA_INFORMATION (0xD0) */
+struct EAInformationEx
 {
     UINT16 PackedEASize;      // Offset 0x00, Size 2
     UINT16 NumEAWithNEED_EA;  // Offset 0x02, Size 2
     UINT32 UnpackedEASize;    // Offset 0x04, Size 4
 };
 
-/*$EA (0xE0) */
-struct EA
+/* $EA (0xE0) */
+struct EAEx
 {
     UINT32 OffsetNextEA;  // Offset 0x00, Size 4
     UINT8  Flags;         // Offset 0x04, Size 1

@@ -89,7 +89,7 @@ NtfsPartition::RunSanityChecks()
     FileRecord* VolumeFileRecord;
     ResidentAttribute* VolumeNameAttr;
     ResidentAttribute* FilenameAttrib;
-    FILE_NAME* FilenameExtAttr;
+    FileNameEx* FilenameExtAttr;
 
     DPRINT1("RunSanityChecks() called\n");
     OEM_ID = new(NonPagedPool) char[9];
@@ -110,13 +110,13 @@ NtfsPartition::RunSanityChecks()
     DPRINT1("We set up the file record...\n");
 
     FilenameAttrib = new(NonPagedPool) ResidentAttribute();
-    FilenameExtAttr = new(NonPagedPool) FILE_NAME();
+    FilenameExtAttr = new(NonPagedPool) FileNameEx();
     VolumeNameAttr = new(NonPagedPool) ResidentAttribute();
 
     DPRINT1("Finding Attribute...\n");
 
-    VolumeFileRecord->FindFilenameAttribute(FilenameAttrib, FilenameExtAttr, Filename);
-    VolumeFileRecord->FindVolumenameAttribute(VolumeNameAttr, VolumeName);
+    VolumeFileRecord->FindFileNameAttribute(FilenameAttrib, FilenameExtAttr, Filename);
+    VolumeFileRecord->FindVolumeNameAttribute(VolumeNameAttr, VolumeName);
 
     DPRINT1("Volume Name is: \"%S\"\n", VolumeName);
     DPRINT1("File name: \"%S\"\n", Filename);
