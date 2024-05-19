@@ -101,37 +101,38 @@ NTSTATUS NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 
     DPRINT1("Cluster size passed!...\n");
 
-    /* We are indeed NTFS. Store only the boot sector information we need in memory. */
-    // TODO: Figure out what we need or not.
+    /* We are NTFS. */
     PrintNTFSBootSector(PartBootSector);
 
-    RtlCopyMemory(&VCB->BytesPerSector,
+    /* Store only the boot sector information we need in memory. */
+    RtlCopyMemory(&BytesPerSector,
                   &PartBootSector->BytesPerSector,
                   sizeof(UINT16));
-    RtlCopyMemory(&VCB->SectorsPerCluster,
+    RtlCopyMemory(&SectorsPerCluster,
                   &PartBootSector->SectorsPerCluster,
                   sizeof(UINT8));
-    RtlCopyMemory(&VCB->SectorsInVolume,
+    RtlCopyMemory(&SectorsInVolume,
                   &PartBootSector->SectorsInVolume,
                   sizeof(UINT64));
-    RtlCopyMemory(&VCB->MFTLCN,
+    RtlCopyMemory(&MFTLCN,
                   &PartBootSector->MFTLCN,
                   sizeof(UINT64));
-    RtlCopyMemory(&VCB->MFTMirrLCN,
+    RtlCopyMemory(&MFTMirrLCN,
                   &PartBootSector->MFTMirrLCN,
                   sizeof(UINT64));
-    RtlCopyMemory(&VCB->ClustersPerFileRecord,
+    RtlCopyMemory(&ClustersPerFileRecord,
                   &PartBootSector->ClustersPerFileRecord,
                   sizeof(UINT32));
-    RtlCopyMemory(&VCB->ClustersPerIndexRecord,
+    RtlCopyMemory(&ClustersPerIndexRecord,
                   &PartBootSector->ClustersPerIndexRecord,
                   sizeof(UINT32));
-    RtlCopyMemory(&VCB->SerialNumber,
+    RtlCopyMemory(&SerialNumber,
                   &PartBootSector->SerialNumber,
                   sizeof(UINT64));
 
 Cleanup:
     ExFreePool(PartBootSector);
+
     return Status;
 }
 
@@ -143,7 +144,7 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
     return ReadBlock(PartDeviceObj,
                      Lba,
                      LbaCount,
-                     VCB->BytesPerSector,
+                     BytesPerSector,
                      (PUCHAR)Buffer,
                      TRUE);
 }
@@ -168,7 +169,6 @@ NtfsPartition::RunSanityChecks()
 {
     PAGED_CODE();
 
-    UCHAR BootSector[512];
     WCHAR Filename[256];
     WCHAR VolumeName[128];
 
@@ -179,10 +179,8 @@ NtfsPartition::RunSanityChecks()
     FileNameEx* FilenameExtAttr;
 
     DPRINT1("RunSanityChecks() called\n");
-    OEM_ID = new(NonPagedPool) char[9];
-    DumpBlocks(BootSector, 0,1);
 
-    mft = new(NonPagedPool) MFT(VCB, PartDeviceObj);
+    mft = new(NonPagedPool) MFT(this);
     VolumeFileRecord = new(NonPagedPool) FileRecord();
 
     mft->GetFileRecord(_Volume, VolumeFileRecord);

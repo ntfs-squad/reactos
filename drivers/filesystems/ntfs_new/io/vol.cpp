@@ -23,6 +23,7 @@
 #pragma alloc_text(PAGE, NtfsMountVolume)
 #endif
 extern NPAGED_LOOKASIDE_LIST FcbLookasideList;
+#define FCB_IS_VOLUME_STREAM    0x0002
 /* FUNCTIONS ****************************************************************/
 
 
@@ -60,20 +61,21 @@ NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 //TODO:
 extern PDRIVER_OBJECT NtfsDriverObject;
 
-
-PNTFS_FCB
+PFileContextBlock
 NtfsCreateFCB(PCWSTR FileName,
               PCWSTR Stream,
-              PNTFS_VCB Vcb)
+              PVolumeContextBlock Vcb)
 {
-    PNTFS_FCB Fcb;
-    Fcb = (PNTFS_FCB)ExAllocateFromNPagedLookasideList(&FcbLookasideList);
+    PFileContextBlock Fcb;
+
+    // Fcb = (PFileContextBlock)ExAllocateFromNPagedLookasideList(&FcbLookasideList);
+    Fcb = new(NonPagedPool) FileContextBlock();
     if (Fcb == NULL)
     {
         return NULL;
     }
 
-    RtlZeroMemory(Fcb, sizeof(NTFS_FCB));
+    RtlZeroMemory(Fcb, sizeof(FileContextBlock));
 
     Fcb->Vcb = Vcb;
 
@@ -106,20 +108,6 @@ NtfsCreateFCB(PCWSTR FileName,
     return Fcb;
 }
 
-
-typedef struct
-{
-    LIST_ENTRY     NextCCB;
-    PFILE_OBJECT   PtrFileObject;
-    LARGE_INTEGER  CurrentByteOffset;
-    /* for DirectoryControl */
-    ULONG Entry;
-    /* for DirectoryControl */
-    PWCHAR DirectorySearchPattern;
-    ULONG LastCluster;
-    ULONG LastOffset;
-} NTFS_CCB, *PNTFS_CCB;
-
 PDEVICE_OBJECT StorageDevice;
 
 _Requires_lock_held_(_Global_critical_region_)
@@ -129,39 +117,44 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                 IN PVPB Vpb,
                 IN PDEVICE_OBJECT FsDeviceObject)
 {
-    PNTFS_VCB Vcb = NULL;
-    PNTFS_FCB Fcb = NULL;
-    PNTFS_CCB Ccb = NULL;
-    PDEVICE_OBJECT NewDeviceObject = NULL;
-    NtfsPartition* LocNtfsPart;
+    PVolumeContextBlock Vcb;
+    PFileContextBlock Fcb;
+    PClusterContextBlock Ccb;
+    PDEVICE_OBJECT NewDeviceObject;
+    NtfsPartition* NtfsPart;
     NTSTATUS Status;
+
     /* The function here returns, but it's not an error.
      * We're a boot driver, NT will try every possible filesystem.
      */
-    LocNtfsPart = new(PagedPool) NtfsPartition();
-    Status = LocNtfsPart->LoadNtfsDevice(TargetDeviceObject);
+    NtfsPart = new(PagedPool) NtfsPartition();
+    Status = NtfsPart->LoadNtfsDevice(TargetDeviceObject);
 
     DPRINT1("LoadNtfsDevice() returned %lx\n", Status);
     if (Status != STATUS_SUCCESS)
         return Status;
 
-    LocNtfsPart->RunSanityChecks();
+    NtfsPart->RunSanityChecks();
 
     Status = IoCreateDevice(NtfsDriverObject,
-                            sizeof(DEVICE_EXTENSION),
+                            sizeof(VolumeContextBlock),
                             NULL,
                             FILE_DEVICE_DISK_FILE_SYSTEM,
                             0,
                             FALSE,
                             &NewDeviceObject);
+
     if (!NT_SUCCESS(Status))
         __debugbreak();
+    DPRINT1("Io device created!\n");
 
     NewDeviceObject->Flags |= DO_DIRECT_IO;
 
-    Vcb = (PNTFS_VCB)NewDeviceObject->DeviceExtension;
-    RtlZeroMemory(Vcb, sizeof(NTFS_VCB));
+    Vcb = (PVolumeContextBlock)NewDeviceObject->DeviceExtension;
+    RtlZeroMemory(Vcb, sizeof(VolumeContextBlock));
     NewDeviceObject->Vpb = TargetDeviceObject->Vpb;
+
+    DPRINT1("VolContextBlock created!\n");
 
     Vcb->StorageDevice = TargetDeviceObject;
     Vcb->StorageDevice->Vpb->DeviceObject = NewDeviceObject;
@@ -174,6 +167,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                                                      Vcb->StorageDevice);
     StorageDevice = Vcb->StorageDevice; //HACKHACKHACK
     InitializeListHead(&Vcb->FcbListHead);
+    DPRINT1("Created Stream File Object!\n");
 
     Fcb = NtfsCreateFCB(NULL, NULL, Vcb);
     if (Fcb == NULL)
@@ -182,8 +176,8 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
         __debugbreak();
     }
 
-    Ccb = ( PNTFS_CCB )ExAllocatePoolWithTag(NonPagedPool,
-                                sizeof(NTFS_CCB),
+    Ccb = (PClusterContextBlock)ExAllocatePoolWithTag(NonPagedPool,
+                                sizeof(ClusterContextBlock),
                                 TAG_NTFS);
     if (Ccb == NULL)
     {
@@ -191,7 +185,8 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
         __debugbreak();
     }
 
-    RtlZeroMemory(Ccb, sizeof(NTFS_CCB));
+    RtlZeroMemory(Ccb, sizeof(ClusterContextBlock));
+    DPRINT1("ClusterContextBlock created!\n");
 
 
     Vcb->StreamFileObject->FsContext = Fcb;
@@ -201,21 +196,22 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     Vcb->StreamFileObject->Vpb = Vcb->Vpb;
     Ccb->PtrFileObject = Vcb->StreamFileObject;
     Fcb->FileObject = Vcb->StreamFileObject;
-    Fcb->Vcb = (PDEVICE_EXTENSION)Vcb->StorageDevice;
-#define FCB_IS_VOLUME_STREAM    0x0002
+    Fcb->Vcb = (PVolumeContextBlock)Vcb->StorageDevice;
     Fcb->Flags = FCB_IS_VOLUME_STREAM;
+    DPRINT1("FileContextBlock created!\n");
 
 
 /* ACTUAL CLASS USAGE HERE ->*/
-    Fcb->RFCB.FileSize.QuadPart = LocNtfsPart->VCB->SectorsInVolume * LocNtfsPart->VCB->BytesPerSector;
-    Fcb->RFCB.ValidDataLength.QuadPart = LocNtfsPart->VCB->SectorsInVolume * LocNtfsPart->VCB->BytesPerSector;
-    Fcb->RFCB.AllocationSize.QuadPart = LocNtfsPart->VCB->SectorsInVolume * LocNtfsPart->VCB->BytesPerSector;
+    Fcb->RFCB.FileSize.QuadPart = NtfsPart->SectorsInVolume * NtfsPart->BytesPerSector;
+    Fcb->RFCB.ValidDataLength.QuadPart = NtfsPart->SectorsInVolume * NtfsPart->BytesPerSector;
+    Fcb->RFCB.AllocationSize.QuadPart = NtfsPart->SectorsInVolume * NtfsPart->BytesPerSector;
+    DPRINT1("FileContextBlock updated!\n");
 
     ExInitializeResourceLite(&Vcb->DirResource);
 
     KeInitializeSpinLock(&Vcb->FcbListLock);
     /* Get serial number */
-    NewDeviceObject->Vpb->SerialNumber = LocNtfsPart->VCB->SerialNumber;
+    NewDeviceObject->Vpb->SerialNumber = NtfsPart->SerialNumber;
     __debugbreak();
     /* MAde up */
     wchar_t* BullshitLabel = L"Hello World";

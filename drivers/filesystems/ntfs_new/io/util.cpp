@@ -20,7 +20,7 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType)
 {
 
     Size = (Size != 0) ? Size : 1;
-    
+
     void* pObject = ExAllocatePoolWithTag(PoolType, Size, TAG_NTFS);
 
 #if DBG
