@@ -21,7 +21,7 @@ struct BootSector
     UINT64 MFTMirrLCN;             // Offset 0x38, Size 8
     INT8   ClustersPerFileRecord;  // Offset 0x40, Size 4
     UCHAR  Reserved4[3];
-    INT8  ClustersPerIndexRecord;  // Offset 0x44, Size 4
+    INT8   ClustersPerIndexRecord; // Offset 0x44, Size 4
     UCHAR Reserved5[3];
     UINT64 SerialNumber;           // Offset 0x48, Size 8
     UINT32 Checksum;               // Offset 0x50, Size 4
@@ -29,9 +29,25 @@ struct BootSector
     USHORT EndSector;
 };
 
-class NtfsPartition
+typedef class NtfsPartition
 {
 public:
+    ULONG  BytesPerSector;
+    UINT8  SectorsPerCluster;
+    UINT64 SectorsInVolume;
+    UINT64 MFTLCN;
+    UINT64 MFTMirrLCN;
+    INT32  ClustersPerFileRecord;
+    INT32  ClustersPerIndexRecord;
+    UINT64 SerialNumber;
+
+    PDEVICE_OBJECT StorageDevice;
+    PFILE_OBJECT StreamFileObject;
+
+    ULONG Flags;
+    ULONG OpenHandleCount;
+
+    PVPB VolParamBlock;
     VolumeContextBlock* VCB = new(NonPagedPool) VolumeContextBlock();
 
     ~NtfsPartition();
@@ -43,15 +59,4 @@ public:
     void RunSanityChecks();
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
-
-private:
-    PVPB VolumeParameterBlock;
-
-
-
-    /* Used for debug print */
-    char*    OEM_ID;
-	UCHAR    MEDIA_DESCRIPTOR;
-	UINT16   SECTORS_PER_TRACK;
-	UINT16   NUM_OF_HEADS;
-};
+} *PNtfsPartition;

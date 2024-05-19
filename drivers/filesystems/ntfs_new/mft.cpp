@@ -7,10 +7,9 @@
 
 /* *** MFT IMPLEMENTATIONS *** */
 
-MFT::MFT(VolumeContextBlock* _In_ VolCB, PDEVICE_OBJECT DeviceObj)
+MFT::MFT(_In_ PNtfsPartition ParentPartition)
 {
-    VCB = VolCB;
-    PartDeviceObj = DeviceObj;
+    NtfsPart = ParentPartition;
 }
 
 UCHAR FileRecordBuffer[0x100000];
@@ -20,22 +19,18 @@ MFT::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
                    _Out_ FileRecord* File)
 {
     PAGED_CODE();
-    unsigned FileRecordBufferLength = VCB->ClustersPerFileRecord *
-                                      VCB->SectorsPerCluster *
-                                      VCB->BytesPerSector;
+    NtfsPart->DumpBlocks(FileRecordBuffer,
+                         ((FileRecordNumber *
+                           NtfsPart->ClustersPerFileRecord) +
+                          NtfsPart->MFTLCN) *
+                         NtfsPart->SectorsPerCluster,
+                         NtfsPart->ClustersPerFileRecord *
+                         NtfsPart->SectorsPerCluster);
 
-    ReadBlock(PartDeviceObj,
-              ((FileRecordNumber *
-              VCB->ClustersPerFileRecord) +
-              VCB->MFTLCN) *
-              VCB->SectorsPerCluster,
-              VCB->ClustersPerFileRecord *
-              VCB->SectorsPerCluster,
-              VCB->BytesPerSector,
-              FileRecordBuffer,
-              TRUE);
-
-    File->LoadData(FileRecordBuffer, FileRecordBufferLength);
+    File->LoadData(FileRecordBuffer,
+                   NtfsPart->ClustersPerFileRecord *
+                   NtfsPart->SectorsPerCluster *
+                   NtfsPart->BytesPerSector);
     return STATUS_SUCCESS;
 }
 

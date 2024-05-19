@@ -1,42 +1,42 @@
 #pragma once
 
-class FileContextBlock
+#include <pshpack1.h>
+#include <poppack.h>
+
+#ifndef MAX_PATH
+#define MAX_PATH 260
+#endif //MAX_PATH
+
+typedef struct
 {
-    PFILE_OBJECT FileObject;
-
-    ULONGLONG MFTIndex;
-};
-
-class VolumeContextBlock
-{
-public:
-    ULONG  BytesPerSector;
-    UINT8  SectorsPerCluster;
-    UINT64 SectorsInVolume;
-    UINT64 MFTLCN;
-    UINT64 MFTMirrLCN;
-    INT32  ClustersPerFileRecord;
-    INT32  ClustersPerIndexRecord;
-    UINT64 SerialNumber;
-
-    PVPB VolParamBlock;
-    PDEVICE_OBJECT StorageDevice;
-    PFILE_OBJECT StreamFileObject;
-
     ULONG Flags;
-    ULONG OpenHandleCount;
-};
+    PIO_STACK_LOCATION Stack;
+    UCHAR MajorFunction;
+    UCHAR MinorFunction;
+    PIRP Irp;
+    BOOLEAN IsTopLevel;
+    PDEVICE_OBJECT DeviceObject;
+    PFILE_OBJECT FileObject;
+    CCHAR PriorityBoost;
 
-class ClusterContextBlock
+} IoRequestContext, *PIoRequestContext;
+
+typedef struct
 {
+    LIST_ENTRY     NextCCB;
+    PFILE_OBJECT   PtrFileObject;
+    LARGE_INTEGER  CurrentByteOffset;
+    /* for DirectoryControl */
+    ULONG Entry;
+    /* for DirectoryControl */
+    PWCHAR DirectorySearchPattern;
+    ULONG LastCluster;
+    ULONG LastOffset;
+} ClusterContextBlock, *PClusterContextBlock;
 
-};
-
-/*typedef struct
+typedef struct
 {
-
     ERESOURCE DirResource;
-//    ERESOURCE FatResource;
 
     KSPIN_LOCK FcbListLock;
     LIST_ENTRY FcbListHead;
@@ -55,9 +55,9 @@ class ClusterContextBlock
     ULONG Flags;
     ULONG OpenHandleCount;
 
-} DEVICE_EXTENSION, *PDEVICE_EXTENSION, NTFS_VCB, *PNTFS_VCB;*/
+} VolumeContextBlock, *PVolumeContextBlock;
 
-/*typedef struct _FCB
+typedef struct _FCB
 {
     //NTFSIDENTIFIER Identifier;
 
@@ -65,11 +65,11 @@ class ClusterContextBlock
     SECTION_OBJECT_POINTERS SectionObjectPointers;
 
     PFILE_OBJECT FileObject;
-    PNTFS_VCB Vcb;
+    PVolumeContextBlock Vcb;
 
     WCHAR Stream[MAX_PATH];
-    WCHAR *ObjectName;		    // point on filename (250 chars max) in PathName
-    WCHAR PathName[MAX_PATH];	// path+filename 260 max
+    WCHAR *ObjectName;		/* point on filename (250 chars max) in PathName */
+    WCHAR PathName[MAX_PATH];	/* path+filename 260 max */
 
     ERESOURCE PagingIoResource;
     ERESOURCE MainResource;
@@ -86,6 +86,6 @@ class ClusterContextBlock
     ULONGLONG MFTIndex;
     USHORT LinkCount;
 
-    FILENAME_ATTRIBUTE Entry;
+    // FILENAME_ATTRIBUTE Entry;
 
-} NTFS_FCB, *PNTFS_FCB;*/
+} FileContextBlock, *PFileContextBlock;

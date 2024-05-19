@@ -32,7 +32,7 @@ typedef enum _TYPE_OF_OPEN {
     EaFile,
 } TYPE_OF_OPEN;
 
-#include "ntfsdata.h"
+#include "contextblocks.h"
 
 /* ntfsinit.cpp */
 

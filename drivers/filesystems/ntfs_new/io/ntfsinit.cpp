@@ -87,11 +87,11 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
 
 
     /* Initialize lookaside list for IRP contexts */
-    ExInitializeNPagedLookasideList(&IrpContextLookasideList,
-                                    NULL, NULL, 0, sizeof(NTFS_IRP_CONTEXT), TAG_IRP_CTXT, 0);
+    /*ExInitializeNPagedLookasideList(&IrpContextLookasideList,
+                                    NULL, NULL, 0, sizeof(NTFS_IRP_CONTEXT), TAG_IRP_CTXT, 0);*/
         /* Initialize lookaside list for FCBs */
-    ExInitializeNPagedLookasideList(&FcbLookasideList,
-                                    NULL, NULL, 0, sizeof(NTFS_FCB), TAG_FCB, 0);
+    /*ExInitializeNPagedLookasideList(&FcbLookasideList,
+                                    NULL, NULL, 0, sizeof(NTFS_FCB), TAG_FCB, 0);*/
     /* Initialize lookaside list for attributes contexts */
     /*ExInitializeNPagedLookasideList(&AttrCtxtLookasideList,
                                     NULL, NULL, 0, sizeof(NTFS_ATTR_CONTEXT), TAG_ATT_CTXT, 0);*/
