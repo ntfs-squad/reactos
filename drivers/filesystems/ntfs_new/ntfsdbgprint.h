@@ -37,20 +37,17 @@ static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
     DPRINT1("FilenameChars: %ld\n", Attr->FilenameChars);
 }
 
-static inline void PrintVCB(VolumeContextBlock* VCB,
-                            char* OEM_ID,
-                            UINT16 SECTORS_PER_TRACK,
-                            UINT16 NUM_OF_HEADS)
+static inline void PrintNTFSBootSector(BootSector* PartBootSector)
 {
-    DPRINT1("OEM ID            %s\n", OEM_ID);
-    DPRINT1("Bytes per sector  %ld\n", VCB->BytesPerSector);
-    DPRINT1("Sectors/cluster   %ld\n", VCB->SectorsPerCluster);
-    DPRINT1("Sectors per track %ld\n", SECTORS_PER_TRACK);
-    DPRINT1("Number of heads   %ld\n", NUM_OF_HEADS);
-    DPRINT1("Sectors in volume %ld\n", VCB->SectorsInVolume);
-    DPRINT1("LCN for $MFT      %ld\n", VCB->MFTLCN);
-    DPRINT1("LCN for $MFT_MIRR %ld\n", VCB->MFTMirrLCN);
-    DPRINT1("Clusters/MFT Rec  %d\n", VCB->ClustersPerFileRecord);
-    DPRINT1("Clusters/IndexRec %d\n", VCB->ClustersPerIndexRecord);
-    DPRINT1("Serial number     0x%X\n", VCB->SerialNumber);
-}
+    DPRINT1("OEM ID            %s\n", PartBootSector->OEM_ID);
+    DPRINT1("Bytes per sector  %ld\n", PartBootSector->BytesPerSector);
+    DPRINT1("Sectors/cluster   %ld\n", PartBootSector->SectorsPerCluster);
+    DPRINT1("Sectors per track %ld\n", PartBootSector->SectorsPerTrack);
+    DPRINT1("Number of heads   %ld\n", PartBootSector->NumberOfHeads);
+    DPRINT1("Sectors in volume %ld\n", PartBootSector->SectorsInVolume);
+    DPRINT1("LCN for $MFT      %ld\n", PartBootSector->MFTLCN);
+    DPRINT1("LCN for $MFT_MIRR %ld\n", PartBootSector->MFTMirrLCN);
+    DPRINT1("Clusters/MFT Rec  %d\n", PartBootSector->ClustersPerFileRecord);
+    DPRINT1("Clusters/IndexRec %d\n", PartBootSector->ClustersPerIndexRecord);
+    DPRINT1("Serial number     0x%X\n", PartBootSector->SerialNumber);
+};
