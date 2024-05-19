@@ -93,8 +93,8 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
     ExInitializeNPagedLookasideList(&FcbLookasideList,
                                     NULL, NULL, 0, sizeof(NTFS_FCB), TAG_FCB, 0);
     /* Initialize lookaside list for attributes contexts */
-    ExInitializeNPagedLookasideList(&AttrCtxtLookasideList,
-                                    NULL, NULL, 0, sizeof(NTFS_ATTR_CONTEXT), TAG_ATT_CTXT, 0);
+    /*ExInitializeNPagedLookasideList(&AttrCtxtLookasideList,
+                                    NULL, NULL, 0, sizeof(NTFS_ATTR_CONTEXT), TAG_ATT_CTXT, 0);*/
     /* Register file system */
     IoRegisterFileSystem(NtfsDiskFileSystemDeviceObject);
     ObReferenceObject(NtfsDiskFileSystemDeviceObject);

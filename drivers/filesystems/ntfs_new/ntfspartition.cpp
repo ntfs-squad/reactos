@@ -5,47 +5,134 @@
 #include "mft.h"
 
 
-NtfsPartition::NtfsPartition(PDEVICE_OBJECT DeviceToMount)
+NTSTATUS NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 {
     DISK_GEOMETRY DiskGeometry;
     NTSTATUS Status;
-    ULONG Size;
-    UCHAR BootSector[512];
+    ULONG ClusterSize, Size;
+    USHORT i;
+    BootSector* PartBootSector;
 
+    DPRINT1("Loading NTFS Device...\n");
     PartDeviceObj = DeviceToMount;
 
     Size = sizeof(DISK_GEOMETRY);
     Status = DeviceIoControl(DeviceToMount,
-                                          IOCTL_DISK_GET_DRIVE_GEOMETRY,
-                                          NULL,
-                                          0,
-                                          &DiskGeometry,
-                                          &Size,
-                                          TRUE);
+                             IOCTL_DISK_GET_DRIVE_GEOMETRY,
+                             NULL,
+                             0,
+                             &DiskGeometry,
+                             &Size,
+                             TRUE);
     if (Status != STATUS_SUCCESS)
     {
         DPRINT1("NtfsDeviceIoControl() failed (Status %lx)\n", Status);
         __debugbreak(); //ASSERT?
     }
 
-    VCB->BytesPerSector = DiskGeometry.BytesPerSector;
+    DPRINT1("Got Drive Geometry!...\n");
+    /* Check if we are actually NTFS. */
 
-    /* Get Volume Information */
-    /* Get boot sector information */
-    DumpBlocks(BootSector, 0,1);
+    /* Check bytes per sector. */
+    if (DiskGeometry.BytesPerSector > 512)
+        return STATUS_UNRECOGNIZED_VOLUME;
 
-    //memcpy(&BytesPerSector,         &BootSector[0x0B], sizeof(UINT16));
-    RtlCopyMemory(&VCB->SectorsPerCluster,      &BootSector[0x0D], sizeof(UINT8 ));
-    RtlCopyMemory(&VCB->SectorsInVolume,        &BootSector[0x28], sizeof(UINT64));
-    RtlCopyMemory(&VCB->MFTLCN,                 &BootSector[0x30], sizeof(UINT64));
-    RtlCopyMemory(&VCB->MFTMirrLCN,             &BootSector[0x38], sizeof(UINT64));
-    RtlCopyMemory(&VCB->ClustersPerFileRecord,  &BootSector[0x40], sizeof(UINT32));
-    RtlCopyMemory(&VCB->ClustersPerIndexRecord, &BootSector[0x44], sizeof(UINT32));
-    RtlCopyMemory(&VCB->SerialNumber,           &BootSector[0x48], sizeof(UINT64));
+    DPRINT1("Bytes per sector passed!...\n");
 
-    /* Get $Volume information */
+    /* Get boot sector information. */
+    PartBootSector = new(NonPagedPool) BootSector();
+    ReadBlock(DeviceToMount,
+              0,
+              1,
+              DiskGeometry.BytesPerSector,
+              (PUCHAR)PartBootSector,
+              TRUE);
 
-    /* Get Root File Object */
+    if (!NT_SUCCESS(Status))
+        goto Cleanup;
+
+    /* Check if OEM_ID is "NTFS    ". */
+    if (RtlCompareMemory(PartBootSector->OEM_ID, "NTFS    ", 8) != 8)
+    {
+        DPRINT1("Failed with NTFS-identifier: [%.8s]\n", PartBootSector->OEM_ID);
+        Status = STATUS_UNRECOGNIZED_VOLUME;
+        goto Cleanup;
+    }
+
+    DPRINT1("OEM ID is NTFS!...\n");
+
+    /* Check if Reserved0 is NULL. */
+    for (i = 0; i < 7; i++)
+    {
+        if (PartBootSector->Reserved0[i] != 0)
+        {
+            DPRINT1("Failed in field Reserved0: [%.7s]\n", PartBootSector->Reserved0);
+            Status = STATUS_UNRECOGNIZED_VOLUME;
+            goto Cleanup;
+        }
+    }
+
+    /* Check if Reserved3 is NULL. */
+    // TODO: Why doesn't this check work?
+    /*for (i = 0; i < 7; i++)
+    {
+        if (PartBootSector->Reserved3[i] != 0)
+        {
+            DPRINT1("Failed in field Reserved3: [%.7s]\n", PartBootSector->Reserved3);
+            Status = STATUS_UNRECOGNIZED_VOLUME;
+            goto Cleanup;
+        }
+    }*/
+
+    /* Check cluster size. */
+    ClusterSize = PartBootSector->BytesPerSector * PartBootSector->SectorsPerCluster;
+    if (ClusterSize != 512 && ClusterSize != 1024 &&
+        ClusterSize != 2048 && ClusterSize != 4096 &&
+        ClusterSize != 8192 && ClusterSize != 16384 &&
+        ClusterSize != 32768 && ClusterSize != 65536)
+    {
+        DPRINT1("Cluster size failed: %hu, %hu, %hu\n",
+                PartBootSector->BytesPerSector,
+                PartBootSector->SectorsPerCluster,
+                ClusterSize);
+        Status = STATUS_UNRECOGNIZED_VOLUME;
+        goto Cleanup;
+    }
+
+    DPRINT1("Cluster size passed!...\n");
+
+    /* We are indeed NTFS. Store only the boot sector information we need in memory. */
+    // TODO: Figure out what we need or not.
+    PrintNTFSBootSector(PartBootSector);
+
+    RtlCopyMemory(&VCB->BytesPerSector,
+                  &PartBootSector->BytesPerSector,
+                  sizeof(UINT16));
+    RtlCopyMemory(&VCB->SectorsPerCluster,
+                  &PartBootSector->SectorsPerCluster,
+                  sizeof(UINT8));
+    RtlCopyMemory(&VCB->SectorsInVolume,
+                  &PartBootSector->SectorsInVolume,
+                  sizeof(UINT64));
+    RtlCopyMemory(&VCB->MFTLCN,
+                  &PartBootSector->MFTLCN,
+                  sizeof(UINT64));
+    RtlCopyMemory(&VCB->MFTMirrLCN,
+                  &PartBootSector->MFTMirrLCN,
+                  sizeof(UINT64));
+    RtlCopyMemory(&VCB->ClustersPerFileRecord,
+                  &PartBootSector->ClustersPerFileRecord,
+                  sizeof(UINT32));
+    RtlCopyMemory(&VCB->ClustersPerIndexRecord,
+                  &PartBootSector->ClustersPerIndexRecord,
+                  sizeof(UINT32));
+    RtlCopyMemory(&VCB->SerialNumber,
+                  &PartBootSector->SerialNumber,
+                  sizeof(UINT64));
+
+Cleanup:
+    ExFreePool(PartBootSector);
+    return Status;
 }
 
 NTSTATUS
@@ -64,7 +151,7 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
 
 #include <debug.h>
 
-/* SEPERATING OUT FOR SNAITY */
+/* SEPARATING OUT FOR SANITY */
 
 void strcpy2(char* destination,
     UCHAR* source,
@@ -94,13 +181,6 @@ NtfsPartition::RunSanityChecks()
     DPRINT1("RunSanityChecks() called\n");
     OEM_ID = new(NonPagedPool) char[9];
     DumpBlocks(BootSector, 0,1);
-
-    strcpy2(OEM_ID, BootSector, 0x03, 8);
-    RtlCopyMemory(&MEDIA_DESCRIPTOR,  &BootSector[0x15], sizeof(UCHAR ));
-    RtlCopyMemory(&SECTORS_PER_TRACK, &BootSector[0x18], sizeof(UINT16));
-    RtlCopyMemory(&NUM_OF_HEADS,      &BootSector[0x1A], sizeof(UINT16));
-
-    PrintVCB(VCB, OEM_ID, SECTORS_PER_TRACK, NUM_OF_HEADS);
 
     mft = new(NonPagedPool) MFT(VCB, PartDeviceObj);
     VolumeFileRecord = new(NonPagedPool) FileRecord();
