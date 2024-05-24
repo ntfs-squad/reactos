@@ -5,7 +5,8 @@
 #include "mft.h"
 
 
-NTSTATUS NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
+NTSTATUS
+NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 {
     DISK_GEOMETRY DiskGeometry;
     NTSTATUS Status;
@@ -130,9 +131,11 @@ NTSTATUS NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
                   &PartBootSector->SerialNumber,
                   sizeof(UINT64));
 
-Cleanup:
-    ExFreePool(PartBootSector);
+    // Load MFT
+    VolMFT = new(NonPagedPool) MFT(this);
 
+Cleanup:
+    delete PartBootSector;
     return Status;
 }
 
@@ -149,6 +152,30 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
                      TRUE);
 }
 
+NTSTATUS
+NtfsPartition::GetVolumeLabel(_In_ PWSTR VolumeLabel,
+                              _In_ USHORT& Length)
+{
+    NTSTATUS Status;
+    FileRecord* VolumeFileRecord;
+    ResidentAttribute* VolumeNameAttr;
+
+    VolumeFileRecord = new(NonPagedPool) FileRecord();
+    VolumeNameAttr = new(NonPagedPool) ResidentAttribute();
+
+    Status = VolMFT->GetFileRecord(_Volume, VolumeFileRecord);
+    if (Status != STATUS_SUCCESS)
+        goto Cleanup;
+    Status = VolumeFileRecord->FindVolumeNameAttribute(VolumeNameAttr, VolumeLabel);
+    if (Status != STATUS_SUCCESS)
+        goto Cleanup;
+    Length = VolumeNameAttr->AttributeLength;
+
+Cleanup:
+    delete VolumeFileRecord;
+    delete VolumeNameAttr;
+    return Status;
+}
 
 #include <debug.h>
 
@@ -172,7 +199,6 @@ NtfsPartition::RunSanityChecks()
     WCHAR Filename[256];
     WCHAR VolumeName[128];
 
-    MFT *mft;
     FileRecord* VolumeFileRecord;
     ResidentAttribute* VolumeNameAttr;
     ResidentAttribute* FilenameAttrib;
@@ -180,10 +206,9 @@ NtfsPartition::RunSanityChecks()
 
     DPRINT1("RunSanityChecks() called\n");
 
-    mft = new(NonPagedPool) MFT(this);
     VolumeFileRecord = new(NonPagedPool) FileRecord();
 
-    mft->GetFileRecord(_Volume, VolumeFileRecord);
+    VolMFT->GetFileRecord(_Volume, VolumeFileRecord);
 
     DPRINT1("We set up the file record...\n");
 

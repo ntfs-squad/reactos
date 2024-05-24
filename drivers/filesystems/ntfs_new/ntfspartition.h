@@ -1,5 +1,6 @@
 #pragma once
-#include "io/contextblocks.h"
+
+class MFT;
 
 #pragma pack(1)
 struct BootSector
@@ -48,15 +49,18 @@ public:
     ULONG OpenHandleCount;
 
     PVPB VolParamBlock;
-    VolumeContextBlock* VCB = new(NonPagedPool) VolumeContextBlock();
+    MFT* VolMFT;
 
     ~NtfsPartition();
     NTSTATUS LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount);
     void CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject);
-    NTSTATUS NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
-                                       _In_    ULONG Lba,
-                                       _In_    ULONG LbaCount);
+    NTSTATUS DumpBlocks(_Inout_ PUCHAR Buffer,
+                        _In_    ULONG Lba,
+                        _In_    ULONG LbaCount);
+    NTSTATUS GetVolumeLabel(_In_ PWSTR VolumeLabel,
+                            _In_ USHORT& Length);
     void RunSanityChecks();
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
 } *PNtfsPartition;
+

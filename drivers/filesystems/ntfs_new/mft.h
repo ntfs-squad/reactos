@@ -9,7 +9,6 @@
 
 #include <ntifs.h>
 #include "ntfspartition.h"
-#include "io/contextblocks.h"
 #include "attributes.h"
 
 /* NTFS file record numbers */

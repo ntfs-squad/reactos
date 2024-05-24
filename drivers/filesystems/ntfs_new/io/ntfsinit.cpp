@@ -111,10 +111,12 @@ NTAPI
 NtfsFsdLockControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                    _Inout_ PIRP Irp)
 {
-   DPRINT1("NtfsFsdLockControl: called\r\n");
+    DPRINT1("NtfsFsdLockControl: called\r\n");
     return 0;
 }
+
 extern PDEVICE_OBJECT StorageDevice; //HACKHACKHACK
+
 _Function_class_(IRP_MJ_DEVICE_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -124,7 +126,6 @@ NtfsFsdDeviceControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                      _Inout_ PIRP Irp)
 {
     IoSkipCurrentIrpStackLocation(Irp);
-
 
     return IoCallDriver(StorageDevice, Irp);
 }
