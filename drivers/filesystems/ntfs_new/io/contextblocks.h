@@ -21,25 +21,28 @@ typedef struct
 
 } IoRequestContext, *PIoRequestContext;
 
+/* TODO: Remove?
 typedef struct
 {
     LIST_ENTRY     NextCCB;
     PFILE_OBJECT   PtrFileObject;
     LARGE_INTEGER  CurrentByteOffset;
-    /* for DirectoryControl */
+
+    // for DirectoryControl
     ULONG Entry;
-    /* for DirectoryControl */
     PWCHAR DirectorySearchPattern;
+
     ULONG LastCluster;
     ULONG LastOffset;
 } ClusterContextBlock, *PClusterContextBlock;
+*/
 
 typedef struct
 {
     ERESOURCE DirResource;
 
-    KSPIN_LOCK FcbListLock;
-    LIST_ENTRY FcbListHead;
+    KSPIN_LOCK FileCBListLock;
+    LIST_ENTRY FileCBListHead;
 
     PVPB Vpb;
     PDEVICE_OBJECT StorageDevice;
@@ -47,7 +50,7 @@ typedef struct
 
     struct _NTFS_ATTR_CONTEXT* MFTContext;
     struct _FILE_RECORD_HEADER* MasterFileTable;
-    struct _FCB *VolumeFcb;
+    struct _FCB *VolumeFileCB;
 
     NPAGED_LOOKASIDE_LIST FileRecLookasideList;
 
@@ -65,7 +68,7 @@ typedef struct _FCB
     SECTION_OBJECT_POINTERS SectionObjectPointers;
 
     PFILE_OBJECT FileObject;
-    PVolumeContextBlock Vcb;
+    PVolumeContextBlock VolCB;
 
     WCHAR Stream[MAX_PATH];
     WCHAR *ObjectName;		/* point on filename (250 chars max) in PathName */
