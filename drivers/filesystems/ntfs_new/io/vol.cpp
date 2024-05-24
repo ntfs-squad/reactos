@@ -23,7 +23,7 @@
 #pragma alloc_text(PAGE, NtfsMountVolume)
 #endif
 extern NPAGED_LOOKASIDE_LIST FileCBLookasideList;
-#define FCB_IS_VOLUME_STREAM    0x0002
+// #define FCB_IS_VOLUME_STREAM    0x0002
 
 //TODO:
 extern PDRIVER_OBJECT NtfsDriverObject;
@@ -63,7 +63,7 @@ NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
 PDEVICE_OBJECT StorageDevice;
 
-// TODO: Do we need this? I don't think this belongs here.
+// TODO: Clean this up later
 PFileContextBlock
 NtfsCreateFileCB(PCWSTR FileName,
                  PCWSTR Stream,
@@ -71,7 +71,6 @@ NtfsCreateFileCB(PCWSTR FileName,
 {
     PFileContextBlock FileCB;
 
-    // FileCB = (PFileContextBlock)ExAllocateFromNPagedLookasideList(&FileCBLookasideList);
     FileCB = new(NonPagedPool) FileContextBlock();
     if (FileCB == NULL)
     {
@@ -79,7 +78,6 @@ NtfsCreateFileCB(PCWSTR FileName,
     }
 
     RtlZeroMemory(FileCB, sizeof(FileContextBlock));
-
     FileCB->VolCB = VolCB;
 
     if (FileName)
@@ -99,13 +97,13 @@ NtfsCreateFileCB(PCWSTR FileName,
     {
         wcscpy(FileCB->Stream, Stream);
     }
-    else
+    // Pretty sure this isn't needed.
+    /*else
     {
         FileCB->Stream[0] = UNICODE_NULL;
-    }
+    }*/
 
     ExInitializeResourceLite(&FileCB->MainResource);
-
     FileCB->RFCB.Resource = &(FileCB->MainResource);
 
     return FileCB;
@@ -123,7 +121,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     NTSTATUS Status;
     PVolumeContextBlock VolCB;
     PFileContextBlock FileCB;
-    // PClusterContextBlock ClusCB;  TODO: Remove?
 
     /* The function here returns, but it's not an error.
      * We're a boot driver, NT will try every possible filesystem.
@@ -183,31 +180,18 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
         Status = STATUS_INSUFFICIENT_RESOURCES;
         __debugbreak();
     }
-
-    // TODO: I don't think we need this. Remove?
-    /*ClusCB = (PClusterContextBlock)ExAllocatePoolWithTag(NonPagedPool,
-                                sizeof(ClusterContextBlock),
-                                TAG_NTFS);
-    if (ClusCB == NULL)
-    {
-        Status =  STATUS_INSUFFICIENT_RESOURCES;
-        __debugbreak();
-    }
-
-    RtlZeroMemory(ClusCB, sizeof(ClusterContextBlock));
-    DPRINT1("ClusCB created!\n");
-
-    VolCB->StreamFileObject->FsContext2 = ClusCB;
-    ClusCB->PtrFileObject = VolCB->StreamFileObject;
-    */
+    /*RtlZeroMemory(FileCB, sizeof(FileContextBlock));
+    FileCB->VolCB = VolCB;
+    ExInitializeResourceLite(&FileCB->MainResource);
+    FileCB->RFCB.Resource = &(FileCB->MainResource);*/
 
     VolCB->StreamFileObject->FsContext = FileCB;
     VolCB->StreamFileObject->SectionObjectPointer = &FileCB->SectionObjectPointers;
     VolCB->StreamFileObject->PrivateCacheMap = NULL;
-    VolCB->StreamFileObject->Vpb = VolCB->Vpb;
+    VolCB->StreamFileObject->Vpb = VolCB->VolPB;
     FileCB->FileObject = VolCB->StreamFileObject;
     FileCB->VolCB = (PVolumeContextBlock)VolCB->StorageDevice;
-    FileCB->Flags = FCB_IS_VOLUME_STREAM;
+    // FileCB->Flags = FCB_IS_VOLUME_STREAM;
     DPRINT1("FileContextBlock created!\n");
 
     // Set file size information.
