@@ -21,74 +21,47 @@ typedef struct
 
 } IoRequestContext, *PIoRequestContext;
 
-/* TODO: Remove?
 typedef struct
 {
-    LIST_ENTRY     NextCCB;
-    PFILE_OBJECT   PtrFileObject;
-    LARGE_INTEGER  CurrentByteOffset;
+    ERESOURCE DirResource; //DDK
 
-    // for DirectoryControl
-    ULONG Entry;
-    PWCHAR DirectorySearchPattern;
+    KSPIN_LOCK FileCBListLock; //DDK
+    LIST_ENTRY FileCBListHead; //WinSDK
 
-    ULONG LastCluster;
-    ULONG LastOffset;
-} ClusterContextBlock, *PClusterContextBlock;
-*/
+    PVPB VolPB; //DDK
+    PDEVICE_OBJECT StorageDevice; //DDK
+    PFILE_OBJECT StreamFileObject; //DDK
 
-typedef struct
-{
-    ERESOURCE DirResource;
+    struct _FCB *RootFileCB;
 
-    KSPIN_LOCK FileCBListLock;
-    LIST_ENTRY FileCBListHead;
-
-    PVPB Vpb;
-    PDEVICE_OBJECT StorageDevice;
-    PFILE_OBJECT StreamFileObject;
-
-    struct _NTFS_ATTR_CONTEXT* MFTContext;
-    struct _FILE_RECORD_HEADER* MasterFileTable;
-    struct _FCB *VolumeFileCB;
-
-    NPAGED_LOOKASIDE_LIST FileRecLookasideList;
-
-    ULONG MftDataOffset;
-    ULONG Flags;
-    ULONG OpenHandleCount;
+    // We will uncomment this if needed.
+    // ULONG Flags;
 
 } VolumeContextBlock, *PVolumeContextBlock;
 
 typedef struct _FCB
 {
-    //NTFSIDENTIFIER Identifier;
+    FSRTL_COMMON_FCB_HEADER RFCB; // DDK
+    SECTION_OBJECT_POINTERS SectionObjectPointers; //DDK
 
-    FSRTL_COMMON_FCB_HEADER RFCB;
-    SECTION_OBJECT_POINTERS SectionObjectPointers;
-
-    PFILE_OBJECT FileObject;
+    PFILE_OBJECT FileObject; //DDK
     PVolumeContextBlock VolCB;
 
+    ERESOURCE PagingIoResource; //DDK
+    ERESOURCE MainResource; //DDK
+
+    LIST_ENTRY FileCBListEntry; //DDK
+    struct _FCB* ParentFileCB;
+
     WCHAR Stream[MAX_PATH];
-    WCHAR *ObjectName;		/* point on filename (250 chars max) in PathName */
-    WCHAR PathName[MAX_PATH];	/* path+filename 260 max */
+    WCHAR *ObjectName;		   // Point on filename (250 chars max) in PathName */
+    WCHAR PathName[MAX_PATH];  // Path+Filename 260 max
 
-    ERESOURCE PagingIoResource;
-    ERESOURCE MainResource;
-
-    LIST_ENTRY FcbListEntry;
-    struct _FCB* ParentFcb;
-
-    ULONG DirIndex;
-
-    LONG RefCount;
-    ULONG Flags;
-    ULONG OpenHandleCount;
-
-    ULONGLONG MFTIndex;
-    USHORT LinkCount;
-
-    // FILENAME_ATTRIBUTE Entry;
-
+    // We will uncomment these when/if we need them.
+    // ULONG DirIndex;
+    // LONG RefCount;
+    // ULONG Flags;
+    // ULONG OpenHandleCount;
+    // ULONGLONG MFTIndex;
+    // USHORT LinkCount;
 } FileContextBlock, *PFileContextBlock;
