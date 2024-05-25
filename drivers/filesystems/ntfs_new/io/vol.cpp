@@ -10,8 +10,6 @@
 /* INCLUDES *****************************************************************/
 
 #include "ntfsprocs.h"
-#include "contextblocks.h"
-
 #define NDEBUG
 #include <debug.h>
 
@@ -61,21 +59,19 @@ NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     return STATUS_NOT_SUPPORTED;
 }
 
-PDEVICE_OBJECT StorageDevice;
+PDEVICE_OBJECT StorageDevice; // HACKHACKHACK
 
-// TODO: Clean this up later
-PFileContextBlock
-NtfsCreateFileCB(PCWSTR FileName,
-                 PCWSTR Stream,
-                 PVolumeContextBlock VolCB)
+NTSTATUS
+NtfsCreateFileCB(_In_  PCWSTR FileName,
+                 _In_  PCWSTR Stream,
+                 _In_  PVolumeContextBlock VolCB,
+                 _Out_ PFileContextBlock FileCB)
 {
-    PFileContextBlock FileCB;
+    if (VolCB == NULL)
+        return STATUS_INVALID_PARAMETER_3;
 
-    FileCB = new(NonPagedPool) FileContextBlock();
     if (FileCB == NULL)
-    {
-        return NULL;
-    }
+        return STATUS_INVALID_PARAMETER_4;
 
     RtlZeroMemory(FileCB, sizeof(FileContextBlock));
     FileCB->VolCB = VolCB;
@@ -97,16 +93,11 @@ NtfsCreateFileCB(PCWSTR FileName,
     {
         wcscpy(FileCB->Stream, Stream);
     }
-    // Pretty sure this isn't needed.
-    /*else
-    {
-        FileCB->Stream[0] = UNICODE_NULL;
-    }*/
 
     ExInitializeResourceLite(&FileCB->MainResource);
     FileCB->RFCB.Resource = &(FileCB->MainResource);
 
-    return FileCB;
+    return STATUS_SUCCESS;
 }
 
 _Requires_lock_held_(_Global_critical_region_)
@@ -132,8 +123,10 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     if (Status != STATUS_SUCCESS)
         return Status;
 
+    // Currently used for debugging output.
     NtfsPart->RunSanityChecks();
 
+    // Create file system device object.
     Status = IoCreateDevice(NtfsDriverObject,
                             sizeof(VolumeContextBlock),
                             NULL,
@@ -174,41 +167,43 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
 
     DPRINT1("Created Stream File Object!\n");
 
-    FileCB = NtfsCreateFileCB(NULL, NULL, VolCB);
-    if (FileCB == NULL)
+    // Create file context block FileCB.
+    FileCB = new(NonPagedPool) FileContextBlock();
+    Status = NtfsCreateFileCB(NULL, NULL, VolCB, FileCB);
+    if (Status != STATUS_SUCCESS)
     {
         Status = STATUS_INSUFFICIENT_RESOURCES;
         __debugbreak();
     }
-    /*RtlZeroMemory(FileCB, sizeof(FileContextBlock));
-    FileCB->VolCB = VolCB;
-    ExInitializeResourceLite(&FileCB->MainResource);
-    FileCB->RFCB.Resource = &(FileCB->MainResource);*/
 
+    // Use FileCB to set up file stream object in VolCB.
     VolCB->StreamFileObject->FsContext = FileCB;
     VolCB->StreamFileObject->SectionObjectPointer = &FileCB->SectionObjectPointers;
     VolCB->StreamFileObject->PrivateCacheMap = NULL;
     VolCB->StreamFileObject->Vpb = VolCB->VolPB;
+
+    // Provide FileCB pointers to VolCB.
     FileCB->FileObject = VolCB->StreamFileObject;
     FileCB->VolCB = (PVolumeContextBlock)VolCB->StorageDevice;
     // FileCB->Flags = FCB_IS_VOLUME_STREAM;
+
     DPRINT1("FileContextBlock created!\n");
 
-    // Set file size information.
+    // Set file system size information.
     FileCB->RFCB.FileSize.QuadPart = NtfsPart->SectorsInVolume * NtfsPart->BytesPerSector;
     FileCB->RFCB.ValidDataLength.QuadPart = NtfsPart->SectorsInVolume * NtfsPart->BytesPerSector;
     FileCB->RFCB.AllocationSize.QuadPart = NtfsPart->SectorsInVolume * NtfsPart->BytesPerSector;
 
     DPRINT1("FileContextBlock updated!\n");
 
+    // Initialize directory resource and set up spin lock for VolCB.
     ExInitializeResourceLite(&VolCB->DirResource);
     KeInitializeSpinLock(&VolCB->FileCBListLock);
 
-    // Get serial number
+    // Get serial number.
     FSDeviceObject->Vpb->SerialNumber = NtfsPart->SerialNumber;
-    __debugbreak();
 
-    // Get Volume Label
+    // Get volume label.
     Status = NtfsPart->GetVolumeLabel(FSDeviceObject->Vpb->VolumeLabel,
                                       FSDeviceObject->Vpb->VolumeLabelLength);
 
@@ -217,7 +212,9 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
             FSDeviceObject->Vpb->VolumeLabel,
             FSDeviceObject->Vpb->VolumeLabelLength);
 
-    // Mount Volume
+    __debugbreak();
+
+    // Mount volume.
     FsRtlNotifyVolumeEvent(VolCB->StreamFileObject, FSRTL_VOLUME_MOUNT);
 
     Status = STATUS_SUCCESS;
