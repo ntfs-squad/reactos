@@ -26,6 +26,9 @@ NTAPI
 NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             _Inout_ PIRP Irp)
 {
-    __debugbreak();
-    return 1;
+    UNREFERENCED_PARAMETER(VolumeDeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
+
+    DPRINT1("Called NtfsFsdRead() which is a STUB!\n");
+    return STATUS_SUCCESS;
 }
