@@ -102,7 +102,6 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
     return STATUS_SUCCESS;
 }
 
-
 _Function_class_(IRP_MJ_LOCK_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -115,8 +114,6 @@ NtfsFsdLockControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     return 0;
 }
 
-extern PDEVICE_OBJECT StorageDevice; //HACKHACKHACK
-
 _Function_class_(IRP_MJ_DEVICE_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -126,8 +123,8 @@ NtfsFsdDeviceControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                      _Inout_ PIRP Irp)
 {
     IoSkipCurrentIrpStackLocation(Irp);
-
-    return IoCallDriver(StorageDevice, Irp);
+    __debugbreak();
+    return 0;
 }
 
 _Function_class_(IRP_MJ_SHUTDOWN)

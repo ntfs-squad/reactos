@@ -59,8 +59,6 @@ NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     return STATUS_NOT_SUPPORTED;
 }
 
-PDEVICE_OBJECT StorageDevice; // HACKHACKHACK
-
 NTSTATUS
 NtfsCreateFileCB(_In_  PCWSTR FileName,
                  _In_  PCWSTR Stream,
@@ -162,7 +160,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     // Create file stream object.
     VolCB->StreamFileObject = IoCreateStreamFileObject(NULL,
                                                        VolCB->StorageDevice);
-    StorageDevice = VolCB->StorageDevice; //HACKHACKHACK
     InitializeListHead(&VolCB->FileCBListHead);
 
     DPRINT1("Created Stream File Object!\n");
@@ -211,8 +208,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     DPRINT1("Label: \"%S\", Length: %ld\n",
             FSDeviceObject->Vpb->VolumeLabel,
             FSDeviceObject->Vpb->VolumeLabelLength);
-
-    __debugbreak();
 
     // Mount volume.
     FsRtlNotifyVolumeEvent(VolCB->StreamFileObject, FSRTL_VOLUME_MOUNT);
