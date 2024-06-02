@@ -32,8 +32,34 @@ NTAPI
 NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                         _Inout_ PIRP Irp)
 {
-    __debugbreak();
-    return 0;
+    PIO_STACK_LOCATION IoStack;
+    FILE_INFORMATION_CLASS FileInfoRequest;
+    VolumeContextBlock* VolCB;
+    NTSTATUS Status;
+    PVOID SystemBuffer;
+
+    IoStack = IoGetCurrentIrpStackLocation(Irp);
+    FileInfoRequest = IoStack->Parameters.QueryFile.FileInformationClass;
+    VolCB = (VolumeContextBlock*)VolumeDeviceObject->DeviceExtension;
+    SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+
+    switch (FileInfoRequest)
+    {
+        case FileBasicInformation:
+            DPRINT1("File Basic Information Requested\n");
+            Status = STATUS_NOT_IMPLEMENTED;
+            break;
+        case FileNameInformation:
+            DPRINT1("File Name Information Requested\n");
+            Status = STATUS_NOT_IMPLEMENTED;
+            break;
+        default:
+            DPRINT1("Unhandled File Information Request %d!\n", FileInfoRequest);
+            Status = STATUS_NOT_IMPLEMENTED;
+            break;
+    }
+
+    return Status;
 }
 
 _Function_class_(IRP_MJ_SET_INFORMATION)

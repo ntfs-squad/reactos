@@ -7,6 +7,8 @@
 #define MAX_PATH 260
 #endif //MAX_PATH
 
+class NtfsPartition;
+
 typedef struct
 {
     ULONG Flags;
@@ -33,6 +35,8 @@ typedef struct
     PFILE_OBJECT StreamFileObject; //DDK
 
     struct _FCB *RootFileCB;
+
+    NtfsPartition *PartitionObj;
 
     // We will uncomment this if needed.
     // ULONG Flags;

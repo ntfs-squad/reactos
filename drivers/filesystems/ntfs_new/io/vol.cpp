@@ -145,6 +145,9 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     RtlZeroMemory(VolCB, sizeof(VolumeContextBlock));
     FSDeviceObject->Vpb = TargetDeviceObject->Vpb;
 
+    // Give VolCB access to Ntfs Partition object
+    VolCB->PartitionObj = NtfsPart;
+
     DPRINT1("VolCB created!\n");
 
     // Set up storage device in VolCB.
