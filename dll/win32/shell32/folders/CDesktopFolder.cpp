@@ -21,8 +21,14 @@
  */
 
 #include <precomp.h>
+#include "CFSFolder.h" // Only for CFSFolder::*FSColumn* helpers!
 
 WINE_DEFAULT_DEBUG_CHANNEL(shell);
+
+static BOOL IsSelf(UINT cidl, PCUITEMID_CHILD_ARRAY apidl)
+{
+    return cidl == 0 || (cidl == 1 && apidl && _ILIsEmpty(apidl[0]));
+}
 
 STDMETHODIMP
 CDesktopFolder::ShellUrlParseDisplayName(
@@ -283,17 +289,6 @@ class CDesktopFolderEnum :
 };
 
 int SHELL_ConfirmMsgBox(HWND hWnd, LPWSTR lpszText, LPWSTR lpszCaption, HICON hIcon, BOOL bYesToAll);
-
-static const shvheader DesktopSFHeader[] = {
-    {IDS_SHV_COLUMN_NAME, SHCOLSTATE_TYPE_STR | SHCOLSTATE_ONBYDEFAULT, LVCFMT_LEFT, 15},
-    {IDS_SHV_COLUMN_COMMENTS, SHCOLSTATE_TYPE_STR, LVCFMT_LEFT, 10},
-    {IDS_SHV_COLUMN_TYPE, SHCOLSTATE_TYPE_STR | SHCOLSTATE_ONBYDEFAULT, LVCFMT_LEFT, 10},
-    {IDS_SHV_COLUMN_SIZE, SHCOLSTATE_TYPE_STR | SHCOLSTATE_ONBYDEFAULT, LVCFMT_RIGHT, 10},
-    {IDS_SHV_COLUMN_MODIFIED, SHCOLSTATE_TYPE_DATE | SHCOLSTATE_ONBYDEFAULT, LVCFMT_LEFT, 12},
-    {IDS_SHV_COLUMN_ATTRIBUTES, SHCOLSTATE_TYPE_STR | SHCOLSTATE_ONBYDEFAULT, LVCFMT_LEFT, 10}
-};
-
-#define DESKTOPSHELLVIEWCOLUMNS 6
 
 static const DWORD dwDesktopAttributes =
     SFGAO_HASSUBFOLDER | SFGAO_FILESYSTEM | SFGAO_FOLDER | SFGAO_FILESYSANCESTOR |
@@ -820,10 +815,10 @@ HRESULT WINAPI CDesktopFolder::GetUIObjectOf(
 
     if (!ppvOut)
         return hr;
-
     *ppvOut = NULL;
 
-    if (cidl == 1 && !_ILIsSpecialFolder(apidl[0]))
+    BOOL self = IsSelf(cidl, apidl);
+    if (cidl == 1 && !_ILIsSpecialFolder(apidl[0]) && !self)
     {
         CComPtr<IShellFolder2> psf;
         HRESULT hr = _GetSFFromPidl(apidl[0], &psf);
@@ -835,7 +830,8 @@ HRESULT WINAPI CDesktopFolder::GetUIObjectOf(
 
     if (IsEqualIID (riid, IID_IContextMenu))
     {
-        if (cidl > 0 && _ILIsSpecialFolder(apidl[0]))
+        // FIXME: m_regFolder vs AddFSClassKeysToArray is incorrect when the selection includes both regitems and FS items
+        if (!self && cidl > 0 && _ILIsSpecialFolder(apidl[0]))
         {
             hr = m_regFolder->GetUIObjectOf(hwndOwner, cidl, apidl, riid, prgfInOut, &pObj);
         }
@@ -846,7 +842,12 @@ HRESULT WINAPI CDesktopFolder::GetUIObjectOf(
             /* Otherwise operations like that involve items from both user and shared desktop will not work */
             HKEY hKeys[16];
             UINT cKeys = 0;
-            if (cidl > 0)
+            if (self)
+            {
+                AddClsidKeyToArray(CLSID_ShellDesktop, hKeys, &cKeys);
+                AddClassKeyToArray(L"Folder", hKeys, &cKeys);
+            }
+            else if (cidl > 0)
             {
                 AddFSClassKeysToArray(cidl, apidl, hKeys, &cKeys);
             }
@@ -912,7 +913,7 @@ HRESULT WINAPI CDesktopFolder::GetDisplayNameOf(PCUITEMID_CHILD pidl, DWORD dwFl
     }
     else if (_ILIsDesktop(pidl))
     {
-        if ((GET_SHGDN_RELATION(dwFlags) == SHGDN_NORMAL) && (GET_SHGDN_FOR(dwFlags) & SHGDN_FORPARSING))
+        if (IS_SHGDN_DESKTOPABSOLUTEPARSING(dwFlags))
             return SHSetStrRet(strRet, sPathTarget);
         else
             return m_regFolder->GetDisplayNameOf(pidl, dwFlags, strRet);
@@ -978,16 +979,25 @@ HRESULT WINAPI CDesktopFolder::GetDefaultColumn(DWORD dwRes, ULONG *pSort, ULONG
     return S_OK;
 }
 
-HRESULT WINAPI CDesktopFolder::GetDefaultColumnState(UINT iColumn, DWORD *pcsFlags)
+HRESULT WINAPI CDesktopFolder::GetDefaultColumnState(UINT iColumn, SHCOLSTATEF *pcsFlags)
 {
+    HRESULT hr;
     TRACE ("(%p)\n", this);
 
-    if (!pcsFlags || iColumn >= DESKTOPSHELLVIEWCOLUMNS)
+    if (!pcsFlags)
         return E_INVALIDARG;
 
-    *pcsFlags = DesktopSFHeader[iColumn].pcsFlags;
-
-    return S_OK;
+    hr = CFSFolder::GetDefaultFSColumnState(iColumn, *pcsFlags);
+    /*
+    // CDesktopFolder may override the flags if desired (future)
+    switch(iColumn)
+    {
+    case SHFSF_COL_FATTS:
+        *pcsFlags &= ~SHCOLSTATE_ONBYDEFAULT;
+        break;
+    }
+    */
+    return hr;
 }
 
 HRESULT WINAPI CDesktopFolder::GetDetailsEx(
@@ -1000,19 +1010,27 @@ HRESULT WINAPI CDesktopFolder::GetDetailsEx(
     return E_NOTIMPL;
 }
 
+/*************************************************************************
+ * Column info functions.
+ * CFSFolder.h provides defaults for us.
+ */
+HRESULT CDesktopFolder::GetColumnDetails(UINT iColumn, SHELLDETAILS &sd)
+{
+    /* CDesktopFolder may override the flags and/or name if desired */
+    return CFSFolder::GetFSColumnDetails(iColumn, sd);
+}
+
 HRESULT WINAPI CDesktopFolder::GetDetailsOf(
     PCUITEMID_CHILD pidl,
     UINT iColumn,
     SHELLDETAILS *psd)
 {
-    if (!psd || iColumn >= DESKTOPSHELLVIEWCOLUMNS)
+    if (!psd)
         return E_INVALIDARG;
 
     if (!pidl)
     {
-        psd->fmt = DesktopSFHeader[iColumn].fmt;
-        psd->cxChar = DesktopSFHeader[iColumn].cxChar;
-        return SHSetStrRet(&psd->str, DesktopSFHeader[iColumn].colnameid);
+        return GetColumnDetails(iColumn, *psd);
     }
 
     CComPtr<IShellFolder2> psf;
@@ -1067,37 +1085,21 @@ HRESULT WINAPI CDesktopFolder::GetCurFolder(PIDLIST_ABSOLUTE * pidl)
 
 HRESULT WINAPI CDesktopFolder::CallBack(IShellFolder *psf, HWND hwndOwner, IDataObject *pdtobj, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    if (uMsg != DFM_MERGECONTEXTMENU && uMsg != DFM_INVOKECOMMAND)
-        return S_OK;
-
-    /* no data object means no selection */
-    if (!pdtobj)
+    enum { IDC_PROPERTIES };
+    if (uMsg == DFM_INVOKECOMMAND && wParam == (pdtobj ? DFM_CMD_PROPERTIES : IDC_PROPERTIES))
     {
-        if (uMsg == DFM_INVOKECOMMAND && wParam == 0)
-        {
-            if (32 >= (UINT_PTR)ShellExecuteW(hwndOwner, L"open", L"rundll32.exe",
-                                              L"shell32.dll,Control_RunDLL desk.cpl", NULL, SW_SHOWNORMAL))
-            {
-                return E_FAIL;
-            }
-            return S_OK;
-        }
-        else if (uMsg == DFM_MERGECONTEXTMENU)
-        {
-            QCMINFO *pqcminfo = (QCMINFO *)lParam;
-            HMENU hpopup = CreatePopupMenu();
-            _InsertMenuItemW(hpopup, 0, TRUE, 0, MFT_STRING, MAKEINTRESOURCEW(IDS_PROPERTIES), MFS_ENABLED);
-            Shell_MergeMenus(pqcminfo->hmenu, hpopup, pqcminfo->indexMenu, pqcminfo->idCmdFirst++, pqcminfo->idCmdLast, MM_ADDSEPARATOR);
-            DestroyMenu(hpopup);
-        }
-
+        return SHELL_ExecuteControlPanelCPL(hwndOwner, L"desk.cpl") ? S_OK : E_FAIL;
+    }
+    else if (uMsg == DFM_MERGECONTEXTMENU && !pdtobj) // Add Properties item when called for directory background
+    {
+        QCMINFO *pqcminfo = (QCMINFO *)lParam;
+        HMENU hpopup = CreatePopupMenu();
+        _InsertMenuItemW(hpopup, 0, TRUE, IDC_PROPERTIES, MFT_STRING, MAKEINTRESOURCEW(IDS_PROPERTIES), MFS_ENABLED);
+        pqcminfo->idCmdFirst = Shell_MergeMenus(pqcminfo->hmenu, hpopup, pqcminfo->indexMenu, pqcminfo->idCmdFirst, pqcminfo->idCmdLast, MM_ADDSEPARATOR);
+        DestroyMenu(hpopup);
         return S_OK;
     }
-
-    if (uMsg != DFM_INVOKECOMMAND || wParam != DFM_CMD_PROPERTIES)
-        return S_OK;
-
-    return Shell_DefaultContextMenuCallBack(this, pdtobj);
+    return SHELL32_DefaultContextMenuCallBack(psf, pdtobj, uMsg);
 }
 
 /*************************************************************************

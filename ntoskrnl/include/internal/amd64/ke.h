@@ -480,6 +480,17 @@ VOID
 KiUserCallbackExit(
     _In_ PKTRAP_FRAME TrapFrame);
 
+DECLSPEC_NORETURN
+VOID
+KiExceptionExit(
+    _In_ PKTRAP_FRAME TrapFrame,
+    _In_ PKEXCEPTION_FRAME ExceptionFrame);
+
+BOOLEAN
+KiProcessorFreezeHandler(
+    _In_ PKTRAP_FRAME TrapFrame,
+    _In_ PKEXCEPTION_FRAME ExceptionFrame);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

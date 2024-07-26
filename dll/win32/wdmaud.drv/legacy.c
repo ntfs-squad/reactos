@@ -832,7 +832,7 @@ WdmAudGetWavePositionByLegacy(
     DeviceInfo.DeviceType = DeviceType;
 
     Result = SyncOverlappedDeviceIoControl(KernelHandle,
-                                           IOCTL_OPEN_WDMAUD,
+                                           IOCTL_GETPOS,
                                            (LPVOID) &DeviceInfo,
                                            sizeof(WDMAUD_DEVICE_INFO),
                                            (LPVOID) &DeviceInfo,
@@ -850,6 +850,25 @@ WdmAudGetWavePositionByLegacy(
     return MMSYSERR_NOERROR;
 }
 
+MMRESULT
+WdmAudGetVolumeByLegacy(
+    _In_ PSOUND_DEVICE_INSTANCE SoundDeviceInstance,
+    _In_ DWORD DeviceId,
+    _Out_ PDWORD pdwVolume)
+{
+    /* FIXME */
+    return MMSYSERR_NOTSUPPORTED;
+}
+
+MMRESULT
+WdmAudSetVolumeByLegacy(
+    _In_ PSOUND_DEVICE_INSTANCE SoundDeviceInstance,
+    _In_ DWORD DeviceId,
+    _In_ DWORD dwVolume)
+{
+    /* FIXME */
+    return MMSYSERR_NOTSUPPORTED;
+}
 
 MMRESULT
 WdmAudResetStreamByLegacy(
