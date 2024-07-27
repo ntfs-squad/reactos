@@ -4,12 +4,27 @@
 #include "mft.h"
 #include "ntfsdbgprint.h"
 
-
 /* *** MFT IMPLEMENTATIONS *** */
 
 MFT::MFT(_In_ PNtfsPartition ParentPartition)
 {
     NtfsPart = ParentPartition;
+
+    /* Get MFT Sector Offset. */
+    MFTOffset = NtfsPart->MFTLCN * NtfsPart->SectorsPerCluster;
+
+    /* Get File Record Size (Bytes). */
+    if (NtfsPart->ClustersPerFileRecord > 0)
+    {
+        // File record size is ClustersPerFileRecord * SectorsPerCluster * BytesPerSector
+        FileRecordSize = NtfsPart->ClustersPerFileRecord * NtfsPart->SectorsPerCluster * NtfsPart->BytesPerSector;
+    }
+
+    else
+    {
+        // File record size is 2^(-ClustersPerFileRecord)
+        FileRecordSize = 1 << (-(NtfsPart->ClustersPerFileRecord));
+    }
 }
 
 UCHAR FileRecordBuffer[0x100000];
@@ -19,18 +34,17 @@ MFT::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
                    _Out_ FileRecord* File)
 {
     PAGED_CODE();
+
+    INT FileRecordOffset;
+
+    FileRecordOffset = (FileRecordNumber * FileRecordSize) / NtfsPart->BytesPerSector;
+
     NtfsPart->DumpBlocks(FileRecordBuffer,
-                         ((FileRecordNumber *
-                           NtfsPart->ClustersPerFileRecord) +
-                          NtfsPart->MFTLCN) *
-                         NtfsPart->SectorsPerCluster,
-                         NtfsPart->ClustersPerFileRecord *
-                         NtfsPart->SectorsPerCluster);
+                         MFTOffset + FileRecordOffset,
+                         FileRecordSize / NtfsPart->BytesPerSector);
 
     File->LoadData(FileRecordBuffer,
-                   NtfsPart->ClustersPerFileRecord *
-                   NtfsPart->SectorsPerCluster *
-                   NtfsPart->BytesPerSector);
+                   FileRecordSize);
     return STATUS_SUCCESS;
 }
 
@@ -125,52 +139,4 @@ FileRecord::FindAttribute(_In_ AttributeType Type,
     }
 
     return STATUS_NOT_FOUND;
-}
-
-NTSTATUS
-FileRecord::FindFileNameAttribute(_Out_ ResidentAttribute* Attr,
-                                  _Out_ FileNameEx* AttrHeaderEx,
-                                  _Out_ PWSTR Filename)
-{
-    NTSTATUS Status;
-    UCHAR Buffer[512];
-
-    Status = FindAttribute(FileName, NULL, Attr, Buffer);
-
-    if (Status == STATUS_SUCCESS)
-    {
-        RtlCopyMemory(AttrHeaderEx,
-                      &Buffer,
-                      sizeof(FileNameEx));
-        RtlCopyMemory(Filename,
-                      &Buffer[sizeof(FileNameEx)],
-                      AttrHeaderEx->FilenameChars * sizeof(WCHAR));
-
-        // Add null terminator to filename
-        Filename[AttrHeaderEx->FilenameChars] = '\0';
-    }
-
-    return Status;
-}
-
-NTSTATUS
-FileRecord::FindVolumeNameAttribute(_Out_ ResidentAttribute* Attr,
-                                    _Out_ PWSTR Data)
-{
-    NTSTATUS Status;
-
-    Status = FindAttribute(VolumeName, NULL, Attr, (PUCHAR)Data);
-
-    //Add null terminator
-    if (Status == STATUS_SUCCESS)
-        Data[Attr->AttributeLength / sizeof(WCHAR)] = '\0';
-
-    return Status;
-}
-
-NTSTATUS
-FileRecord::FindStandardInformationAttribute(_Out_ ResidentAttribute* Attr,
-                                             _Out_ StandardInformationEx* AttrHeaderEx)
-{
-    return FindAttribute(StandardInformation, NULL, Attr, (PUCHAR)AttrHeaderEx);
 }

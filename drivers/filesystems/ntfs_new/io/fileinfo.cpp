@@ -22,6 +22,20 @@
 #pragma alloc_text(PAGE, NtfsFsdDirectoryControl)
 #endif
 
+/* FORWARD DECLARATIONS ******************************************************/
+
+NTSTATUS
+NTAPI
+GetFileNameInformation(_In_ PFileContextBlock FileCB,
+                       _Out_ PVOID Buffer,
+                       _In_ ULONG Length);
+
+NTSTATUS
+NTAPI
+GetFileBasicInformation(_In_ PFileContextBlock FileCB,
+                        _Out_ PVOID Buffer,
+                        _In_ ULONG Length);
+
 /* FUNCTIONS ****************************************************************/
 
 _Function_class_(IRP_MJ_QUERY_INFORMATION)
@@ -32,32 +46,55 @@ NTAPI
 NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                         _Inout_ PIRP Irp)
 {
+
+    /* Overview:
+     * Determine if file information request is appropriate.
+     * If it is, fulfill it. If it isn't, return STATUS_INVALID_DEVICE_REQUEST.
+     *
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/irp-mj-query-information
+     */
+
     PIO_STACK_LOCATION IoStack;
     FILE_INFORMATION_CLASS FileInfoRequest;
-    VolumeContextBlock* VolCB;
+    PVolumeContextBlock VolCB;
+    PFileContextBlock FileCB;
     NTSTATUS Status;
     PVOID SystemBuffer;
+    PFILE_OBJECT FileObject;
+    ULONG BufferLength;
 
     IoStack = IoGetCurrentIrpStackLocation(Irp);
     FileInfoRequest = IoStack->Parameters.QueryFile.FileInformationClass;
-    VolCB = (VolumeContextBlock*)VolumeDeviceObject->DeviceExtension;
+    FileObject = IoStack->FileObject;
+    VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
+    FileCB = (PFileContextBlock)FileObject->FsContext;
     SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+    BufferLength = IoStack->Parameters.QueryFile.Length;
 
     switch (FileInfoRequest)
     {
         case FileBasicInformation:
-            DPRINT1("File Basic Information Requested\n");
-            Status = STATUS_NOT_IMPLEMENTED;
+            Status = GetFileBasicInformation(FileCB,
+                                             SystemBuffer,
+                                             BufferLength);
             break;
         case FileNameInformation:
-            DPRINT1("File Name Information Requested\n");
-            Status = STATUS_NOT_IMPLEMENTED;
+            Status = GetFileNameInformation(FileCB,
+                                            SystemBuffer,
+                                            BufferLength);
+            DPRINT1("Buffer Contents: \"%S\", Length: %ld\n", ((PFILE_NAME_INFORMATION)SystemBuffer)->FileName, ((PFILE_NAME_INFORMATION)SystemBuffer)->FileNameLength);
             break;
         default:
             DPRINT1("Unhandled File Information Request %d!\n", FileInfoRequest);
             Status = STATUS_NOT_IMPLEMENTED;
             break;
     }
+
+    if (NT_SUCCESS(Status))
+        Irp->IoStatus.Information =
+            IoStack->Parameters.QueryFile.Length - BufferLength;
+    else
+        Irp->IoStatus.Information = 0;
 
     return Status;
 }
@@ -70,7 +107,68 @@ NTAPI
 NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                       _Inout_ PIRP Irp)
 {
-    __debugbreak();
+    /* Overview:
+     * Check if a requested file is open.
+     * If it is, set information in the file as requested.
+     *
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-set-information
+     */
+
+#if 0
+    PIO_STACK_LOCATION IoStack;
+    FILE_INFORMATION_CLASS FileInformationRequest;
+    PVolumeContextBlock VolCB;
+    PFileContextBlock FileCB;
+    NTSTATUS Status;
+    PVOID SystemBuffer;
+    ULONG BufferLength;
+    PFILE_OBJECT FileObject;
+    ULONG BufferLength;
+
+    DPRINT("NtfsSetInformation(%p)\n", IrpContext);
+
+    Irp = IrpContext->Irp;
+    IoStack = IrpContext->Stack;
+    DeviceObject = IrpContext->DeviceObject;
+    DeviceExt = DeviceObject->DeviceExtension;
+    FileInformationRequest = Stack->Parameters.QueryFile.FileInformationClass;
+    FileObject = IrpContext->FileObject;
+    Fcb = FileObject->FsContext;
+
+    SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+    BufferLength = Stack->Parameters.QueryFile.Length;
+
+    if (!ExAcquireResourceSharedLite(&Fcb->MainResource,
+                                     BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_CANWAIT)))
+    {
+        return NtfsMarkIrpContextForQueue(IrpContext);
+    }
+
+    switch (FileInformationRequest)
+    {
+        PFILE_END_OF_FILE_INFORMATION EndOfFileInfo;
+
+        /* TODO: Allocation size is not actually the same as file end for NTFS,
+           however, few applications are likely to make the distinction. */
+        case FileAllocationInformation:
+            DPRINT1("FIXME: Using hacky method of setting FileAllocationInformation.\n");
+        case FileEndOfFileInformation:
+            EndOfFileInfo = (PFILE_END_OF_FILE_INFORMATION)SystemBuffer;
+            Status = NtfsSetEndOfFile(Fcb,
+                                      FileObject,
+                                      DeviceExt,
+                                      Irp->Flags,
+                                      BooleanFlagOn(Stack->Flags, SL_CASE_SENSITIVE),
+                                      &EndOfFileInfo->EndOfFile);
+            break;
+
+        // TODO: all other information classes
+
+        default:
+            DPRINT1("FIXME: Unimplemented information class: %s\n", GetInfoClassName(FileInformationClass));
+            Status = STATUS_NOT_IMPLEMENTED;
+    }
+#endif
     return 0;
 }
 
@@ -82,10 +180,54 @@ NTAPI
 NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                         _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-directory-control
+     */
+
     // TODO: make this actually work
     UNREFERENCED_PARAMETER(VolumeDeviceObject);
     UNREFERENCED_PARAMETER(Irp);
 
     DPRINT1("Called NtfsFsdDirectoryControl() which is a STUB!\n");
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
+NTAPI
+GetFileNameInformation(_In_ PFileContextBlock FileCB,
+                       _Out_ PVOID Buffer,
+                       _In_ ULONG Length)
+{
+    PFILE_NAME_INFORMATION FileNameInfo = (PFILE_NAME_INFORMATION)Buffer;
+
+    if (Length < sizeof(FILE_NAME_INFORMATION))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    // Make something up for now.
+    FileNameInfo->FileNameLength = 10;
+    RtlCopyMemory(FileNameInfo->FileName, L"h3ll0", 10);
+    DPRINT1("Copied name! \"%S\", Length: %ld\n", ((PFILE_NAME_INFORMATION)Buffer)->FileName, ((PFILE_NAME_INFORMATION)Buffer)->FileNameLength);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NTAPI
+GetFileBasicInformation(_In_ PFileContextBlock FileCB,
+                        _Out_ PVOID Buffer,
+                        _In_ ULONG Length)
+{
+    PFILE_BASIC_INFORMATION FileBasicInfo = (PFILE_BASIC_INFORMATION)Buffer;
+
+    if (Length < sizeof(FILE_BASIC_INFORMATION))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    // Make something up for now.
+    FileBasicInfo->CreationTime = {0};
+    FileBasicInfo->LastAccessTime = {0};
+    FileBasicInfo->LastWriteTime = {0};
+    FileBasicInfo->ChangeTime = {0};
+    FileBasicInfo->FileAttributes = FILE_ATTRIBUTE_READONLY;
+
     return STATUS_SUCCESS;
 }

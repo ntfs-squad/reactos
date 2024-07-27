@@ -50,6 +50,10 @@ NTAPI
 NtfsFsdFileSystemControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                          _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Handles FSCTL requests.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-file-system-control
+     */
     NTSTATUS Status;
     BOOLEAN TopLevel;
 
@@ -147,6 +151,10 @@ NTAPI
 NtfsFsdFlushBuffers(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                     _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Write all changes from buffer to disk.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-flush-buffers
+     */
     __debugbreak();
     return 1;
 }

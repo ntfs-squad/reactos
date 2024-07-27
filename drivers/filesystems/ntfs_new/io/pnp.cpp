@@ -30,6 +30,10 @@ NTAPI
 NtfsFsdPnp(_In_ PDEVICE_OBJECT VolumeDeviceObject,
            _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Handles PnP requests.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-pnp
+     */
     __debugbreak();
     return 1;
 }

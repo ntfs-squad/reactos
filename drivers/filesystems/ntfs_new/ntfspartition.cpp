@@ -123,10 +123,10 @@ NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
                   sizeof(UINT64));
     RtlCopyMemory(&ClustersPerFileRecord,
                   &PartBootSector->ClustersPerFileRecord,
-                  sizeof(UINT32));
+                  sizeof(INT8));
     RtlCopyMemory(&ClustersPerIndexRecord,
                   &PartBootSector->ClustersPerIndexRecord,
-                  sizeof(UINT32));
+                  sizeof(INT8));
     RtlCopyMemory(&SerialNumber,
                   &PartBootSector->SerialNumber,
                   sizeof(UINT64));
@@ -164,11 +164,21 @@ NtfsPartition::GetVolumeLabel(_In_ PWSTR VolumeLabel,
     VolumeNameAttr = new(NonPagedPool) ResidentAttribute();
 
     Status = VolMFT->GetFileRecord(_Volume, VolumeFileRecord);
+
     if (Status != STATUS_SUCCESS)
         goto Cleanup;
-    Status = VolumeFileRecord->FindVolumeNameAttribute(VolumeNameAttr, VolumeLabel);
+
+    Status = VolumeFileRecord->FindAttribute(VolumeName,
+                                             NULL,
+                                             VolumeNameAttr,
+                                             (PUCHAR)VolumeLabel);
+
     if (Status != STATUS_SUCCESS)
         goto Cleanup;
+
+    // Add null-terminator
+    VolumeLabel[VolumeNameAttr->AttributeLength / sizeof(WCHAR)] = '\0';
+
     Length = VolumeNameAttr->AttributeLength;
 
 Cleanup:
@@ -196,33 +206,16 @@ NtfsPartition::RunSanityChecks()
 {
     PAGED_CODE();
 
-    WCHAR Filename[256];
     WCHAR VolumeName[128];
-
-    FileRecord* VolumeFileRecord;
-    ResidentAttribute* VolumeNameAttr;
-    ResidentAttribute* FilenameAttrib;
-    FileNameEx* FilenameExtAttr;
+    USHORT VolNameLen = 0;
 
     DPRINT1("RunSanityChecks() called\n");
 
-    VolumeFileRecord = new(NonPagedPool) FileRecord();
+    DPRINT1("Getting Volume Label...\n");
 
-    VolMFT->GetFileRecord(_Volume, VolumeFileRecord);
+    this->GetVolumeLabel(VolumeName, VolNameLen);
 
-    DPRINT1("We set up the file record...\n");
-
-    FilenameAttrib = new(NonPagedPool) ResidentAttribute();
-    FilenameExtAttr = new(NonPagedPool) FileNameEx();
-    VolumeNameAttr = new(NonPagedPool) ResidentAttribute();
-
-    DPRINT1("Finding Attribute...\n");
-
-    VolumeFileRecord->FindFileNameAttribute(FilenameAttrib, FilenameExtAttr, Filename);
-    VolumeFileRecord->FindVolumeNameAttribute(VolumeNameAttr, VolumeName);
-
-    DPRINT1("Volume Name is: \"%S\"\n", VolumeName);
-    DPRINT1("File name: \"%S\"\n", Filename);
+    DPRINT1("Volume Label is: \"%S\"\nLength: %d\n", VolumeName, VolNameLen);
 }
 
 NtfsPartition::~NtfsPartition()

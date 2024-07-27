@@ -30,10 +30,17 @@ NTAPI
 NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
              _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * All instances of a file object have been closed.
+     * Do any processing required and complete the IRP.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-close
+     */
+
     // TODO: make this actually work
     UNREFERENCED_PARAMETER(VolumeDeviceObject);
     UNREFERENCED_PARAMETER(Irp);
 
     DPRINT1("Called NtfsFsdClose() which is a STUB!\n");
+    __debugbreak();
     return STATUS_SUCCESS;
 }
