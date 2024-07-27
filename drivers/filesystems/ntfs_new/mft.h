@@ -34,6 +34,21 @@ enum FileRecordNumbers
 #define FR_IS_EXTENSION  0x04
 #define FR_SPECIAL_INDEX 0x08
 
+/* NTFS file permission flags */
+#define FILE_PERM_READONLY   0x0001
+#define FILE_PERM_HIDDEN     0x0002
+#define FILE_PERM_SYSTEM     0x0004
+#define FILE_PERM_ARCHIVE    0x0020
+#define FILE_PERM_DEVICE     0x0040
+#define FILE_PERM_NORMAL     0x0080
+#define FILE_PERM_TEMP       0x0100
+#define FILE_PERM_SPARSE     0x0200
+#define FILE_PERM_REPARSE_PT 0x0400
+#define FILE_PERM_COMPRESSED 0x0800
+#define FILE_PERM_OFFLINE    0x1000
+#define FILE_PERM_NOT_INDXED 0x2000
+#define FILE_PERM_ENCRYPTED  0x4000
+
 struct FileRecordHeader
 {
     UINT32 TypeID;                 // Offset 0x00, Size 4 (Should be 'FILE')
@@ -60,13 +75,6 @@ public:
                            _Out_ PCWSTR Name,
                            _Out_ IAttribute* Attr,
                            _Out_ PUCHAR Data);
-    NTSTATUS FindFileNameAttribute(_Out_ ResidentAttribute* Attr,
-                                   _Out_ FileNameEx* AttrHeaderEx,
-                                   _Out_ PWSTR Filename);
-    NTSTATUS FindVolumeNameAttribute(_Out_ ResidentAttribute* Attr,
-                                     _Out_ PWSTR Data);
-    NTSTATUS FindStandardInformationAttribute(_Out_ ResidentAttribute* Attr,
-                                              _Out_ StandardInformationEx* AttrHeaderEx);
 private:
     FileRecordHeader *Header;
     UCHAR AttrData[0x1000]; //TODO: Figure out proper size
@@ -80,4 +88,6 @@ public:
     NTSTATUS MFT::GetFileRecord(ULONGLONG FileRecordNumber, FileRecord* File);
 private:
     NtfsPartition* NtfsPart;
+    UINT MFTOffset;
+    INT FileRecordSize;
 };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "mft.h"
 #include <pshpack1.h>
 #include <poppack.h>
 
@@ -7,7 +8,6 @@
 #define MAX_PATH 260
 #endif //MAX_PATH
 
-class NtfsPartition;
 
 typedef struct
 {
@@ -60,6 +60,8 @@ typedef struct _FCB
     WCHAR Stream[MAX_PATH];
     WCHAR *ObjectName;		   // Point on filename (250 chars max) in PathName */
     WCHAR PathName[MAX_PATH];  // Path+Filename 260 max
+
+    FileRecord* FileRec;
 
     // We will uncomment these when/if we need them.
     // ULONG DirIndex;

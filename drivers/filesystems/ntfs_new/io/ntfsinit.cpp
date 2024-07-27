@@ -110,6 +110,10 @@ NTAPI
 NtfsFsdLockControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                    _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Handles lock and unlock requests.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-lock-control
+     */
     DPRINT1("NtfsFsdLockControl: called\r\n");
     return 0;
 }
@@ -122,6 +126,12 @@ NTAPI
 NtfsFsdDeviceControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                      _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Determine if volume is open.
+     * If it is, pass the IRP to the appropriate storage driver.
+     * If not, fail the IRP.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-device-control
+     */
     IoSkipCurrentIrpStackLocation(Irp);
     __debugbreak();
     return 0;
@@ -135,6 +145,11 @@ NTAPI
 NtfsFsdShutdown (_In_ PDEVICE_OBJECT VolumeDeviceObject,
                  _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Occurs when the system is being shutdown.
+     * Do any cleanup needed and return STATUS_SUCCESS.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-shutdown
+     */
     DPRINT1("NtfsFsdShutdown: called\r\n");
     return 0;
 }
@@ -158,6 +173,11 @@ NTAPI
 NtfsFsdCleanup(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * If the device object is the control device, complete the IRP.
+     * Otherwise, perform any cleanup as needed.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-cleanup
+     */
     DPRINT1("NtfsFsdCleanup: called\r\n");
     return 0;
 }

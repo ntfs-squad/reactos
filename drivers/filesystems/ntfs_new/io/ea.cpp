@@ -31,8 +31,14 @@ NTAPI
 NtfsFsdQueryEa(_In_ PDEVICE_OBJECT VolumeDeviceObject,
               _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Reads extended attributes of files.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-query-ea
+     */
+
+    // TODO: Implement for real.
     DPRINT1("NtfsFsdQueryEa() called\n");
-    return 0;
+    return STATUS_EAS_NOT_SUPPORTED;
 }
 
 _Function_class_(IRP_MJ_SET_EA)
@@ -43,6 +49,12 @@ NTAPI
 NtfsFsdSetEa(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Sets extended attributes of files.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-set-ea
+     */
+
+    // TODO: Implement for real.
     DPRINT1("NtfsFsdSetEa() called\n");
-    return 0;
+    return STATUS_EAS_NOT_SUPPORTED;
 }

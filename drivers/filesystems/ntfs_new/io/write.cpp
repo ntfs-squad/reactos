@@ -26,6 +26,10 @@ NTAPI
 NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
              _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Handles write requests.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-write
+     */
     __debugbreak();
     return 1;
 }

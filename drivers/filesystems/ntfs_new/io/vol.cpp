@@ -36,6 +36,10 @@ NTAPI
 NtfsFsdQueryVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                               _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Returns file system information.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-query-volume-information
+     */
     DPRINT1("TODO: NtfsFsdQueryVolumeInformation() called\n");
     Irp->IoStatus.Information = 0;
     IoSkipCurrentIrpStackLocation(Irp);
@@ -51,6 +55,10 @@ NTAPI
 NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                             _Inout_ PIRP Irp)
 {
+    /* Overview:
+     * Handles requests to change file system information.
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-set-volume-information
+     */
 
     DPRINT("NtfsFsdSetVolumeInformation() called\n");
     Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
@@ -185,7 +193,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     // Provide FileCB pointers to VolCB.
     FileCB->FileObject = VolCB->StreamFileObject;
     FileCB->VolCB = (PVolumeContextBlock)VolCB->StorageDevice;
-    // FileCB->Flags = FCB_IS_VOLUME_STREAM;
 
     DPRINT1("FileContextBlock created!\n");
 

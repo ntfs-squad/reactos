@@ -38,8 +38,8 @@ public:
     UINT64 SectorsInVolume;
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;
-    INT32  ClustersPerFileRecord;
-    INT32  ClustersPerIndexRecord;
+    INT8  ClustersPerFileRecord;
+    INT8  ClustersPerIndexRecord;
     UINT64 SerialNumber;
 
     PDEVICE_OBJECT StorageDevice;
