@@ -2,7 +2,7 @@ list(APPEND SOURCE
      io/ntfsinit.cpp
      io/util.cpp
      io/fastio.cpp
-     io/read.cpp
+     io/read/read.cpp
      io/ea.cpp
      io/write.cpp
      io/vol/vol.cpp
@@ -11,7 +11,7 @@ list(APPEND SOURCE
      io/close.cpp
      io/fileinfo/fileinfo.cpp
      io/ntblockio.cpp
-     io/fsctrl.cpp
+     io/fsctrl/fsctrl.cpp
      mft.cpp
      ntfspartition.cpp
      io/ntfsprocs.h)
