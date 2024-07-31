@@ -6,6 +6,7 @@
  *              Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
  */
 #include "../ntfsprocs.h"
+#define NDEBUG
 #include <debug.h>
 
 static

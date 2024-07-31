@@ -8,11 +8,7 @@
 
 
 /* INCLUDES *****************************************************************/
-
-#include "ntfsprocs.h"
-
-#define NDEBUG
-#include <debug.h>
+#include "fsctrl.h"
 
 /* GLOBALS *****************************************************************/
 
@@ -21,25 +17,6 @@
 #endif
 
 /* FUNCTIONS ****************************************************************/
-
-BOOLEAN
-NtfsIsIrpTopLevel (
-    IN PIRP Irp
-    )
-{
-    PAGED_CODE();
-
-    if ( IoGetTopLevelIrp() == NULL ) {
-
-        IoSetTopLevelIrp( Irp );
-
-        return TRUE;
-
-    } else {
-
-        return FALSE;
-    }
-}
 
 /* INCOMPLETE */
 _Function_class_(IRP_MJ_FILE_SYSTEM_CONTROL)
