@@ -51,3 +51,9 @@ static inline void PrintNTFSBootSector(BootSector* PartBootSector)
     DPRINT1("Clusters/IndexRec %d\n", PartBootSector->ClustersPerIndexRecord);
     DPRINT1("Serial number     0x%X\n", PartBootSector->SerialNumber);
 };
+
+static inline void PrintFileContextBlock(PFileContextBlock FileCB)
+{
+    DPRINT1("Path Name:   \"%S\"\n", FileCB->PathName);
+    DPRINT1("Object Name: \"%S\"\n", FileCB->ObjectName);
+};
