@@ -23,7 +23,7 @@ struct BootSector
     INT8   ClustersPerFileRecord;  // Offset 0x40, Size 4
     UCHAR  Reserved4[3];
     INT8   ClustersPerIndexRecord; // Offset 0x44, Size 4
-    UCHAR Reserved5[3];
+    UCHAR  Reserved5[3];
     UINT64 SerialNumber;           // Offset 0x48, Size 8
     UINT32 Checksum;               // Offset 0x50, Size 4
     UCHAR  BootStrap[426];
@@ -35,11 +35,11 @@ typedef class NtfsPartition
 public:
     ULONG  BytesPerSector;
     UINT8  SectorsPerCluster;
-    UINT64 SectorsInVolume;
+    UINT32 ClustersInVolume;
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;
-    INT8  ClustersPerFileRecord;
-    INT8  ClustersPerIndexRecord;
+    INT8   ClustersPerFileRecord;
+    INT8   ClustersPerIndexRecord;
     UINT64 SerialNumber;
 
     PDEVICE_OBJECT StorageDevice;

@@ -5,11 +5,11 @@ list(APPEND SOURCE
      io/read.cpp
      io/ea.cpp
      io/write.cpp
-     io/vol.cpp
+     io/vol/vol.cpp
      io/pnp.cpp
      io/create.cpp
      io/close.cpp
-     io/fileinfo.cpp
+     io/fileinfo/fileinfo.cpp
      io/ntblockio.cpp
      io/fsctrl.cpp
      mft.cpp

@@ -161,7 +161,6 @@ NTAPI
 NtfsUnload(_In_ _Unreferenced_parameter_ PDRIVER_OBJECT DriverObject)
 {
     UNREFERENCED_PARAMETER(DriverObject);
-
     ObDereferenceObject(NtfsDiskFileSystemDeviceObject);
 }
 

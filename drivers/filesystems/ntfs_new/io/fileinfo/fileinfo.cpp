@@ -9,10 +9,8 @@
 
 /* INCLUDES *****************************************************************/
 
-#include "ntfsprocs.h"
-
+#include "fileinfo.h"
 #define NDEBUG
-#include <debug.h>
 
 /* GLOBALS *****************************************************************/
 
@@ -21,20 +19,6 @@
 #pragma alloc_text(PAGE, NtfsFsdSetInformation)
 #pragma alloc_text(PAGE, NtfsFsdDirectoryControl)
 #endif
-
-/* FORWARD DECLARATIONS ******************************************************/
-
-NTSTATUS
-NTAPI
-GetFileNameInformation(_In_ PFileContextBlock FileCB,
-                       _Out_ PVOID Buffer,
-                       _In_ ULONG Length);
-
-NTSTATUS
-NTAPI
-GetFileBasicInformation(_In_ PFileContextBlock FileCB,
-                        _Out_ PVOID Buffer,
-                        _In_ ULONG Length);
 
 /* FUNCTIONS ****************************************************************/
 
@@ -63,6 +47,8 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PFILE_OBJECT FileObject;
     ULONG BufferLength;
 
+    DPRINT1("NtfsFsdQueryInformation Called!\n");
+
     IoStack = IoGetCurrentIrpStackLocation(Irp);
     FileInfoRequest = IoStack->Parameters.QueryFile.FileInformationClass;
     FileObject = IoStack->FileObject;
@@ -75,20 +61,22 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     {
         case FileBasicInformation:
             Status = GetFileBasicInformation(FileCB,
-                                             SystemBuffer,
-                                             BufferLength);
+                                             (PFILE_BASIC_INFORMATION)SystemBuffer,
+                                             &BufferLength);
             break;
         case FileNameInformation:
             Status = GetFileNameInformation(FileCB,
-                                            SystemBuffer,
-                                            BufferLength);
+                                            (PFILE_NAME_INFORMATION)SystemBuffer,
+                                            &BufferLength);
             DPRINT1("Buffer Contents: \"%S\", Length: %ld\n", ((PFILE_NAME_INFORMATION)SystemBuffer)->FileName, ((PFILE_NAME_INFORMATION)SystemBuffer)->FileNameLength);
             break;
         default:
             DPRINT1("Unhandled File Information Request %d!\n", FileInfoRequest);
-            Status = STATUS_NOT_IMPLEMENTED;
+            Status = STATUS_INVALID_DEVICE_REQUEST;
             break;
     }
+
+    Status = STATUS_INVALID_DEVICE_REQUEST;
 
     if (NT_SUCCESS(Status))
         Irp->IoStatus.Information =
@@ -169,6 +157,7 @@ NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             Status = STATUS_NOT_IMPLEMENTED;
     }
 #endif
+    DPRINT1("NtfsFsdSetInformation Called!\n");
     return 0;
 }
 
@@ -190,44 +179,4 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     DPRINT1("Called NtfsFsdDirectoryControl() which is a STUB!\n");
     return STATUS_NOT_IMPLEMENTED;
-}
-
-NTSTATUS
-NTAPI
-GetFileNameInformation(_In_ PFileContextBlock FileCB,
-                       _Out_ PVOID Buffer,
-                       _In_ ULONG Length)
-{
-    PFILE_NAME_INFORMATION FileNameInfo = (PFILE_NAME_INFORMATION)Buffer;
-
-    if (Length < sizeof(FILE_NAME_INFORMATION))
-        return STATUS_BUFFER_TOO_SMALL;
-
-    // Make something up for now.
-    FileNameInfo->FileNameLength = 10;
-    RtlCopyMemory(FileNameInfo->FileName, L"h3ll0", 10);
-    DPRINT1("Copied name! \"%S\", Length: %ld\n", ((PFILE_NAME_INFORMATION)Buffer)->FileName, ((PFILE_NAME_INFORMATION)Buffer)->FileNameLength);
-
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS
-NTAPI
-GetFileBasicInformation(_In_ PFileContextBlock FileCB,
-                        _Out_ PVOID Buffer,
-                        _In_ ULONG Length)
-{
-    PFILE_BASIC_INFORMATION FileBasicInfo = (PFILE_BASIC_INFORMATION)Buffer;
-
-    if (Length < sizeof(FILE_BASIC_INFORMATION))
-        return STATUS_BUFFER_TOO_SMALL;
-
-    // Make something up for now.
-    FileBasicInfo->CreationTime = {0};
-    FileBasicInfo->LastAccessTime = {0};
-    FileBasicInfo->LastWriteTime = {0};
-    FileBasicInfo->ChangeTime = {0};
-    FileBasicInfo->FileAttributes = FILE_ATTRIBUTE_READONLY;
-
-    return STATUS_SUCCESS;
 }

@@ -35,13 +35,14 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Handle creation or opening of a file, device, directory, or volume.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-create
      */
+    DPRINT1("NtfsFsdCreate Called!\n");
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
     {
         /* DeviceObject represents FileSystem instead of logical volume */
-        DPRINT("Opening file system\n");
+        DPRINT1("Opening file system\n");
         Irp->IoStatus.Information = FILE_OPENED;
         return STATUS_SUCCESS;
     }
-    __debugbreak();
-    return STATUS_SUCCESS;
+    // __debugbreak();
+    return STATUS_INVALID_DEVICE_REQUEST;
 }

@@ -32,15 +32,15 @@ NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     }
 
     DPRINT1("Got Drive Geometry!...\n");
-    /* Check if we are actually NTFS. */
 
-    /* Check bytes per sector. */
+    // Check if we are actually NTFS.
+    // Check bytes per sector.
     if (DiskGeometry.BytesPerSector > 512)
         return STATUS_UNRECOGNIZED_VOLUME;
 
     DPRINT1("Bytes per sector passed!...\n");
 
-    /* Get boot sector information. */
+    // Get boot sector information.
     PartBootSector = new(NonPagedPool) BootSector();
     ReadBlock(DeviceToMount,
               0,
@@ -52,7 +52,7 @@ NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     if (!NT_SUCCESS(Status))
         goto Cleanup;
 
-    /* Check if OEM_ID is "NTFS    ". */
+    // Check if OEM_ID is "NTFS    ".
     if (RtlCompareMemory(PartBootSector->OEM_ID, "NTFS    ", 8) != 8)
     {
         DPRINT1("Failed with NTFS-identifier: [%.8s]\n", PartBootSector->OEM_ID);
@@ -62,7 +62,7 @@ NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 
     DPRINT1("OEM ID is NTFS!...\n");
 
-    /* Check if Reserved0 is NULL. */
+    // Check if Reserved0 is NULL.
     for (i = 0; i < 7; i++)
     {
         if (PartBootSector->Reserved0[i] != 0)
@@ -73,7 +73,7 @@ NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
         }
     }
 
-    /* Check if Reserved3 is NULL. */
+    // Check if Reserved3 is NULL.
     // TODO: Why doesn't this check work?
     /*for (i = 0; i < 7; i++)
     {
@@ -85,7 +85,7 @@ NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
         }
     }*/
 
-    /* Check cluster size. */
+    // Check cluster size.
     ClusterSize = PartBootSector->BytesPerSector * PartBootSector->SectorsPerCluster;
     if (ClusterSize != 512 && ClusterSize != 1024 &&
         ClusterSize != 2048 && ClusterSize != 4096 &&
@@ -102,19 +102,17 @@ NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 
     DPRINT1("Cluster size passed!...\n");
 
-    /* We are NTFS. */
+    // We are NTFS.
     PrintNTFSBootSector(PartBootSector);
 
-    /* Store only the boot sector information we need in memory. */
+    // Store only the boot sector information we need in memory.
     RtlCopyMemory(&BytesPerSector,
                   &PartBootSector->BytesPerSector,
                   sizeof(UINT16));
     RtlCopyMemory(&SectorsPerCluster,
                   &PartBootSector->SectorsPerCluster,
                   sizeof(UINT8));
-    RtlCopyMemory(&SectorsInVolume,
-                  &PartBootSector->SectorsInVolume,
-                  sizeof(UINT64));
+    ClustersInVolume = (PartBootSector->SectorsInVolume) / (PartBootSector->SectorsPerCluster);
     RtlCopyMemory(&MFTLCN,
                   &PartBootSector->MFTLCN,
                   sizeof(UINT64));
@@ -191,31 +189,13 @@ Cleanup:
 
 /* SEPARATING OUT FOR SANITY */
 
-void strcpy2(char* destination,
-    UCHAR* source,
-    unsigned int start,
-    unsigned int length)
-{
-    for (int i = 0; i < length; i++)
-        destination[i] = source[i + start];
-    destination[length] = 0;
-}
-
 void
 NtfsPartition::RunSanityChecks()
 {
     PAGED_CODE();
 
-    WCHAR VolumeName[128];
-    USHORT VolNameLen = 0;
-
     DPRINT1("RunSanityChecks() called\n");
-
-    DPRINT1("Getting Volume Label...\n");
-
-    this->GetVolumeLabel(VolumeName, VolNameLen);
-
-    DPRINT1("Volume Label is: \"%S\"\nLength: %d\n", VolumeName, VolNameLen);
+    DPRINT1("I don't have anything for now...\n");
 }
 
 NtfsPartition::~NtfsPartition()

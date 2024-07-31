@@ -6,28 +6,19 @@
  *              Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
  */
 
-
 /* INCLUDES *****************************************************************/
-
-#include "ntfsprocs.h"
+#include "vol.h"
 #define NDEBUG
 #include <debug.h>
 
 /* GLOBALS *****************************************************************/
-
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, NtfsFsdQueryVolumeInformation)
 #pragma alloc_text(PAGE, NtfsFsdSetVolumeInformation)
 #pragma alloc_text(PAGE, NtfsMountVolume)
 #endif
-extern NPAGED_LOOKASIDE_LIST FileCBLookasideList;
-// #define FCB_IS_VOLUME_STREAM    0x0002
-
-//TODO:
-extern PDRIVER_OBJECT NtfsDriverObject;
 
 /* FUNCTIONS ****************************************************************/
-
 _Function_class_(IRP_MJ_QUERY_VOLUME_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -40,11 +31,56 @@ NtfsFsdQueryVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Returns file system information.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-query-volume-information
      */
-    DPRINT1("TODO: NtfsFsdQueryVolumeInformation() called\n");
-    Irp->IoStatus.Information = 0;
-    IoSkipCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IoStack;
+    FS_INFORMATION_CLASS FSInfoRequest;
+    PVolumeContextBlock VolCB;
+    NTSTATUS Status;
+    PVOID SystemBuffer;
+    ULONG BufferLength;
 
-    return 0;
+    IoStack = IoGetCurrentIrpStackLocation(Irp);
+    FSInfoRequest = IoStack->Parameters.QueryVolume.FsInformationClass;
+    VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
+    SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+    BufferLength = IoStack->Parameters.QueryFile.Length;
+
+    switch (FSInfoRequest)
+    {
+        case FileFsVolumeInformation:
+            Status = NtfsGetVolumeInformation(VolumeDeviceObject,
+                                              (PFILE_FS_VOLUME_INFORMATION)SystemBuffer,
+                                              &BufferLength);
+            break;
+        case FileFsSizeInformation:
+            Status = NtfsGetSizeInfo(VolumeDeviceObject,
+                                     (PFILE_FS_SIZE_INFORMATION)SystemBuffer,
+                                     &BufferLength);
+            break;
+        case FileFsAttributeInformation:
+            Status = NtfsGetAttributeInfo((PFILE_FS_ATTRIBUTE_INFORMATION)SystemBuffer,
+                                          &BufferLength);
+            break;
+        case FileFsControlInformation:
+        case FileFsDeviceInformation:
+        case FileFsDriverPathInformation:
+        case FileFsFullSizeInformation:
+        case FileFsObjectIdInformation:
+        /* Used in Windows 7+
+         * case FileFsSectorSizeInformation:
+         */
+        default:
+            DPRINT1("Unhandled File System Information Request %d!\n", FSInfoRequest);
+            Status = STATUS_NOT_IMPLEMENTED;
+            break;
+    }
+
+    if (NT_SUCCESS(Status))
+        Irp->IoStatus.Information =
+            IoStack->Parameters.QueryFile.Length - BufferLength;
+    else
+        Irp->IoStatus.Information = 0;
+
+    return Status;
 }
 
 _Function_class_(IRP_MJ_SET_VOLUME_INFORMATION)
@@ -118,6 +154,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     NTSTATUS Status;
     PVolumeContextBlock VolCB;
     PFileContextBlock FileCB;
+    LARGE_INTEGER FilesystemSize;
 
     /* The function here returns, but it's not an error.
      * We're a boot driver, NT will try every possible filesystem.
@@ -197,9 +234,11 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     DPRINT1("FileContextBlock created!\n");
 
     // Set file system size information.
-    FileCB->RFCB.FileSize.QuadPart = NtfsPart->SectorsInVolume * NtfsPart->BytesPerSector;
-    FileCB->RFCB.ValidDataLength.QuadPart = NtfsPart->SectorsInVolume * NtfsPart->BytesPerSector;
-    FileCB->RFCB.AllocationSize.QuadPart = NtfsPart->SectorsInVolume * NtfsPart->BytesPerSector;
+    FilesystemSize.QuadPart = NtfsPart->ClustersInVolume * NtfsPart->SectorsPerCluster * NtfsPart->BytesPerSector;
+
+    FileCB->RFCB.FileSize = FilesystemSize;
+    FileCB->RFCB.ValidDataLength = FilesystemSize;
+    FileCB->RFCB.AllocationSize = FilesystemSize;
 
     DPRINT1("FileContextBlock updated!\n");
 
