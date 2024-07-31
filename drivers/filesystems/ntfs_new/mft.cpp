@@ -6,28 +6,23 @@
 
 /* *** MFT IMPLEMENTATIONS *** */
 
+UCHAR FileRecordBuffer[0x100000];
+
 MFT::MFT(_In_ PNtfsPartition ParentPartition)
 {
     NtfsPart = ParentPartition;
 
-    /* Get MFT Sector Offset. */
+    // Get MFT Sector Offset.
     MFTOffset = NtfsPart->MFTLCN * NtfsPart->SectorsPerCluster;
 
-    /* Get File Record Size (Bytes). */
-    if (NtfsPart->ClustersPerFileRecord > 0)
-    {
-        // File record size is ClustersPerFileRecord * SectorsPerCluster * BytesPerSector
-        FileRecordSize = NtfsPart->ClustersPerFileRecord * NtfsPart->SectorsPerCluster * NtfsPart->BytesPerSector;
-    }
-
-    else
-    {
-        // File record size is 2^(-ClustersPerFileRecord)
-        FileRecordSize = 1 << (-(NtfsPart->ClustersPerFileRecord));
-    }
+    /* Get File Record Size (Bytes).
+     * If clusters per file record is less than 0, the file record size is 2^(-ClustersPerFileRecord).
+     * Otherwise, the file record size is ClustersPerFileRecord * SectorsPerCluster * BytesPerSector.
+     */
+    FileRecordSize = NtfsPart->ClustersPerFileRecord < 0 ?
+                     1 << (-(NtfsPart->ClustersPerFileRecord)) :
+                     NtfsPart->ClustersPerFileRecord * NtfsPart->SectorsPerCluster * NtfsPart->BytesPerSector;
 }
-
-UCHAR FileRecordBuffer[0x100000];
 
 NTSTATUS
 MFT::GetFileRecord(_In_  ULONGLONG FileRecordNumber,

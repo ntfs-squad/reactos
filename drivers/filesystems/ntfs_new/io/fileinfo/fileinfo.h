@@ -16,7 +16,7 @@ GetFileBasicInformation(_In_ PFileContextBlock FileCB,
 {
     size_t FileInfoSize = sizeof(FILE_BASIC_INFORMATION);
 
-    DPRINT1("Geting file basic information...\n");
+    DPRINT1("Getting file basic information...\n");
 
     if (*Length < FileInfoSize)
         return STATUS_BUFFER_TOO_SMALL;
@@ -31,9 +31,9 @@ GetFileBasicInformation(_In_ PFileContextBlock FileCB,
     Buffer->ChangeTime.QuadPart = 1;
     Buffer->FileAttributes = FILE_ATTRIBUTE_NORMAL;
 
-    *Length = FileInfoSize;
+    *Length -= FileInfoSize;
 
-    return STATUS_NOT_IMPLEMENTED;
+    return STATUS_SUCCESS;
 }
 
 static
@@ -42,37 +42,38 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
                        _Out_ PFILE_NAME_INFORMATION Buffer,
                        _Inout_ PULONG Length)
 {
-    DPRINT1("Getting File Name Information...\n");
     ULONG BytesToCopy;
-    size_t FileNameInfoHeaderSize = sizeof(FILE_NAME_INFORMATION);
+    size_t FileNameInfoSize = sizeof(FILE_NAME_INFORMATION);
+
+    DPRINT1("Getting File Name Information...\n");
+
+    // If buffer can't hold the File Name Information struct, fail.
+    if (*Length < FileNameInfoSize)
+        return STATUS_BUFFER_TOO_SMALL;
 
     // This is a hack to see where this shows up.
     WCHAR PathName[16] = L"Hello World.bin";
     UNREFERENCED_PARAMETER(FileCB);
 
-    // If buffer can't hold the File Name Information struct, fail.
-    if (*Length < FileNameInfoHeaderSize)
-        return STATUS_BUFFER_TOO_SMALL;
-
     // Save file name length, and as much file len, as buffer length allows.
     Buffer->FileNameLength = wcslen(PathName) * sizeof(WCHAR);
 
     // Calculate amount of bytes to copy not to overflow the buffer.
-    if (*Length < Buffer->FileNameLength + FileNameInfoHeaderSize)
+    if (*Length < Buffer->FileNameLength + FileNameInfoSize)
     {
-        BytesToCopy = *Length - FileNameInfoHeaderSize;
-        // Fill buffer.
+        // The buffer isn't big enough. Fill what you can.
+        BytesToCopy = *Length - FileNameInfoSize;
         RtlCopyMemory(Buffer->FileName, PathName, BytesToCopy);
+        *Length = 0;
         return STATUS_BUFFER_OVERFLOW;
     }
 
     else
     {
+        // The buffer is big enough. Fill with file name.
         BytesToCopy = Buffer->FileNameLength;
-        // Fill buffer.
         RtlCopyMemory(Buffer->FileName, PathName, BytesToCopy);
-        // We filled up as many bytes, as needed.
-        *Length = FileNameInfoHeaderSize + BytesToCopy;
+        *Length -= FileNameInfoSize + BytesToCopy;
         return STATUS_SUCCESS;
     }
 }
