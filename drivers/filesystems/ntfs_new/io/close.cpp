@@ -21,6 +21,7 @@
 #endif
 
 /* FUNCTIONS ****************************************************************/
+extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 
 _Function_class_(IRP_MJ_CLOSE)
 _Function_class_(DRIVER_DISPATCH)
@@ -37,10 +38,18 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      */
 
     // TODO: make this actually work
-    UNREFERENCED_PARAMETER(VolumeDeviceObject);
-    UNREFERENCED_PARAMETER(Irp);
-
     DPRINT1("Called NtfsFsdClose() which is a STUB!\n");
-    __debugbreak();
+
+    if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
+    {
+        /* DeviceObject represents FileSystem */
+        DPRINT1("Closing file system!\n");
+        Irp->IoStatus.Information = STATUS_SUCCESS;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_SUCCESS;
+    }
+
+    DPRINT1("Asked to close a file!\n");
+    // __debugbreak();
     return STATUS_SUCCESS;
 }
