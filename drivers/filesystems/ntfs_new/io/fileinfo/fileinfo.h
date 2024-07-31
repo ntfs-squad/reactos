@@ -15,6 +15,7 @@ GetFileBasicInformation(_In_ PFileContextBlock FileCB,
                         _Out_ PFILE_BASIC_INFORMATION Buffer,
                         _Inout_ PULONG Length)
 {
+#if 0
     size_t FileInfoSize = sizeof(FILE_BASIC_INFORMATION);
 
     DPRINT1("Getting file basic information...\n");
@@ -35,6 +36,12 @@ GetFileBasicInformation(_In_ PFileContextBlock FileCB,
     *Length -= FileInfoSize;
 
     return STATUS_SUCCESS;
+#else
+    UNREFERENCED_PARAMETER(FileCB);
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(Length);
+    return STATUS_NOT_IMPLEMENTED;
+#endif
 }
 
 static
@@ -52,9 +59,9 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
     if (*Length < FileNameInfoSize)
         return STATUS_BUFFER_TOO_SMALL;
 
-    // This is a hack to see where this shows up.
-    WCHAR PathName[16] = L"Hello World.bin";
+    // Hack to get drive properties to work
     UNREFERENCED_PARAMETER(FileCB);
+    WCHAR PathName[4] = L"D:\\";
 
     // Save file name length, and as much file len, as buffer length allows.
     Buffer->FileNameLength = wcslen(PathName) * sizeof(WCHAR);

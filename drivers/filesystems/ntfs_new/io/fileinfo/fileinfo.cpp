@@ -75,8 +75,6 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             break;
     }
 
-    Status = STATUS_INVALID_DEVICE_REQUEST;
-
     if (NT_SUCCESS(Status))
         Irp->IoStatus.Information =
             IoStack->Parameters.QueryFile.Length - BufferLength;
