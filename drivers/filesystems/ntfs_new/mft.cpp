@@ -63,75 +63,80 @@ FileRecord::LoadData(_In_ PUCHAR FileRecordData,
 
 /* Find Attribute Functions */
 
-NTSTATUS
-FileRecord::FindAttribute(_In_ AttributeType Type,
-                          _Out_ PCWSTR Name,
-                          _Out_ IAttribute* Attr,
-                          _Out_ PUCHAR Data)
+PIAttribute
+FileRecord::FindAttributePointer(_In_ AttributeType Type,
+                                 _In_ PCWSTR Name)
 {
     ULONG AttrDataPointer = 0;
+    PIAttribute TestAttr;
 
     DPRINT1("Attribute Length: %d\n", AttrLength);
 
     while (AttrDataPointer < AttrLength)
     {
-        // Get Attribute Header
-        RtlCopyMemory(Attr,
-                      &AttrData[AttrDataPointer],
-                      sizeof(IAttribute));
+        // Test current attribute
+        TestAttr = (PIAttribute)(&AttrData[AttrDataPointer]);
+        PrintAttributeHeader(TestAttr);
 
-        PrintAttributeHeader(Attr);
-
-        if (Attr->AttributeType == Type)
+        if (TestAttr->AttributeType == Type)
         {
-            DPRINT1("Found attribute!\n");
+            DPRINT1("Found attribute type!\n");
 
-            // Copy to correct attribute header
-            // Check if Non Resident
-            if (Attr->NonResidentFlag)
-            {
-                RtlCopyMemory(Attr,
-                              &AttrData[AttrDataPointer],
-                              sizeof(NonResidentAttribute));
-            }
+            // TODO: Search by attribute name.
+            if (Name)
+                continue;
 
-            // File is resident
-            else
-            {
-                RtlCopyMemory(Attr,
-                              &AttrData[AttrDataPointer],
-                              sizeof(ResidentAttribute));
-
-                 // Get attribute data if resident and data is not null
-                if (Data)
-                {
-                    RtlCopyMemory(Data,
-                                  &AttrData[AttrDataPointer + ((ResidentAttribute*)Attr)->AttributeOffset],
-                                  ((ResidentAttribute*)Attr)->AttributeLength);
-                }
-            }
-
-            // Get name, if applicable.
-            if (Name && Attr->NameLength)
-            {
-                RtlCopyMemory(&Name,
-                              &AttrData[AttrDataPointer + Attr->NameOffset],
-                              Attr->NameLength);
-            }
-
-            return STATUS_SUCCESS;
+            return (PIAttribute)&AttrData[AttrDataPointer];
         }
 
         else
         {
-            // Wrong attribute, go to the next one.
-            if (!Attr->Length)
-                return STATUS_UNSUCCESSFUL;
+            // If the test attribute is 0 length, we are done.
+            if (!TestAttr->Length)
+                return NULL;
 
-            AttrDataPointer += Attr->Length;
+            AttrDataPointer += TestAttr->Length;
+
             DPRINT1("Trying next attribute!\n");
         }
     }
 
-    return STATUS_NOT_FOUND;
+    return NULL;
+}
+
+NTSTATUS
+FileRecord::GetAttribute(_In_ AttributeType Type,
+                         _Out_ IAttribute* Attr,
+                         _Out_ PUCHAR Data)
+{
+    PIAttribute TestAttr = FindAttributePointer(Type, NULL);
+    DPRINT1("Finished searching for attribute pointer...\n");
+
+    if (!TestAttr)
+        return STATUS_NOT_FOUND;
+
+    if (TestAttr->NonResidentFlag)
+    {
+        RtlCopyMemory(Attr,
+                      TestAttr,
+                      sizeof(NonResidentAttribute));
+    }
+
+    else
+    {
+        RtlCopyMemory(Attr,
+                      TestAttr,
+                      sizeof(ResidentAttribute));
+
+        // Get attribute data if resident and data is not null
+        if (Data)
+        {
+            ResidentAttribute* AttrSrc = (ResidentAttribute*)TestAttr;
+            RtlCopyMemory(Data,
+                          (char*)TestAttr + AttrSrc->AttributeOffset,
+                          AttrSrc->AttributeLength);
+        }
+    }
+
+    return STATUS_SUCCESS;
 }

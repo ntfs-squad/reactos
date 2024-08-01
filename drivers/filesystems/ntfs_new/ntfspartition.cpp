@@ -151,8 +151,8 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
 }
 
 NTSTATUS
-NtfsPartition::GetVolumeLabel(_In_ PWSTR VolumeLabel,
-                              _In_ USHORT& Length)
+NtfsPartition::GetVolumeLabel(_Out_ PWSTR VolumeLabel,
+                              _Out_ USHORT& Length)
 {
     NTSTATUS Status;
     FileRecord* VolumeFileRecord;
@@ -164,24 +164,58 @@ NtfsPartition::GetVolumeLabel(_In_ PWSTR VolumeLabel,
     Status = VolMFT->GetFileRecord(_Volume, VolumeFileRecord);
 
     if (Status != STATUS_SUCCESS)
-        goto Cleanup;
+        goto cleanup;
 
-    Status = VolumeFileRecord->FindAttribute(VolumeName,
-                                             NULL,
-                                             VolumeNameAttr,
-                                             (PUCHAR)VolumeLabel);
+    Status = VolumeFileRecord->GetAttribute(VolumeName,
+                                            VolumeNameAttr,
+                                            (PUCHAR)VolumeLabel);
 
     if (Status != STATUS_SUCCESS)
-        goto Cleanup;
+        goto cleanup;
 
     // Add null-terminator
     VolumeLabel[VolumeNameAttr->AttributeLength / sizeof(WCHAR)] = '\0';
 
     Length = VolumeNameAttr->AttributeLength;
 
-Cleanup:
+cleanup:
     delete VolumeFileRecord;
     delete VolumeNameAttr;
+    return Status;
+}
+
+NTSTATUS
+NtfsPartition::GetFreeClusters(_Out_ PULONG FreeClusters)
+{
+    NTSTATUS Status;
+    FileRecord* BitmapFileRecord;
+    // Note: $Bitmap is *always* non-resident when created in Windows.
+    NonResidentAttribute* BitmapAttr;
+
+    BitmapFileRecord = new(NonPagedPool) FileRecord();
+    BitmapAttr = new(NonPagedPool) NonResidentAttribute();
+
+    Status = VolMFT->GetFileRecord(_Bitmap, BitmapFileRecord);
+
+    if (Status != STATUS_SUCCESS)
+        goto cleanup;
+
+    /*Status = BitmapFileRecord->FindAttribute(Data,
+                                             NULL,
+                                             VolumeNameAttr,
+                                             (PUCHAR)VolumeLabel);
+
+    if (Status != STATUS_SUCCESS)
+        goto cleanup;
+
+    // Add null-terminator
+    VolumeLabel[VolumeNameAttr->AttributeLength / sizeof(WCHAR)] = '\0';
+
+    Length = VolumeNameAttr->AttributeLength;*/
+
+cleanup:
+    delete BitmapFileRecord;
+    delete BitmapAttr;
     return Status;
 }
 

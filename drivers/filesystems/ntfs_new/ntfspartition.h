@@ -53,12 +53,13 @@ public:
 
     ~NtfsPartition();
     NTSTATUS LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount);
-    void CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject);
+    void     CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject);
     NTSTATUS DumpBlocks(_Inout_ PUCHAR Buffer,
                         _In_    ULONG Lba,
                         _In_    ULONG LbaCount);
     NTSTATUS GetVolumeLabel(_In_ PWSTR VolumeLabel,
                             _In_ USHORT& Length);
+    NTSTATUS GetFreeClusters(_Out_ PULONG FreeClusters);
     void RunSanityChecks();
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
