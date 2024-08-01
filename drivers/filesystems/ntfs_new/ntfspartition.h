@@ -57,8 +57,8 @@ public:
     NTSTATUS DumpBlocks(_Inout_ PUCHAR Buffer,
                         _In_    ULONG Lba,
                         _In_    ULONG LbaCount);
-    NTSTATUS GetVolumeLabel(_In_ PWSTR VolumeLabel,
-                            _In_ USHORT& Length);
+    NTSTATUS GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
+                            _Inout_ PUSHORT Length);
     NTSTATUS GetFreeClusters(_Out_ PULONG FreeClusters);
     void RunSanityChecks();
     PFILE_OBJECT PubFileObject;

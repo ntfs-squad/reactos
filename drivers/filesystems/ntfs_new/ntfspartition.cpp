@@ -151,36 +151,50 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
 }
 
 NTSTATUS
-NtfsPartition::GetVolumeLabel(_Out_ PWSTR VolumeLabel,
-                              _Out_ USHORT& Length)
+NtfsPartition::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
+                              _Inout_ PUSHORT Length)
 {
     NTSTATUS Status;
     FileRecord* VolumeFileRecord;
     ResidentAttribute* VolumeNameAttr;
+    UINT32 AttrLength;
 
+    // Allocate memory for $Volume file record.
     VolumeFileRecord = new(NonPagedPool) FileRecord();
-    VolumeNameAttr = new(NonPagedPool) ResidentAttribute();
 
+    // Retrieve file record.
     Status = VolMFT->GetFileRecord(_Volume, VolumeFileRecord);
 
+    // Clean up if failed.
     if (Status != STATUS_SUCCESS)
         goto cleanup;
 
-    Status = VolumeFileRecord->GetAttribute(VolumeName,
-                                            VolumeNameAttr,
-                                            (PUCHAR)VolumeLabel);
+    // Get pointer for the VolumeName attribute.
+    VolumeNameAttr = (ResidentAttribute*)VolumeFileRecord->FindAttributePointer(VolumeName, NULL);
 
-    if (Status != STATUS_SUCCESS)
+    if (!VolumeNameAttr)
+    {
+        // We didn't find the attribute. Abort.
+        Status = STATUS_NOT_FOUND;
         goto cleanup;
+    }
 
-    // Add null-terminator
-    VolumeLabel[VolumeNameAttr->AttributeLength / sizeof(WCHAR)] = '\0';
+    AttrLength = VolumeNameAttr->AttributeLength;
 
-    Length = VolumeNameAttr->AttributeLength;
+    // Copy volume name into VolumeLabel.
+    RtlCopyMemory(VolumeLabel,
+                  (char*)VolumeNameAttr + VolumeNameAttr->AttributeOffset,
+                  AttrLength);
+
+    // Add null-terminator.
+    VolumeLabel[AttrLength / sizeof(WCHAR)] = '\0';
+
+    // Set length to attribute length.
+    *Length = AttrLength;
 
 cleanup:
+    // Free memory allocated to VolumeFileRecord.
     delete VolumeFileRecord;
-    delete VolumeNameAttr;
     return Status;
 }
 
