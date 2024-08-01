@@ -71,10 +71,12 @@ class FileRecord
 {
 public:
     NTSTATUS LoadData(PUCHAR FileRecordData, unsigned Length);
-    NTSTATUS FindAttribute(_In_ AttributeType Type,
-                           _Out_ PCWSTR Name,
-                           _Out_ IAttribute* Attr,
-                           _Out_ PUCHAR Data);
+    // May be deprecated soon...
+    NTSTATUS GetAttribute(_In_ AttributeType Type,
+                          _Out_ IAttribute* Attr,
+                          _Out_ PUCHAR Data);
+    PIAttribute FindAttributePointer(_In_ AttributeType Type,
+                                     _In_ PCWSTR Name);
 private:
     FileRecordHeader *Header;
     UCHAR AttrData[0x1000]; //TODO: Figure out proper size

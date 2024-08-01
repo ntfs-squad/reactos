@@ -1,4 +1,6 @@
 #include "../ntfsprocs.h"
+#define NDEBUG
+#include <debug.h>
 
 extern NPAGED_LOOKASIDE_LIST FileCBLookasideList;
 //TODO:
@@ -78,4 +80,24 @@ NtfsGetAttributeInfo(PFILE_FS_ATTRIBUTE_INFORMATION Buffer,
     *Length -= BytesToWrite;
 
     return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
+                   _In_ PFILE_FS_LABEL_INFORMATION NewLabel,
+                   _In_ PULONG Length)
+{
+    PNtfsPartition Partition;
+
+    Partition = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->PartitionObj;
+
+    if (!Partition || !NewLabel)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    // TODO: Implement.
+    DPRINT1("Old volume label: \"%S\". Length: %ld\n", DeviceObject->Vpb->VolumeLabel, DeviceObject->Vpb->VolumeLabelLength);
+    DPRINT1("Requested new volume label: \"%S\". Length: %ld\n", NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
+
+    return STATUS_NOT_IMPLEMENTED;
 }

@@ -8,8 +8,6 @@
 
 /* INCLUDES *****************************************************************/
 #include "vol.h"
-#define NDEBUG
-#include <debug.h>
 
 /* GLOBALS *****************************************************************/
 #ifdef ALLOC_PRAGMA
@@ -96,11 +94,41 @@ NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-set-volume-information
      */
 
-    DPRINT("NtfsFsdSetVolumeInformation() called\n");
-    Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
-    Irp->IoStatus.Information = 0;
+    PIO_STACK_LOCATION IoStack;
+    FS_INFORMATION_CLASS FSInfoRequest;
+    PVolumeContextBlock VolCB;
+    NTSTATUS Status;
+    PVOID SystemBuffer;
+    ULONG BufferLength;
 
-    return STATUS_NOT_SUPPORTED;
+    IoStack = IoGetCurrentIrpStackLocation(Irp);
+    FSInfoRequest = IoStack->Parameters.QueryVolume.FsInformationClass;
+    VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
+    SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+    BufferLength = IoStack->Parameters.QueryFile.Length;
+
+    switch (FSInfoRequest)
+    {
+        case FileFsLabelInformation:
+            Status = NtfsSetVolumeLabel(VolumeDeviceObject,
+                                        (PFILE_FS_LABEL_INFORMATION)SystemBuffer,
+                                        &BufferLength);
+            break;
+        case FileFsControlInformation:
+        case FileFsObjectIdInformation:
+        default:
+            DPRINT1("Unhandled File System Set Information Request %d!\n", FSInfoRequest);
+            Status = STATUS_NOT_IMPLEMENTED;
+            break;
+    }
+
+    if (NT_SUCCESS(Status))
+        Irp->IoStatus.Information =
+            IoStack->Parameters.QueryFile.Length - BufferLength;
+    else
+        Irp->IoStatus.Information = 0;
+
+    return Status;
 }
 
 NTSTATUS

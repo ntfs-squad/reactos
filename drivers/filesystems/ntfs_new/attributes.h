@@ -58,7 +58,7 @@ struct IndexNodeHeader
     UCHAR  Padding[3];      // Offset 0x0D, Size 3
 };
 
-struct IAttribute
+typedef struct
 {
     UINT32 AttributeType;             // Offset 0x00, Size 4
     UINT32 Length;                    // Offset 0x04, Size 4
@@ -67,7 +67,7 @@ struct IAttribute
     UINT16 NameOffset;                // Offset 0x0A, Size 2
     UINT16 Flags;                     // Offset 0x0C, Size 2
     UINT16 AttributeID;               // Offset 0x0E, Size 2
-};
+} IAttribute, *PIAttribute;
 
 struct ResidentAttribute : IAttribute
 {

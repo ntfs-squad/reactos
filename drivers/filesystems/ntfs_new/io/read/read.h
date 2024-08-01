@@ -48,7 +48,7 @@ ReadFile(_In_ PIO_STACK_LOCATION IoStack,
     StdInfoAttrEx = new(NonPagedPool) StandardInformationEx();
 
     // Get standard information for file.
-    FileCB->FileRec->FindAttribute(StandardInformation, NULL, StdInfoAttr, (PUCHAR)StdInfoAttrEx);
+    FileCB->FileRec->GetAttribute(StandardInformation, StdInfoAttr, (PUCHAR)StdInfoAttrEx);
 
     // Check if file is compressed.
     if (StdInfoAttrEx->FilePermissions & FILE_PERM_COMPRESSED)
@@ -67,7 +67,7 @@ ReadFile(_In_ PIO_STACK_LOCATION IoStack,
     }
 
     // TODO: COMPLETE!!!
-    Status = FileCB->FileRec->FindAttribute(Data, NULL, NULL, (PUCHAR)Buffer);
+    Status = FileCB->FileRec->GetAttribute(Data, NULL, (PUCHAR)Buffer);
 
 cleanup:
     if (StdInfoAttr)
