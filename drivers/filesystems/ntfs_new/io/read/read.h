@@ -34,21 +34,18 @@ ReadFile(_In_ PIO_STACK_LOCATION IoStack,
 
     DPRINT1("File Context Block found!\n");
 
-    if (!FileCB)
+    if (!FileCB || !FileCB->FileRec)
+    {
+        // If there is no file record, we can't find the file.
         DPRINT1("File context block is invalid!\n");
-
-    // If there is no file record, we can't find the file.
-    if (!FileCB->FileRec)
         return STATUS_FILE_NOT_AVAILABLE;
+    }
 
     DPRINT1("File record found!\n");
 
-    // Initialize variables.
-    StdInfoAttr = new(NonPagedPool) ResidentAttribute();
-    StdInfoAttrEx = new(NonPagedPool) StandardInformationEx();
-
     // Get standard information for file.
-    FileCB->FileRec->GetAttribute(StandardInformation, StdInfoAttr, (PUCHAR)StdInfoAttrEx);
+    StdInfoAttr = (ResidentAttribute*)(FileCB->FileRec->FindAttributePointer(StandardInformation, NULL));
+    StdInfoAttrEx = (StandardInformationEx*)((char*)StdInfoAttr + StdInfoAttr->AttributeOffset);
 
     // Check if file is compressed.
     if (StdInfoAttrEx->FilePermissions & FILE_PERM_COMPRESSED)
@@ -67,12 +64,8 @@ ReadFile(_In_ PIO_STACK_LOCATION IoStack,
     }
 
     // TODO: COMPLETE!!!
-    Status = FileCB->FileRec->GetAttribute(Data, NULL, (PUCHAR)Buffer);
+    // Status = FileCB->FileRec->GetAttribute(Data, NULL, (PUCHAR)Buffer);
 
 cleanup:
-    if (StdInfoAttr)
-        delete StdInfoAttr;
-    if (StdInfoAttrEx)
-        delete StdInfoAttrEx;
     return Status;
 }

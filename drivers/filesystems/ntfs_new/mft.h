@@ -71,10 +71,6 @@ class FileRecord
 {
 public:
     NTSTATUS LoadData(PUCHAR FileRecordData, unsigned Length);
-    // May be deprecated soon...
-    NTSTATUS GetAttribute(_In_ AttributeType Type,
-                          _Out_ IAttribute* Attr,
-                          _Out_ PUCHAR Data);
     PIAttribute FindAttributePointer(_In_ AttributeType Type,
                                      _In_ PCWSTR Name);
 private:

@@ -279,7 +279,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
 
     // Get volume label.
     Status = NtfsPart->GetVolumeLabel(FSDeviceObject->Vpb->VolumeLabel,
-                                      FSDeviceObject->Vpb->VolumeLabelLength);
+                                      &FSDeviceObject->Vpb->VolumeLabelLength);
 
     DPRINT1("Volume Label updated!\n");
     DPRINT1("Label: \"%S\", Length: %ld\n",
