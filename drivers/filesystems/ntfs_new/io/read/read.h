@@ -45,7 +45,7 @@ ReadFile(_In_ PIO_STACK_LOCATION IoStack,
 
     // Get standard information for file.
     StdInfoAttr = (ResidentAttribute*)(FileCB->FileRec->FindAttributePointer(StandardInformation, NULL));
-    StdInfoAttrEx = (StandardInformationEx*)((char*)StdInfoAttr + StdInfoAttr->AttributeOffset);
+    StdInfoAttrEx = (StandardInformationEx*)(GetResidentDataPointer(StdInfoAttr));
 
     // Check if file is compressed.
     if (StdInfoAttrEx->FilePermissions & FILE_PERM_COMPRESSED)

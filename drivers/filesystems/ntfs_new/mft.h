@@ -49,6 +49,9 @@ enum FileRecordNumbers
 #define FILE_PERM_NOT_INDXED 0x2000
 #define FILE_PERM_ENCRYPTED  0x4000
 
+/* Macro to get data pointer from a resident attribute pointer. */
+#define GetResidentDataPointer(x) (char*)x + ((ResidentAttribute*)x)->AttributeOffset
+
 struct FileRecordHeader
 {
     UINT32 TypeID;                 // Offset 0x00, Size 4 (Should be 'FILE')
