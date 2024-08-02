@@ -26,6 +26,19 @@ static inline void PrintResidentAttributeHeader(ResidentAttribute* Attr)
     DPRINT1("IndexedFlag:      %ld\n", Attr->IndexedFlag);
 }
 
+static inline void PrintNonResidentAttributeHeader(NonResidentAttribute* Attr)
+{
+    PrintAttributeHeader(Attr);
+
+    DPRINT1("First VCN:                %ld\n", Attr->FirstVCN);
+    DPRINT1("Last VCN:                 %ld\n", Attr->LastVCN);
+    DPRINT1("Data Run Offset:          %ld\n", Attr->DataRunsOffset);
+    DPRINT1("Compression Unit Size:    %ld\n", Attr->CompressionUnitSize);
+    DPRINT1("Allocated Attribute Size: %ld\n", Attr->AllocatedAttributeSize);
+    DPRINT1("Actual Attribute Size:    %ld\n", Attr->ActualAttributeSize);
+    DPRINT1("Initialized Data Size:    %ld\n", Attr->InitalizedDataSize);
+}
+
 static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
 {
     DPRINT1("FileCreation: %ld\n", Attr->FileCreation);

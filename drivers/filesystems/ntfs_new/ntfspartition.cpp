@@ -193,44 +193,55 @@ NtfsPartition::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
     *Length = AttrLength;
 
 cleanup:
-    // Free memory allocated to VolumeFileRecord.
     delete VolumeFileRecord;
     return Status;
 }
 
 NTSTATUS
-NtfsPartition::GetFreeClusters(_Out_ PULONG FreeClusters)
+NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 {
+    // Note: $Bitmap is *always* non-resident on Windows.
     NTSTATUS Status;
     FileRecord* BitmapFileRecord;
-    // Note: $Bitmap is *always* non-resident when created in Windows.
     NonResidentAttribute* BitmapAttr;
 
+    DPRINT1("Finding free clusters...\n");
+
     BitmapFileRecord = new(NonPagedPool) FileRecord();
-    BitmapAttr = new(NonPagedPool) NonResidentAttribute();
 
     Status = VolMFT->GetFileRecord(_Bitmap, BitmapFileRecord);
 
     if (Status != STATUS_SUCCESS)
         goto cleanup;
 
-    /*Status = BitmapFileRecord->FindAttribute(Data,
-                                             NULL,
-                                             VolumeNameAttr,
-                                             (PUCHAR)VolumeLabel);
+    DPRINT1("Found it. Looking for Data attribute...\n");
 
-    if (Status != STATUS_SUCCESS)
+    BitmapAttr = (NonResidentAttribute*)(BitmapFileRecord->FindAttributePointer(Data, NULL));
+
+    if (!BitmapAttr)
         goto cleanup;
 
-    // Add null-terminator
-    VolumeLabel[VolumeNameAttr->AttributeLength / sizeof(WCHAR)] = '\0';
+    DPRINT1("Found it. Printing attribute now...\n");
 
-    Length = VolumeNameAttr->AttributeLength;*/
+    PrintNonResidentAttributeHeader(BitmapAttr);
+
+    // Dummy data
+    FreeClusters->QuadPart = 50000;
+
+    /* TODO:
+     * - Read $Bitmap, each bit not set represents one free cluster.
+     * - Free Clusters = Number of cluster bits not set.
+     */
+
+    /*while
+    {
+        // Search next 8 bytes
+        // *FreeClusters += number of 0s.
+    }*/
 
 cleanup:
     delete BitmapFileRecord;
-    delete BitmapAttr;
-    return Status;
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 #include <debug.h>

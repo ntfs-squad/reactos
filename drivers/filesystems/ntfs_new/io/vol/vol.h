@@ -49,8 +49,7 @@ NtfsGetSizeInfo(PDEVICE_OBJECT DeviceObject,
     if (!Partition)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    // TODO: Use real info here. Need clusters free and clusters in volume
-    Buffer->AvailableAllocationUnits.QuadPart = 50000; // # of free clusters
+    Partition->GetFreeClusters(&Buffer->AvailableAllocationUnits); // Set # of free clusters
     Buffer->TotalAllocationUnits.QuadPart = Partition->ClustersInVolume; //# of total clusters
     Buffer->SectorsPerAllocationUnit = Partition->SectorsPerCluster; // Sectors per cluster
     Buffer->BytesPerSector = Partition->BytesPerSector; // Bytes per sector

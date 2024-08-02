@@ -59,7 +59,7 @@ public:
                         _In_    ULONG LbaCount);
     NTSTATUS GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
                             _Inout_ PUSHORT Length);
-    NTSTATUS GetFreeClusters(_Out_ PULONG FreeClusters);
+    NTSTATUS GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
     void RunSanityChecks();
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
