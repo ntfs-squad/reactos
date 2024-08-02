@@ -183,7 +183,7 @@ NtfsPartition::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
 
     // Copy volume name into VolumeLabel.
     RtlCopyMemory(VolumeLabel,
-                  (char*)VolumeNameAttr + VolumeNameAttr->AttributeOffset,
+                  GetResidentDataPointer(VolumeNameAttr),
                   AttrLength);
 
     // Add null-terminator.
