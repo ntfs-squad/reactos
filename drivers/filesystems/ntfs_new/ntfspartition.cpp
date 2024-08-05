@@ -1,8 +1,5 @@
 #include "io/ntfsprocs.h"
-#include <ntdddisk.h>
-#include <debug.h>
 #include "ntfsdbgprint.h"
-#include "filerecord.h"
 
 UCHAR FileRecordBuffer[0x100000]; // TODO: Figure proper size.
 
