@@ -2,8 +2,9 @@
 #include <ntdddisk.h>
 #include <debug.h>
 #include "ntfsdbgprint.h"
-#include "mft.h"
+#include "filerecord.h"
 
+UCHAR FileRecordBuffer[0x100000]; // TODO: Figure proper size.
 
 NTSTATUS
 NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
@@ -119,9 +120,6 @@ NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     RtlCopyMemory(&MFTMirrLCN,
                   &PartBootSector->MFTMirrLCN,
                   sizeof(UINT64));
-    RtlCopyMemory(&ClustersPerFileRecord,
-                  &PartBootSector->ClustersPerFileRecord,
-                  sizeof(INT8));
     RtlCopyMemory(&ClustersPerIndexRecord,
                   &PartBootSector->ClustersPerIndexRecord,
                   sizeof(INT8));
@@ -129,8 +127,13 @@ NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
                   &PartBootSector->SerialNumber,
                   sizeof(UINT64));
 
-    // Load MFT
-    VolMFT = new(NonPagedPool) MFT(this);
+    /* Get File Record Size (Bytes).
+     * If clusters per file record is less than 0, the file record size is 2^(-ClustersPerFileRecord).
+     * Otherwise, the file record size is ClustersPerFileRecord * SectorsPerCluster * BytesPerSector.
+     */
+    FileRecordSize = PartBootSector->ClustersPerFileRecord < 0 ?
+                     1 << (-(PartBootSector->ClustersPerFileRecord)) :
+                     PartBootSector->ClustersPerFileRecord * SectorsPerCluster * BytesPerSector;
 
 Cleanup:
     delete PartBootSector;
@@ -151,6 +154,26 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
 }
 
 NTSTATUS
+NtfsPartition::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
+                             _Out_ FileRecord* File)
+{
+    PAGED_CODE();
+
+    INT FileRecordOffset;
+
+    FileRecordOffset = (FileRecordNumber * FileRecordSize) / BytesPerSector;
+
+    DumpBlocks(FileRecordBuffer,
+               (MFTLCN * SectorsPerCluster) + FileRecordOffset,
+               FileRecordSize / BytesPerSector);
+
+    File->LoadData(FileRecordBuffer,
+                   FileRecordSize);
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
 NtfsPartition::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
                               _Inout_ PUSHORT Length)
 {
@@ -163,7 +186,7 @@ NtfsPartition::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
     VolumeFileRecord = new(NonPagedPool) FileRecord();
 
     // Retrieve file record.
-    Status = VolMFT->GetFileRecord(_Volume, VolumeFileRecord);
+    Status = GetFileRecord(_Volume, VolumeFileRecord);
 
     // Clean up if failed.
     if (Status != STATUS_SUCCESS)
@@ -209,7 +232,7 @@ NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 
     BitmapFileRecord = new(NonPagedPool) FileRecord();
 
-    Status = VolMFT->GetFileRecord(_Bitmap, BitmapFileRecord);
+    Status = GetFileRecord(_Bitmap, BitmapFileRecord);
 
     if (Status != STATUS_SUCCESS)
         goto cleanup;

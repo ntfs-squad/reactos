@@ -21,10 +21,10 @@ ReadFile(_In_ PIO_STACK_LOCATION IoStack,
          _In_ ULONG RequestedLength,
          _Out_ PULONG ReadLength)
 {
-    NTSTATUS Status;
+    // NTSTATUS Status;
     PFileContextBlock FileCB;
-    ResidentAttribute* StdInfoAttr;
-    StandardInformationEx* StdInfoAttrEx;
+    // ResidentAttribute* StdInfoAttr;
+    // StandardInformationEx* StdInfoAttrEx;
 
     // If we aren't reading anything, don't read anything.
     if (!RequestedLength)
@@ -44,11 +44,11 @@ ReadFile(_In_ PIO_STACK_LOCATION IoStack,
     DPRINT1("File record found!\n");
 
     // Get standard information for file.
-    StdInfoAttr = (ResidentAttribute*)(FileCB->FileRec->FindAttributePointer(StandardInformation, NULL));
-    StdInfoAttrEx = (StandardInformationEx*)(GetResidentDataPointer(StdInfoAttr));
+    // StdInfoAttr = (ResidentAttribute*)(FileCB->FileRec->FindAttributePointer(StandardInformation, NULL));
+    // StdInfoAttrEx = (StandardInformationEx*)(GetResidentDataPointer(StdInfoAttr));
 
     // Check if file is compressed.
-    if (StdInfoAttrEx->FilePermissions & FILE_PERM_COMPRESSED)
+    /*if (StdInfoAttrEx->FilePermissions & FILE_PERM_COMPRESSED)
     {
         UNIMPLEMENTED;
         Status = STATUS_NOT_IMPLEMENTED;
@@ -61,11 +61,10 @@ ReadFile(_In_ PIO_STACK_LOCATION IoStack,
         UNIMPLEMENTED;
         Status = STATUS_NOT_IMPLEMENTED;
         goto cleanup;
-    }
+    }*/
 
     // TODO: COMPLETE!!!
     // Status = FileCB->FileRec->GetAttribute(Data, NULL, (PUCHAR)Buffer);
 
-cleanup:
-    return Status;
+    return STATUS_NOT_IMPLEMENTED;
 }

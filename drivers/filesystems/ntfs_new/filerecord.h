@@ -7,8 +7,7 @@
  */
 #pragma once
 
-#include <ntifs.h>
-#include "ntfspartition.h"
+#include "io/ntfsprocs.h"
 #include "attributes.h"
 
 /* NTFS file record numbers */
@@ -80,15 +79,4 @@ private:
     FileRecordHeader *Header;
     UCHAR AttrData[0x1000]; //TODO: Figure out proper size
     ULONG AttrLength;
-};
-
-class MFT
-{
-public:
-    MFT::MFT(_In_ PNtfsPartition ParentPartition);
-    NTSTATUS MFT::GetFileRecord(ULONGLONG FileRecordNumber, FileRecord* File);
-private:
-    NtfsPartition* NtfsPart;
-    UINT MFTOffset;
-    INT FileRecordSize;
 };

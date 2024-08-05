@@ -1,47 +1,7 @@
-#pragma once
 #include "io/ntfsprocs.h"
-#include <debug.h>
-#include "mft.h"
 #include "ntfsdbgprint.h"
-
-/* *** MFT IMPLEMENTATIONS *** */
-
-UCHAR FileRecordBuffer[0x100000];
-
-MFT::MFT(_In_ PNtfsPartition ParentPartition)
-{
-    NtfsPart = ParentPartition;
-
-    // Get MFT Sector Offset.
-    MFTOffset = NtfsPart->MFTLCN * NtfsPart->SectorsPerCluster;
-
-    /* Get File Record Size (Bytes).
-     * If clusters per file record is less than 0, the file record size is 2^(-ClustersPerFileRecord).
-     * Otherwise, the file record size is ClustersPerFileRecord * SectorsPerCluster * BytesPerSector.
-     */
-    FileRecordSize = NtfsPart->ClustersPerFileRecord < 0 ?
-                     1 << (-(NtfsPart->ClustersPerFileRecord)) :
-                     NtfsPart->ClustersPerFileRecord * NtfsPart->SectorsPerCluster * NtfsPart->BytesPerSector;
-}
-
-NTSTATUS
-MFT::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
-                   _Out_ FileRecord* File)
-{
-    PAGED_CODE();
-
-    INT FileRecordOffset;
-
-    FileRecordOffset = (FileRecordNumber * FileRecordSize) / NtfsPart->BytesPerSector;
-
-    NtfsPart->DumpBlocks(FileRecordBuffer,
-                         MFTOffset + FileRecordOffset,
-                         FileRecordSize / NtfsPart->BytesPerSector);
-
-    File->LoadData(FileRecordBuffer,
-                   FileRecordSize);
-    return STATUS_SUCCESS;
-}
+#include "filerecord.h"
+#include "ntfspartition.h"
 
 /* *** FILE RECORD IMPLEMENTATIONS *** */
 
@@ -57,7 +17,7 @@ FileRecord::LoadData(_In_ PUCHAR FileRecordData,
                   &FileRecordData[Header->AttributeOffset],
                   AttrLength);
 
-    PrintFileRecordHeader(Header);
+    // PrintFileRecordHeader(Header);
     return STATUS_SUCCESS;
 }
 
