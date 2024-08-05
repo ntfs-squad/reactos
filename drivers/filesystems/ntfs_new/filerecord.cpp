@@ -1,7 +1,6 @@
 #include "io/ntfsprocs.h"
 #include "ntfsdbgprint.h"
 #include "filerecord.h"
-#include "ntfspartition.h"
 
 /* *** FILE RECORD IMPLEMENTATIONS *** */
 
