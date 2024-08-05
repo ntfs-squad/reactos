@@ -1,5 +1,6 @@
 #include <debug.h>
-#include "mft.h"
+#include "filerecord.h"
+#include "ntfspartition.h"
 
 static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 {

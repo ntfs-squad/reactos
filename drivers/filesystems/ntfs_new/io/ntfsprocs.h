@@ -256,7 +256,7 @@ DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 
-#include "ntfspartition.h"
+#include "../ntfspartition.h"
 
 #endif // _NTFSPROCS_
 

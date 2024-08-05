@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mft.h"
+#include "ntfsprocs.h"
 #include <pshpack1.h>
 #include <poppack.h>
 
@@ -8,6 +8,8 @@
 #define MAX_PATH 260
 #endif //MAX_PATH
 
+class NtfsPartition;
+class FileRecord;
 
 typedef struct
 {

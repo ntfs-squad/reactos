@@ -1,7 +1,5 @@
 #pragma once
 
-class MFT;
-
 #pragma pack(1)
 struct BootSector
 {
@@ -38,7 +36,7 @@ public:
     UINT32 ClustersInVolume;
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;
-    INT8   ClustersPerFileRecord;
+    UINT   FileRecordSize;
     INT8   ClustersPerIndexRecord;
     UINT64 SerialNumber;
 
@@ -49,7 +47,6 @@ public:
     ULONG OpenHandleCount;
 
     PVPB VolParamBlock;
-    MFT* VolMFT;
 
     ~NtfsPartition();
     NTSTATUS LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount);
@@ -57,10 +54,13 @@ public:
     NTSTATUS DumpBlocks(_Inout_ PUCHAR Buffer,
                         _In_    ULONG Lba,
                         _In_    ULONG LbaCount);
+    NTSTATUS GetFileRecord(_In_  ULONGLONG FileRecordNumber,
+                           _Out_ FileRecord* File);
     NTSTATUS GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
                             _Inout_ PUSHORT Length);
     NTSTATUS GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
     void RunSanityChecks();
+
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
 } *PNtfsPartition;
