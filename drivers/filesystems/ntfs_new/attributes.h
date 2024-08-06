@@ -1,5 +1,3 @@
-#include <ntifs.h>
-
 #define ATTR_END 0xFFFFFFFF
 
 /* Attribute flags */

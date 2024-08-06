@@ -5,10 +5,6 @@
  * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
  *              Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
  */
-#pragma once
-
-#include "io/ntfsprocs.h"
-#include "attributes.h"
 
 /* NTFS file record numbers */
 enum FileRecordNumbers
