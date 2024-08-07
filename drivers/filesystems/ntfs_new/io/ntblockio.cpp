@@ -1,5 +1,4 @@
 #include "ntfsprocs.h"
-#include <debug.h>
 
 NTSTATUS
 ReadDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,

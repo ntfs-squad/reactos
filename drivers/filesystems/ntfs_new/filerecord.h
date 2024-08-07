@@ -44,8 +44,16 @@ enum FileRecordNumbers
 #define FILE_PERM_NOT_INDXED 0x2000
 #define FILE_PERM_ENCRYPTED  0x4000
 
-/* Macro to get data pointer from a resident attribute pointer. */
-#define GetResidentDataPointer(x) (char*)x + ((ResidentAttribute*)x)->AttributeOffset
+// Forward declarations for DataRun struct because it's a linked list.
+struct DataRun;
+typedef DataRun* PDataRun;
+
+struct DataRun
+{
+    PDataRun  NextRun;
+    ULONGLONG LCN;
+    ULONGLONG Length;
+};
 
 struct FileRecordHeader
 {
@@ -71,6 +79,7 @@ public:
     NTSTATUS LoadData(PUCHAR FileRecordData, unsigned Length);
     PIAttribute FindAttributePointer(_In_ AttributeType Type,
                                      _In_ PCWSTR Name);
+    PDataRun FindNonResidentData(_In_ NonResidentAttribute* Attr);
 private:
     FileRecordHeader *Header;
     UCHAR AttrData[0x1000]; //TODO: Figure out proper size
