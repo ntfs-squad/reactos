@@ -94,6 +94,12 @@ struct NonResidentAttribute : IAttribute
     UINT64 InitalizedDataSize;     // Offset 0x38, Size 8
 };
 
+/* Macro to get data pointer from a resident attribute pointer. */
+#define GetResidentDataPointer(x) (char*)x + ((ResidentAttribute*)x)->AttributeOffset
+
+/* Macro to free memory from data run. */
+#define FreeDataRun(x) while(x) { PDataRun tmp = ((PDataRun)x)->NextRun; delete x; x = tmp; }
+
 /* $STANDARD_INFORMATION (0x10) */
 #pragma pack(1)
 struct StandardInformationEx

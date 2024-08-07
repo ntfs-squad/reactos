@@ -2,6 +2,15 @@
 
 UCHAR FileRecordBuffer[0x100000]; // TODO: Figure proper size.
 
+// Macros for GetFreeClusters.
+const UINT8 Zeros[16] = { 4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0 };
+#define GetZerosFromNibble(x) Zeros[(UINT8)x]
+#define GetZerosFromByte(x) GetZerosFromNibble(x & 0xF) + GetZerosFromNibble(x >> 4)
+
+// Min and max cluster sizes
+#define MIN_CLUSTER_SIZE 512
+#define MAX_CLUSTER_SIZE 65536
+
 NTSTATUS
 NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 {
@@ -216,17 +225,25 @@ cleanup:
     return Status;
 }
 
+
+// TODO: what is wrong here?
 NTSTATUS
 NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 {
     // Note: $Bitmap is *always* non-resident on Windows.
     NTSTATUS Status;
     FileRecord* BitmapFileRecord;
-    NonResidentAttribute* BitmapAttr;
+    NonResidentAttribute* BitmapData;
+    //ResidentAttribute* BitmapFileName;
+    //FileNameEx* BitmapFNEx;
+    //PDataRun DRHead, DRCurrent;
+    //ULONGLONG LCN, LCN_MAX;
+    //ULONG BytesPerCluster, BytePos, EndBytePosOnLastCluster;
 
     DPRINT1("Finding free clusters...\n");
 
     BitmapFileRecord = new(NonPagedPool) FileRecord();
+    FreeClusters->QuadPart = 0;
 
     Status = GetFileRecord(_Bitmap, BitmapFileRecord);
 
@@ -235,35 +252,107 @@ NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 
     DPRINT1("Found it. Looking for Data attribute...\n");
 
-    BitmapAttr = (NonResidentAttribute*)(BitmapFileRecord->FindAttributePointer(Data, NULL));
+    BitmapData = (NonResidentAttribute*)(BitmapFileRecord->FindAttributePointer(Data, NULL));
 
-    if (!BitmapAttr)
+    if (!BitmapData)
         goto cleanup;
 
     DPRINT1("Found it. Printing attribute now...\n");
 
-    PrintNonResidentAttributeHeader(BitmapAttr);
+    PrintNonResidentAttributeHeader(BitmapData);
 
-    // Dummy data
+    DPRINT1("Finding FileName Attribute for $Bitmap...\n");
+
+    // Dummy data for now...
     FreeClusters->QuadPart = 50000;
+
+#if 0
+
+    // Calculate Bytes per Cluster
+    BytesPerCluster = BytesPerSector * SectorsPerCluster;
+
+    DPRINT1("Bytes per Cluster: %ld\n", BytesPerCluster);
+
+    //BitmapFileName = (ResidentAttribute*)(BitmapFileRecord->FindAttributePointer(FileName, NULL));
+    //BitmapFNEx = ((FileNameEx*)GetResidentDataPointer(BitmapFileName));
+
+    //EndBytePosOnLastCluster = BitmapFNEx->RealSize % BytesPerCluster;
 
     /* TODO:
      * - Read $Bitmap, each bit not set represents one free cluster.
      * - Free Clusters = Number of cluster bits not set.
+     * NOTE: Windows' NTFS includes the MFT size in its free space estimate,
+     *       so we should be safe to use the above algorithm.
      */
 
-    /*while
+    // __debugbreak();
+
+    // Get Non-Resident Data.
+    DRHead = BitmapFileRecord->FindNonResidentData(BitmapData);
+    DRCurrent = DRHead;
+
+    while(DRCurrent)
     {
-        // Search next 8 bytes
-        // *FreeClusters += number of 0s.
-    }*/
+        // Get LCN, Length.
+        LCN = DRCurrent->LCN;
+        LCN_MAX = DRCurrent->LCN + DRCurrent->Length;
 
+        while(LCN < LCN_MAX)
+        {
+            BytePos = 0;
+
+            // Load Buffer
+            ReadBlock(PartDeviceObj,
+                      LCN,
+                      1,
+                      BytesPerCluster,
+                      FileRecordBuffer,
+                      TRUE);
+
+            /* Count number of zeros in the cluster buffer. Add to *FreeClusters.
+             * TODO: Consider applying loop unrolling to improve performance.
+             *       $Bitmap uses 8-byte sections, so it's safe to get zeros from
+             *       the next 8-bytes on every iteration.
+             */
+
+            while (BytePos < BytesPerCluster)
+            {
+                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[BytePos]);
+                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[1 + BytePos]);
+                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[2 + BytePos]);
+                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[3 + BytePos]);
+                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[4 + BytePos]);
+                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[5 + BytePos]);
+                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[6 + BytePos]);
+                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[7 + BytePos]);
+
+                BytePos += 8;
+
+                /* If we're in the last cluster, check if we reached EOF and stop counting. */
+                if (!(DRCurrent->NextRun) &&
+                    LCN == LCN_MAX - 1 &&
+                    BytePos == EndBytePosOnLastCluster)
+                {
+                    // Break out of loop.
+                    BytePos = BytesPerCluster;
+                }
+            }
+
+            // Start searching the next cluster.
+            LCN++;
+        }
+
+        // Set up next data run.
+        DRCurrent = DRCurrent->NextRun;
+    }
+#endif
+
+// We're done! Time to cleanup.
 cleanup:
+    //FreeDataRun(DRHead);
     delete BitmapFileRecord;
-    return STATUS_NOT_IMPLEMENTED;
+    return STATUS_SUCCESS;
 }
-
-#include <debug.h>
 
 /* SEPARATING OUT FOR SANITY */
 
