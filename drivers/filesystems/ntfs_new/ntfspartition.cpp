@@ -355,7 +355,57 @@ cleanup:
 }
 
 /* SEPARATING OUT FOR SANITY */
+void
+NtfsPartition::SanityCheckBlockIO()
+{
 
+    DPRINT1("Running a very close sanity check by reading one block, writing one block and re reading\n\n\n\n");
+    UCHAR ReadBuffer[512] = {0};
+    UCHAR PostWriteBuffer[512] = {0};
+    UCHAR ZeroOutBuffer[512] = {0};
+        //save disk
+       ReadBlock(PartDeviceObj,
+                     1,
+                     1,
+                     BytesPerSector,
+                     (PUCHAR)ReadBuffer,
+                     TRUE);
+
+        //erase disk
+        WriteBlock(PartDeviceObj,
+            1,
+            1,
+            BytesPerSector,
+            ZeroOutBuffer);
+        KeStallExecutionProcessor(100);
+        //recover disk
+        WriteBlock(PartDeviceObj,
+            1,
+            1,
+            BytesPerSector,
+            ReadBuffer);
+        //verify
+       ReadBlock(PartDeviceObj,
+                     1,
+                     1,
+                     BytesPerSector,
+                     (PUCHAR)PostWriteBuffer,
+                     TRUE);
+    for (int i = 0; i < 512; i++)
+    {
+        DPRINT1("ReadBuffer at Location %d, is value: %X\n", i, ReadBuffer[i]);
+        DPRINT1("PostWriteBuffer at Location %d, is value: %X\n", i, PostWriteBuffer[i]);
+
+        if (ReadBuffer[i] == PostWriteBuffer[i])
+        {
+            DPRINT1("Sanity Check passed for iteration %d\n", i);
+        }
+        else
+        {
+            __debugbreak();
+        }
+    }
+}
 void
 NtfsPartition::RunSanityChecks()
 {
@@ -364,6 +414,9 @@ NtfsPartition::RunSanityChecks()
     DPRINT1("RunSanityChecks() called\n");
     DPRINT1("I don't have anything for now...\n");
 
+    SanityCheckBlockIO();
+
+// Wipe drive
 #if 0
 
     WARNING THIS CODE INTENTIONALLY CORRUPTS THE HARDDRIVE
@@ -380,10 +433,14 @@ NtfsPartition::RunSanityChecks()
           DPRINT1("Write block Status %X\n", Status);
     }
 #endif
+
+//SanityCheck IO calls
+
 }
 
 NtfsPartition::~NtfsPartition()
 {
+
 
 }
 
