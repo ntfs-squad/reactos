@@ -59,6 +59,7 @@ public:
     NTSTATUS GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
     void RunSanityChecks();
 
+    void SanityCheckBlockIO();
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
 } *PNtfsPartition;
