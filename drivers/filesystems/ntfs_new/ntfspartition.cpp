@@ -363,6 +363,23 @@ NtfsPartition::RunSanityChecks()
 
     DPRINT1("RunSanityChecks() called\n");
     DPRINT1("I don't have anything for now...\n");
+
+#if 0
+
+    WARNING THIS CODE INTENTIONALLY CORRUPTS THE HARDDRIVE
+    UCHAR Buffer[512] = {0};
+
+    for(int i = 0; i < 64; i ++)
+    {
+        DPRINT1("Erasing block\n");
+   NTSTATUS Status =  WriteBlock(PartDeviceObj,
+          i,
+          1,
+          512,
+          Buffer);
+          DPRINT1("Write block Status %X\n", Status);
+    }
+#endif
 }
 
 NtfsPartition::~NtfsPartition()

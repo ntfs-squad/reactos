@@ -245,6 +245,18 @@ ReadBlock(_In_    PDEVICE_OBJECT DeviceObject,
           _In_    BOOLEAN Override);
 
 NTSTATUS
+WriteDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
+          _In_    LONGLONG StartingOffset,
+          _In_    ULONG AmountOfBytes,
+          _In_    PUCHAR BufferToWrite);
+
+NTSTATUS
+WriteBlock(_In_    PDEVICE_OBJECT DeviceObject,
+          _In_    ULONG DiskSector,
+          _In_    ULONG SectorCount,
+          _In_    ULONG SectorSize,
+          _Inout_ PUCHAR Buffer);
+NTSTATUS
 DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
                 _In_    ULONG ControlCode,
                 _In_    PVOID InputBuffer,
