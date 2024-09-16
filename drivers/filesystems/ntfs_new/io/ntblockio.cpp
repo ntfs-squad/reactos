@@ -93,10 +93,10 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
                                        BufferToWrite, // This is the bufffer
                                        AmountOfBytes, /// how many bytes
                                        &ByteOffset, //offset on disk
-                                       &Event, //event in questio 
+                                       &Event, //event in question
                                        &Iosb); //status check
 
-    if (Irp == NULL) //if an IO reuqest cant be allocated
+    if (Irp == NULL) //if an IO request cant be allocated
     {
         __debugbreak(); // LOL LMAO
         //FatRaiseStatus( IrpContext, STATUS_INSUFFICIENT_RESOURCES );
@@ -110,7 +110,7 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
     if (Status == STATUS_PENDING)
     {
         // Infinitely stall the OS until this kernel mode executive event completes
-        (VOID)KeWaitForSingleObject( &Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL ); 
+        (VOID)KeWaitForSingleObject( &Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL );
         Status = Iosb.Status;
     }
 
