@@ -285,9 +285,6 @@ NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
         else
             BytesToRead -= ReadSize;
 
-        DPRINT1("Read Size: %ld\n", ReadSize);
-        DPRINT1("BytesToRead: %ld\n", BytesToRead);
-
         // Count number of unset bits and add to *FreeClusters
         for (ULONGLONG i = 0; i < ReadSize; i++)
         {
