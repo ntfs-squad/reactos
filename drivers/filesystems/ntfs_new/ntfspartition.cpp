@@ -225,8 +225,6 @@ cleanup:
     return Status;
 }
 
-
-// TODO: what is wrong here?
 NTSTATUS
 NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 {
@@ -234,124 +232,79 @@ NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     NTSTATUS Status;
     FileRecord* BitmapFileRecord;
     NonResidentAttribute* BitmapData;
-    //ResidentAttribute* BitmapFileName;
-    //FileNameEx* BitmapFNEx;
-    //PDataRun DRHead, DRCurrent;
-    //ULONGLONG LCN, LCN_MAX;
-    //ULONG BytesPerCluster, BytePos, EndBytePosOnLastCluster;
+    ResidentAttribute* BitmapFileNameAttr;
+    FileNameEx* BitmapFileNameAttrEx;
+    PDataRun DRHead, DRCurrent;
+    UINT64 BytesToRead, ReadSize;
+    ULONG BytesPerCluster;
 
-    DPRINT1("Finding free clusters...\n");
-
+    // Get file record for $Bitmap
     BitmapFileRecord = new(NonPagedPool) FileRecord();
-    FreeClusters->QuadPart = 0;
-
     Status = GetFileRecord(_Bitmap, BitmapFileRecord);
 
     if (Status != STATUS_SUCCESS)
         goto cleanup;
 
-    DPRINT1("Found it. Looking for Data attribute...\n");
-
-    BitmapData = (NonResidentAttribute*)(BitmapFileRecord->FindAttributePointer(Data, NULL));
-
-    if (!BitmapData)
-        goto cleanup;
-
-    DPRINT1("Found it. Printing attribute now...\n");
-
-    PrintNonResidentAttributeHeader(BitmapData);
-
-    DPRINT1("Finding FileName Attribute for $Bitmap...\n");
-
-    // Dummy data for now...
-    FreeClusters->QuadPart = 50000;
-
-#if 0
-
-    // Calculate Bytes per Cluster
+    // Calculate bytes per cluster
     BytesPerCluster = BytesPerSector * SectorsPerCluster;
 
-    DPRINT1("Bytes per Cluster: %ld\n", BytesPerCluster);
+    // Get pointers for $Bitmap to get data runs and file size.
+    BitmapData = (NonResidentAttribute*)(BitmapFileRecord->FindAttributePointer(Data, NULL));
+    BitmapFileNameAttr = (ResidentAttribute*)(BitmapFileRecord->FindAttributePointer(FileName, NULL));
+    BitmapFileNameAttrEx = (FileNameEx*)(GetResidentDataPointer(BitmapFileNameAttr));
 
-    //BitmapFileName = (ResidentAttribute*)(BitmapFileRecord->FindAttributePointer(FileName, NULL));
-    //BitmapFNEx = ((FileNameEx*)GetResidentDataPointer(BitmapFileName));
+    if (!BitmapData | !BitmapFileNameAttr | !BitmapFileNameAttrEx)
+    {
+        Status = STATUS_NOT_FOUND;
+        goto cleanup;
+    }
 
-    //EndBytePosOnLastCluster = BitmapFNEx->RealSize % BytesPerCluster;
+    // Get the size of $Bitmap
+    BytesToRead = BitmapFileNameAttrEx->RealSize;
 
-    /* TODO:
-     * - Read $Bitmap, each bit not set represents one free cluster.
-     * - Free Clusters = Number of cluster bits not set.
-     * NOTE: Windows' NTFS includes the MFT size in its free space estimate,
-     *       so we should be safe to use the above algorithm.
-     */
-
-    // __debugbreak();
-
-    // Get Non-Resident Data.
+    // Loop through data runs to calculate free space
     DRHead = BitmapFileRecord->FindNonResidentData(BitmapData);
     DRCurrent = DRHead;
+    FreeClusters->QuadPart = 0;
 
     while(DRCurrent)
     {
-        // Get LCN, Length.
-        LCN = DRCurrent->LCN;
-        LCN_MAX = DRCurrent->LCN + DRCurrent->Length;
+        // Get current data run
+        ReadBlock(PartDeviceObj,
+                  DRCurrent->LCN,
+                  DRCurrent->Length,
+                  BytesPerCluster,
+                  FileRecordBuffer,
+                  TRUE);
 
-        while(LCN < LCN_MAX)
+        ReadSize = DRCurrent->Length * BytesPerCluster;
+
+        if (ReadSize > BytesToRead)
+            ReadSize = BytesToRead;
+
+        else
+            BytesToRead -= ReadSize;
+
+        DPRINT1("Read Size: %ld\n", ReadSize);
+        DPRINT1("BytesToRead: %ld\n", BytesToRead);
+
+        // Count number of unset bits and add to *FreeClusters
+        for (ULONGLONG i = 0; i < ReadSize; i++)
         {
-            BytePos = 0;
-
-            // Load Buffer
-            ReadBlock(PartDeviceObj,
-                      LCN,
-                      1,
-                      BytesPerCluster,
-                      FileRecordBuffer,
-                      TRUE);
-
-            /* Count number of zeros in the cluster buffer. Add to *FreeClusters.
-             * TODO: Consider applying loop unrolling to improve performance.
-             *       $Bitmap uses 8-byte sections, so it's safe to get zeros from
-             *       the next 8-bytes on every iteration.
-             */
-
-            while (BytePos < BytesPerCluster)
-            {
-                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[BytePos]);
-                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[1 + BytePos]);
-                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[2 + BytePos]);
-                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[3 + BytePos]);
-                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[4 + BytePos]);
-                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[5 + BytePos]);
-                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[6 + BytePos]);
-                FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[7 + BytePos]);
-
-                BytePos += 8;
-
-                /* If we're in the last cluster, check if we reached EOF and stop counting. */
-                if (!(DRCurrent->NextRun) &&
-                    LCN == LCN_MAX - 1 &&
-                    BytePos == EndBytePosOnLastCluster)
-                {
-                    // Break out of loop.
-                    BytePos = BytesPerCluster;
-                }
-            }
-
-            // Start searching the next cluster.
-            LCN++;
+            FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[i]);
         }
 
         // Set up next data run.
         DRCurrent = DRCurrent->NextRun;
     }
-#endif
+
+    Status = STATUS_SUCCESS;
 
 // We're done! Time to cleanup.
 cleanup:
-    //FreeDataRun(DRHead);
+    FreeDataRun(DRHead);
     delete BitmapFileRecord;
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 /* SEPARATING OUT FOR SANITY */
