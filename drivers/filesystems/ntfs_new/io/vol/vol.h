@@ -95,7 +95,6 @@ NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
     if (!Partition || !NewLabel)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    // TODO: Implement.
     DPRINT1("Old volume label: \"%S\". Length: %ld\n", DeviceObject->Vpb->VolumeLabel, DeviceObject->Vpb->VolumeLabelLength);
     DPRINT1("Requested new volume label: \"%S\". Length: %ld\n", NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
 
