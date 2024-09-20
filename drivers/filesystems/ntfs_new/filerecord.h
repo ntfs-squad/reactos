@@ -44,6 +44,8 @@ enum FileRecordNumbers
 #define FILE_PERM_NOT_INDXED 0x2000
 #define FILE_PERM_ENCRYPTED  0x4000
 
+#define FILE_RECORD_BUFFER_SIZE 0x900 // TODO: Figure out proper size
+
 // Forward declarations for DataRun struct because it's a linked list.
 struct DataRun;
 typedef DataRun* PDataRun;
@@ -57,7 +59,7 @@ struct DataRun
 
 struct FileRecordHeader
 {
-    UINT32 TypeID;                 // Offset 0x00, Size 4 (Should be 'FILE')
+    UCHAR  TypeID[4];              // Offset 0x00, Size 4 (Should be 'FILE')
     UINT16 UpdateSequenceOffset;   // Offset 0x04, Size 2
     UINT16 SizeOfUpdateSequence;   // Offset 0x06, Size 2
     UINT64 LogFileSequenceNumber;  // Offset 0x08, Size 8
@@ -76,12 +78,11 @@ struct FileRecordHeader
 class FileRecord
 {
 public:
-    NTSTATUS LoadData(PUCHAR FileRecordData, unsigned Length);
+    UCHAR Data[FILE_RECORD_BUFFER_SIZE];
+    FileRecordHeader *Header = (FileRecordHeader*)&Data[0];
+    NTSTATUS LoadData(PUCHAR FileRecordData, UINT Length);
     PIAttribute FindAttributePointer(_In_ AttributeType Type,
                                      _In_ PCWSTR Name);
     PDataRun FindNonResidentData(_In_ NonResidentAttribute* Attr);
-private:
-    FileRecordHeader *Header;
-    UCHAR AttrData[0x1000]; //TODO: Figure out proper size
-    ULONG AttrLength;
+    NTSTATUS UpdateResidentAttribute(_In_ ResidentAttribute* Attr);
 };

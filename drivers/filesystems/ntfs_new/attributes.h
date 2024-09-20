@@ -56,6 +56,7 @@ struct IndexNodeHeader
     UCHAR  Padding[3];      // Offset 0x0D, Size 3
 };
 
+#pragma pack(1)
 typedef struct
 {
     UINT32 AttributeType;             // Offset 0x00, Size 4
@@ -67,6 +68,7 @@ typedef struct
     UINT16 AttributeID;               // Offset 0x0E, Size 2
 } IAttribute, *PIAttribute;
 
+#pragma pack(1)
 struct ResidentAttribute : IAttribute
 {
     /* Value of AttributeOffset should be (2 * NameLength + 0x18).
@@ -76,8 +78,10 @@ struct ResidentAttribute : IAttribute
     UINT32 AttributeLength;           // Offset 0x10, Size 4
     UINT16 AttributeOffset;           // Offset 0x14, Size 2
     UINT8  IndexedFlag;               // Offset 0x16, Size 1
+    UINT8  Padding;                   // Offset 0x17, Size 1
 };
 
+#pragma pack(1)
 struct NonResidentAttribute : IAttribute
 {
     /* Value of DataRunsOffset should be (2 * NameLength + 0x40).

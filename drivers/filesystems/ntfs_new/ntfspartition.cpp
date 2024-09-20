@@ -1,8 +1,6 @@
 #include "io/ntfsprocs.h"
 
-UCHAR FileRecordBuffer[0x100000]; // TODO: Figure proper size.
-
-// Macros for GetFreeClusters.
+// Macros for GetFreeClusters
 const UINT8 Zeros[16] = { 4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0 };
 #define GetZerosFromNibble(x) Zeros[(UINT8)x]
 #define GetZerosFromByte(x) GetZerosFromNibble(x & 0xF) + GetZerosFromNibble(x >> 4)
@@ -10,6 +8,9 @@ const UINT8 Zeros[16] = { 4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0 };
 // Min and max cluster sizes
 #define MIN_CLUSTER_SIZE 512
 #define MAX_CLUSTER_SIZE 65536
+
+// Buffer used to read from disk
+UCHAR DiskBuffer[MAX_CLUSTER_SIZE];
 
 NTSTATUS
 NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
@@ -162,17 +163,29 @@ NTSTATUS
 NtfsPartition::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
                              _Out_ FileRecord* File)
 {
+    /* TODO: We need to use VCN-to-LCN mapping.
+     * From Windows Internals 7th ed, Part 2:
+     * "Once NTFS finds the file record for the MFT, it obtains the VCN-to-LCN mapping information
+     * in the file record’s data attribute and stores it into memory. Each run (runs are explained
+     * later in this chapter in the section “Resident and nonresident attributes”) has a VCN-to-LCN
+     * mapping and a run length because that’s all the information necessary to locate the LCN for
+     * any VCN. This mapping information tells NTFS where the runs containing the MFT are located
+     * on the disk. NTFS then processes the MFT records for several more metadata files and opens
+     * the files. Next, NTFS performs its file system recovery operation (described in the section
+     * “Recovery” later in this chapter), and finally, it opens its remaining metadata files. The
+     * volume is now ready for user access."
+     */
     PAGED_CODE();
 
     INT FileRecordOffset;
 
     FileRecordOffset = (FileRecordNumber * FileRecordSize) / BytesPerSector;
 
-    DumpBlocks(FileRecordBuffer,
+    DumpBlocks(DiskBuffer,
                (MFTLCN * SectorsPerCluster) + FileRecordOffset,
                FileRecordSize / BytesPerSector);
 
-    File->LoadData(FileRecordBuffer,
+    File->LoadData(DiskBuffer,
                    FileRecordSize);
 
     return STATUS_SUCCESS;
@@ -203,6 +216,7 @@ NtfsPartition::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
     if (!VolumeNameAttr)
     {
         // We didn't find the attribute. Abort.
+        // TODO: Check the backup $Volume file record.
         Status = STATUS_NOT_FOUND;
         goto cleanup;
     }
@@ -226,6 +240,91 @@ cleanup:
 }
 
 NTSTATUS
+NtfsPartition::WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
+                               _In_ FileRecord* File)
+{
+    PAGED_CODE();
+    INT FileRecordOffset;
+
+    FileRecordOffset = (FileRecordNumber * FileRecordSize) / BytesPerSector;
+
+    // Warning: insane!
+    WriteBlock(PartDeviceObj,
+               (MFTLCN * SectorsPerCluster) + FileRecordOffset,
+               FileRecordSize / BytesPerSector,
+               BytesPerSector,
+               File->Data);
+
+    if (FileRecordNumber <= 4)
+    {
+        // The first 4 records are always duplicated in MFT Mirror
+        // See: https://flatcap.github.io/linux-ntfs/ntfs/files/mftmirr.html
+        // TODO: Larger disks duplicate more file records.
+
+        DPRINT1("This should also be written to $MftMirr, but isn't so I can compare.\n");
+        // Warning: also insane!
+        // WriteBlock(PartDeviceObj,
+        //            (MFTMirrLCN * SectorsPerCluster) + FileRecordOffset,
+        //            FileRecordSize / BytesPerSector,
+        //            BytesPerSector,
+        //            File->Data);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NtfsPartition::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
+                              _In_ USHORT Length)
+{
+    NTSTATUS Status;
+    FileRecord* VolumeFileRecord;
+    ResidentAttribute* VolumeNameAttr;
+    // UCHAR NewVolNameAttr[0x100]; // max size for volume name attribute
+
+    // Allocate memory for $Volume file record.
+    VolumeFileRecord = new(NonPagedPool) FileRecord();
+
+    // Retrieve file record.
+    Status = GetFileRecord(_Volume, VolumeFileRecord);
+
+    // Clean up if failed.
+    if (Status != STATUS_SUCCESS)
+        goto cleanup;
+
+    // Get pointer for $VolumeName attribute.
+    VolumeNameAttr = (ResidentAttribute*)VolumeFileRecord->FindAttributePointer(VolumeName, NULL);
+
+    // Copy new volume label into the $VolumeName attribute.
+    // HACK! We don't move around the data structure yet.
+    ASSERT(Length <= VolumeNameAttr->AttributeLength);
+    RtlCopyMemory(GetResidentDataPointer(VolumeNameAttr),
+                  VolumeLabel,
+                  Length);
+
+#if 0
+    VolumeFileRecord->Header->ActualSize -= VolumeNameAttr->Length;
+
+    VolumeNameAttr->AttributeLength = Length;
+    VolumeNameAttr->Length = Length + sizeof(ResidentAttribute);
+
+    VolumeFileRecord->Header->ActualSize += VolumeNameAttr->Length;
+
+    DPRINT1("Let's look at the label we just copied: \"%S\"\n", GetResidentDataPointer(VolumeNameAttr));
+
+    VolumeFileRecord->UpdateResidentAttribute(VolumeNameAttr);
+#else
+#endif
+
+    // Overwrite the file record.
+    Status = WriteFileRecord(_Volume, VolumeFileRecord);
+
+cleanup:
+    delete VolumeFileRecord;
+    return Status;
+}
+
+NTSTATUS
 NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 {
     // Note: $Bitmap is *always* non-resident on Windows.
@@ -235,8 +334,8 @@ NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     ResidentAttribute* BitmapFileNameAttr;
     FileNameEx* BitmapFileNameAttrEx;
     PDataRun DRHead, DRCurrent;
-    UINT64 BytesToRead, ReadSize;
-    ULONG BytesPerCluster;
+    UINT64 BytesToRead, ClusterReadSize;
+    ULONG BytesPerCluster, ClusterPtr;
 
     // Get file record for $Bitmap
     BitmapFileRecord = new(NonPagedPool) FileRecord();
@@ -269,28 +368,35 @@ NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 
     while(DRCurrent)
     {
-        // Get current data run
-        ReadBlock(PartDeviceObj,
-                  DRCurrent->LCN,
-                  DRCurrent->Length,
-                  BytesPerCluster,
-                  FileRecordBuffer,
-                  TRUE);
+        ClusterPtr = 0;
 
-        ReadSize = DRCurrent->Length * BytesPerCluster;
-
-        if (ReadSize > BytesToRead)
-            ReadSize = BytesToRead;
-
-        else
-            BytesToRead -= ReadSize;
-
-        // Count number of unset bits and add to *FreeClusters
-        for (ULONGLONG i = 0; i < ReadSize; i++)
+        while (ClusterPtr < DRCurrent->Length)
         {
-            FreeClusters->QuadPart += GetZerosFromByte(FileRecordBuffer[i]);
-        }
+            // Preliminarily set the cluster read size to the number of bytes per cluster.
+            ClusterReadSize = BytesPerCluster;
 
+            // Get current LCN
+            ReadBlock(PartDeviceObj,
+                      (DRCurrent->LCN) + ClusterPtr,
+                      1,
+                      BytesPerCluster,
+                      DiskBuffer,
+                      TRUE);
+
+            // Adjust cluster read size and the number of bytes to read according to actual file size.
+            if (ClusterReadSize > BytesToRead)
+                ClusterReadSize = BytesToRead;
+
+            else
+                BytesToRead -= ClusterReadSize;
+
+            // Count number of unset bits and add to *FreeClusters
+            for (ULONGLONG i = 0; i < ClusterReadSize; i++)
+                FreeClusters->QuadPart += GetZerosFromByte(DiskBuffer[i]);
+
+            // Increment cluster pointer
+            ClusterPtr++;
+        }
         // Set up next data run.
         DRCurrent = DRCurrent->NextRun;
     }
@@ -362,8 +468,6 @@ NtfsPartition::RunSanityChecks()
     PAGED_CODE();
 
     DPRINT1("RunSanityChecks() called\n");
-    DPRINT1("I don't have anything for now...\n");
-
     SanityCheckBlockIO();
 
 // Wipe drive

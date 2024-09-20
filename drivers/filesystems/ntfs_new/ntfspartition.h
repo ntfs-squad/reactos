@@ -54,8 +54,12 @@ public:
                         _In_    ULONG LbaCount);
     NTSTATUS GetFileRecord(_In_  ULONGLONG FileRecordNumber,
                            _Out_ FileRecord* File);
+    NTSTATUS WriteFileRecord(_In_  ULONGLONG FileRecordNumber,
+                             _In_ FileRecord* File);
     NTSTATUS GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
                             _Inout_ PUSHORT Length);
+    NTSTATUS SetVolumeLabel(_In_ PWCHAR VolumeLabel,
+                            _In_ USHORT Length);
     NTSTATUS GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
     void RunSanityChecks();
 

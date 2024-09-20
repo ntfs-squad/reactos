@@ -277,6 +277,12 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 /* Debug print functions. REMOVE WHEN DONE. */
 static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 {
+    UCHAR Signature[5];
+
+    RtlZeroMemory(Signature, 5);
+    RtlCopyMemory(Signature, FRH->TypeID, 4);
+
+    DPRINT1("Signature: %s\n", Signature);
     DPRINT1("MFT Record Number: %ld\n", FRH->MFTRecordNumber);
 }
 
