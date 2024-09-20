@@ -87,6 +87,7 @@ NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
                    _In_ PFILE_FS_LABEL_INFORMATION NewLabel,
                    _In_ PULONG Length)
 {
+    NTSTATUS Status;
     PNtfsPartition Partition;
 
     Partition = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->PartitionObj;
@@ -98,5 +99,16 @@ NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
     DPRINT1("Old volume label: \"%S\". Length: %ld\n", DeviceObject->Vpb->VolumeLabel, DeviceObject->Vpb->VolumeLabelLength);
     DPRINT1("Requested new volume label: \"%S\". Length: %ld\n", NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
 
-    return STATUS_NOT_IMPLEMENTED;
+    Partition->SetVolumeLabel(NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
+
+    // Re-read volume label.
+    Status = Partition->GetVolumeLabel(DeviceObject->Vpb->VolumeLabel,
+                                       &DeviceObject->Vpb->VolumeLabelLength);
+
+    DPRINT1("Volume Label updated!\n");
+    DPRINT1("Label: \"%S\", Length: %ld\n",
+            DeviceObject->Vpb->VolumeLabel,
+            DeviceObject->Vpb->VolumeLabelLength);
+
+    return Status;
 }
