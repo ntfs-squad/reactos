@@ -95,19 +95,11 @@ NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
     if (!Partition || !NewLabel)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    DPRINT1("Old volume label: \"%S\". Length: %ld\n", DeviceObject->Vpb->VolumeLabel, DeviceObject->Vpb->VolumeLabelLength);
-    DPRINT1("Requested new volume label: \"%S\". Length: %ld\n", NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
-
     Partition->SetVolumeLabel(NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
 
     // Re-read volume label.
     Status = Partition->GetVolumeLabel(DeviceObject->Vpb->VolumeLabel,
                                        &DeviceObject->Vpb->VolumeLabelLength);
-
-    DPRINT1("Volume Label updated!\n");
-    DPRINT1("Label: \"%S\", Length: %ld\n",
-            DeviceObject->Vpb->VolumeLabel,
-            DeviceObject->Vpb->VolumeLabelLength);
 
     return Status;
 }

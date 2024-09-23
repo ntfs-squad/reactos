@@ -63,6 +63,14 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                                              (PFILE_BASIC_INFORMATION)SystemBuffer,
                                              &BufferLength);
             break;
+        case FileStandardInformation:
+            DPRINT1("File standard information requested! We don't have this sadly :(\n");
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+            break;
+        case FileInternalInformation:
+            DPRINT1("File internal information requested! We don't have this sadly :(\n");
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+            break;
         case FileNameInformation:
             Status = GetFileNameInformation(FileCB,
                                             (PFILE_NAME_INFORMATION)SystemBuffer,

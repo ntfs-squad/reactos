@@ -268,9 +268,9 @@ DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 
-#include "../attributes.h"
+#include "../mft/attributes.h"
 #include "../ntfspartition.h"
-#include "../filerecord.h"
+#include "../mft/filerecord.h"
 
 #include <debug.h>
 
@@ -347,8 +347,7 @@ static inline void PrintNTFSBootSector(BootSector* PartBootSector)
 
 static inline void PrintFileContextBlock(PFileContextBlock FileCB)
 {
-    DPRINT1("Path Name:   \"%S\"\n", FileCB->PathName);
-    DPRINT1("Object Name: \"%S\"\n", FileCB->ObjectName);
+    DPRINT1("File Record Number: \"%S\"\n", FileCB->FileRecordNumber);
 };
 
 #endif // _NTFSPROCS_

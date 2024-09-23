@@ -12,7 +12,7 @@ list(APPEND SOURCE
      io/fileinfo/fileinfo.cpp
      io/ntblockio.cpp
      io/fsctrl/fsctrl.cpp
-     filerecord.cpp
+     mft/filerecord.cpp
      ntfspartition.cpp
      io/ntfsprocs.h)
 
