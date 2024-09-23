@@ -13,63 +13,61 @@ class FileRecord;
 
 typedef struct
 {
-    ULONG Flags;
     PIO_STACK_LOCATION Stack;
     UCHAR MajorFunction;
     UCHAR MinorFunction;
     PIRP Irp;
-    BOOLEAN IsTopLevel;
     PDEVICE_OBJECT DeviceObject;
-    PFILE_OBJECT FileObject;
-    CCHAR PriorityBoost;
+
+    // We will uncomment these when needed.
+    // PFILE_OBJECT FileObject;
+    // ULONG Flags;
+    // BOOLEAN IsTopLevel;
+    // CCHAR PriorityBoost;
 
 } IoRequestContext, *PIoRequestContext;
 
 typedef struct
 {
-    ERESOURCE DirResource; //DDK
-
-    KSPIN_LOCK FileCBListLock; //DDK
-    LIST_ENTRY FileCBListHead; //WinSDK
-
-    PVPB VolPB; //DDK
-    PDEVICE_OBJECT StorageDevice; //DDK
-    PFILE_OBJECT StreamFileObject; //DDK
-
-    struct _FCB *RootFileCB;
-
     NtfsPartition *PartitionObj;
 
-    // We will uncomment this if needed.
+    // Not sure how these work yet...
+    ERESOURCE DirResource; //DDK
+    KSPIN_LOCK FileCBListLock; //DDK
+    LIST_ENTRY FileCBListHead; //WinSDK
+    PDEVICE_OBJECT StorageDevice; //DDK
+    PFILE_OBJECT StreamFileObject; //DDK
+    struct _FCB *RootFileCB;
+
+    // We will uncomment these when needed.
+    // PVPB VolPB; //DDK
     // ULONG Flags;
 
 } VolumeContextBlock, *PVolumeContextBlock;
 
 typedef struct _FCB
 {
-    FSRTL_COMMON_FCB_HEADER RFCB; // DDK
-    SECTION_OBJECT_POINTERS SectionObjectPointers; //DDK
-
-    PFILE_OBJECT FileObject; //DDK
+    ULONGLONG FileRecordNumber;
     PVolumeContextBlock VolCB;
-
-    ERESOURCE PagingIoResource; //DDK
-    ERESOURCE MainResource; //DDK
-
-    LIST_ENTRY FileCBListEntry; //DDK
-    struct _FCB* ParentFileCB;
 
     WCHAR Stream[MAX_PATH];
     WCHAR *ObjectName;		   // Point on filename (250 chars max) in PathName */
     WCHAR PathName[MAX_PATH];  // Path+Filename 260 max
-
     FileRecord* FileRec;
 
+    // I'm not sure how these work yet...
+    FSRTL_COMMON_FCB_HEADER RFCB; // DDK
+    SECTION_OBJECT_POINTERS SectionObjectPointers; //DDK
+    PFILE_OBJECT FileObject; //DDK
+    ERESOURCE MainResource; //DDK
+    struct _FCB* ParentFileCB;
+
     // We will uncomment these when/if we need them.
+    // ERESOURCE PagingIoResource; //DDK
+    // LIST_ENTRY FileCBListEntry; //DDK
     // ULONG DirIndex;
     // LONG RefCount;
     // ULONG Flags;
     // ULONG OpenHandleCount;
-    // ULONGLONG MFTIndex;
     // USHORT LinkCount;
 } FileContextBlock, *PFileContextBlock;

@@ -253,7 +253,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     VolCB->StreamFileObject->FsContext = FileCB;
     VolCB->StreamFileObject->SectionObjectPointer = &FileCB->SectionObjectPointers;
     VolCB->StreamFileObject->PrivateCacheMap = NULL;
-    VolCB->StreamFileObject->Vpb = VolCB->VolPB;
+    VolCB->StreamFileObject->Vpb = VolCB->PartitionObj->VolParamBlock;
 
     // Provide FileCB pointers to VolCB.
     FileCB->FileObject = VolCB->StreamFileObject;

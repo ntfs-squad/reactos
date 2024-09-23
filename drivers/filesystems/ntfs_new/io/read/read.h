@@ -34,7 +34,7 @@ ReadFile(_In_ PIO_STACK_LOCATION IoStack,
 
     DPRINT1("File Context Block found!\n");
 
-    if (!FileCB || !FileCB->FileRec)
+    if (!FileCB || !FileCB->FileRecordNumber)
     {
         // If there is no file record, we can't find the file.
         DPRINT1("File context block is invalid!\n");

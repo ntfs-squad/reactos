@@ -176,7 +176,6 @@ NtfsPartition::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
      * volume is now ready for user access."
      */
     PAGED_CODE();
-
     INT FileRecordOffset;
 
     FileRecordOffset = (FileRecordNumber * FileRecordSize) / BytesPerSector;
