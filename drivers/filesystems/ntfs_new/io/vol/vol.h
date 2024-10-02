@@ -39,20 +39,20 @@ NtfsGetSizeInfo(PDEVICE_OBJECT DeviceObject,
                 PFILE_FS_SIZE_INFORMATION Buffer,
                 PULONG Length)
 {
-    PNtfsPartition Partition;
+    PNTFSVolume Volume;
 
     if (*Length < sizeof(FILE_FS_SIZE_INFORMATION))
         return STATUS_BUFFER_OVERFLOW;
 
-    Partition = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->PartitionObj;
+    Volume = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->Volume;
 
-    if (!Partition)
+    if (!Volume)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    Partition->GetFreeClusters(&Buffer->AvailableAllocationUnits); // Set # of free clusters
-    Buffer->TotalAllocationUnits.QuadPart = Partition->ClustersInVolume; //# of total clusters
-    Buffer->SectorsPerAllocationUnit = Partition->SectorsPerCluster; // Sectors per cluster
-    Buffer->BytesPerSector = Partition->BytesPerSector; // Bytes per sector
+    Volume->GetFreeClusters(&Buffer->AvailableAllocationUnits); // Set # of free clusters
+    Buffer->TotalAllocationUnits.QuadPart = Volume->ClustersInVolume; //# of total clusters
+    Buffer->SectorsPerAllocationUnit = Volume->SectorsPerCluster; // Sectors per cluster
+    Buffer->BytesPerSector = Volume->BytesPerSector; // Bytes per sector
 
     *Length -= sizeof(FILE_FS_SIZE_INFORMATION);
 
@@ -88,18 +88,18 @@ NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
                    _In_ PULONG Length)
 {
     NTSTATUS Status;
-    PNtfsPartition Partition;
+    PNTFSVolume Volume;
 
-    Partition = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->PartitionObj;
+    Volume = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->Volume;
 
-    if (!Partition || !NewLabel)
+    if (!Volume || !NewLabel)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    Partition->SetVolumeLabel(NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
+    Volume->SetVolumeLabel(NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
 
     // Re-read volume label.
-    Status = Partition->GetVolumeLabel(DeviceObject->Vpb->VolumeLabel,
-                                       &DeviceObject->Vpb->VolumeLabelLength);
+    Status = Volume->GetVolumeLabel(DeviceObject->Vpb->VolumeLabel,
+                                    &DeviceObject->Vpb->VolumeLabelLength);
 
     return Status;
 }

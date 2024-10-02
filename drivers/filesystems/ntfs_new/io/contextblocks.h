@@ -8,39 +8,20 @@
 #define MAX_PATH 260
 #endif //MAX_PATH
 
-class NtfsPartition;
+class NTFSVolume;
 class FileRecord;
 
 typedef struct
 {
-    PIO_STACK_LOCATION Stack;
-    UCHAR MajorFunction;
-    UCHAR MinorFunction;
-    PIRP Irp;
-    PDEVICE_OBJECT DeviceObject;
+    NTFSVolume *Volume;
+    PDEVICE_OBJECT StorageDevice;
+    PFILE_OBJECT StreamFileObject;
 
     // We will uncomment these when needed.
-    // PFILE_OBJECT FileObject;
-    // ULONG Flags;
-    // BOOLEAN IsTopLevel;
-    // CCHAR PriorityBoost;
-
-} IoRequestContext, *PIoRequestContext;
-
-typedef struct
-{
-    NtfsPartition *PartitionObj;
-
-    // Not sure how these work yet...
-    ERESOURCE DirResource; //DDK
-    KSPIN_LOCK FileCBListLock; //DDK
-    LIST_ENTRY FileCBListHead; //WinSDK
-    PDEVICE_OBJECT StorageDevice; //DDK
-    PFILE_OBJECT StreamFileObject; //DDK
-    struct _FCB *RootFileCB;
-
-    // We will uncomment these when needed.
-    // PVPB VolPB; //DDK
+    // ERESOURCE DirResource; //DDK
+    // KSPIN_LOCK FileCBListLock; //DDK
+    // LIST_ENTRY FileCBListHead; //WinSDK
+    // struct _FCB *RootFileCB;
     // ULONG Flags;
 
 } VolumeContextBlock, *PVolumeContextBlock;
@@ -48,21 +29,37 @@ typedef struct
 typedef struct _FCB
 {
     ULONGLONG FileRecordNumber;
-    PVolumeContextBlock VolCB;
 
     WCHAR Stream[MAX_PATH];
     WCHAR *ObjectName;		   // Point on filename (250 chars max) in PathName */
-    WCHAR PathName[MAX_PATH];  // Path+Filename 260 max
     FileRecord* FileRec;
 
-    // I'm not sure how these work yet...
-    FSRTL_COMMON_FCB_HEADER RFCB; // DDK
-    SECTION_OBJECT_POINTERS SectionObjectPointers; //DDK
-    PFILE_OBJECT FileObject; //DDK
-    ERESOURCE MainResource; //DDK
-    struct _FCB* ParentFileCB;
+    // NOTE: The members below may or may not get included in file record.
+
+    // Used for file name information;
+    WCHAR FileName[MAX_PATH];
+
+    // Used for File Basic Information
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    ULONG FileAttributes;
+
+    // Used for File Standard Information
+    BOOLEAN IsDirectory;
+    BOOLEAN DeletePending;
+    LARGE_INTEGER AllocationSize;
+    LARGE_INTEGER EndOfFile;
+    ULONG NumberOfLinks;
 
     // We will uncomment these when/if we need them.
+    // PVolumeContextBlock VolCB;
+    // FSRTL_COMMON_FCB_HEADER RFCB; // DDK
+    // SECTION_OBJECT_POINTERS SectionObjectPointers; //DDK
+    // PFILE_OBJECT FileObject; //DDK
+    // ERESOURCE MainResource; //DDK
+    // struct _FCB* ParentFileCB;
     // ERESOURCE PagingIoResource; //DDK
     // LIST_ENTRY FileCBListEntry; //DDK
     // ULONG DirIndex;
@@ -71,3 +68,20 @@ typedef struct _FCB
     // ULONG OpenHandleCount;
     // USHORT LinkCount;
 } FileContextBlock, *PFileContextBlock;
+
+// I like the idea of this, but haven't needed it yet.
+// typedef struct
+// {
+//     PIO_STACK_LOCATION Stack;
+//     UCHAR MajorFunction;
+//     UCHAR MinorFunction;
+//     PIRP Irp;
+//     PDEVICE_OBJECT DeviceObject;
+//     // PFILE_OBJECT FileObject;
+
+//     // We will uncomment these when needed.
+//     // ULONG Flags;
+//     // BOOLEAN IsTopLevel;
+//     // CCHAR PriorityBoost;
+
+// } IoRequestContext, *PIoRequestContext;

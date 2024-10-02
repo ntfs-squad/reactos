@@ -38,7 +38,8 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      */
 
     // TODO: make this actually work
-    DPRINT1("Called NtfsFsdClose() which is a STUB!\n");
+    PIO_STACK_LOCATION IrpSp;
+    PFileContextBlock FileCB;
 
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
     {
@@ -49,7 +50,16 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         return STATUS_SUCCESS;
     }
 
-    DPRINT1("Asked to close a file!\n");
-    // __debugbreak();
+    IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
+
+    // Free file context block
+    if (FileCB)
+        delete FileCB;
+
+    Irp->IoStatus.Information = STATUS_SUCCESS;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+    DPRINT1("File closed!\n");
     return STATUS_SUCCESS;
 }

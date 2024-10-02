@@ -131,45 +131,6 @@ NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     return Status;
 }
 
-NTSTATUS
-NtfsCreateFileCB(_In_  PCWSTR FileName,
-                 _In_  PCWSTR Stream,
-                 _In_  PVolumeContextBlock VolCB,
-                 _Out_ PFileContextBlock FileCB)
-{
-    if (VolCB == NULL)
-        return STATUS_INVALID_PARAMETER_3;
-
-    if (FileCB == NULL)
-        return STATUS_INVALID_PARAMETER_4;
-
-    RtlZeroMemory(FileCB, sizeof(FileContextBlock));
-    FileCB->VolCB = VolCB;
-
-    if (FileName)
-    {
-        wcscpy(FileCB->PathName, FileName);
-        if (wcsrchr(FileCB->PathName, '\\') != 0)
-        {
-            FileCB->ObjectName = wcsrchr(FileCB->PathName, '\\');
-        }
-        else
-        {
-            FileCB->ObjectName = FileCB->PathName;
-        }
-    }
-
-    if (Stream)
-    {
-        wcscpy(FileCB->Stream, Stream);
-    }
-
-    ExInitializeResourceLite(&FileCB->MainResource);
-    FileCB->RFCB.Resource = &(FileCB->MainResource);
-
-    return STATUS_SUCCESS;
-}
-
 _Requires_lock_held_(_Global_critical_region_)
 EXTERN_C
 NTSTATUS
@@ -178,24 +139,23 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                 IN PDEVICE_OBJECT FsDeviceObject)
 {
     PDEVICE_OBJECT FSDeviceObject;
-    NtfsPartition* NtfsPart;
+    NTFSVolume* Volume;
     NTSTATUS Status;
     PVolumeContextBlock VolCB;
-    PFileContextBlock FileCB;
     LARGE_INTEGER FilesystemSize;
 
     /* The function here returns, but it's not an error.
      * We're a boot driver, NT will try every possible filesystem.
      */
-    NtfsPart = new(PagedPool) NtfsPartition();
-    Status = NtfsPart->LoadNtfsDevice(TargetDeviceObject);
+    Volume = new(PagedPool) NTFSVolume();
+    Status = Volume->LoadNTFSDevice(TargetDeviceObject);
 
-    DPRINT1("LoadNtfsDevice() returned %lx\n", Status);
+    DPRINT1("LoadNTFSDevice() returned %lx\n", Status);
     if (Status != STATUS_SUCCESS)
         return Status;
 
     // Currently used for debugging output.
-    NtfsPart->RunSanityChecks();
+    Volume->RunSanityChecks();
 
     // Create file system device object.
     Status = IoCreateDevice(NtfsDriverObject,
@@ -211,7 +171,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     DPRINT1("Io device created!\n");
 
     // Tell IO Manager to directly transfer data to FSDeviceObject.
-    FSDeviceObject->Flags |= DO_DIRECT_IO;
+    FSDeviceObject->Flags |= DO_BUFFERED_IO; // DO_DIRECT_IO;
 
     // Initialize Volume Context Block VolCB.
     VolCB = (PVolumeContextBlock)FSDeviceObject->DeviceExtension;
@@ -219,7 +179,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     FSDeviceObject->Vpb = TargetDeviceObject->Vpb;
 
     // Give VolCB access to Ntfs Partition object
-    VolCB->PartitionObj = NtfsPart;
+    VolCB->Volume = Volume;
 
     DPRINT1("VolCB created!\n");
 
@@ -236,49 +196,24 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     // Create file stream object.
     VolCB->StreamFileObject = IoCreateStreamFileObject(NULL,
                                                        VolCB->StorageDevice);
-    InitializeListHead(&VolCB->FileCBListHead);
+    // InitializeListHead(&VolCB->FileCBListHead);
 
     DPRINT1("Created Stream File Object!\n");
 
-    // Create file context block FileCB.
-    FileCB = new(NonPagedPool) FileContextBlock();
-    Status = NtfsCreateFileCB(NULL, NULL, VolCB, FileCB);
-    if (Status != STATUS_SUCCESS)
-    {
-        Status = STATUS_INSUFFICIENT_RESOURCES;
-        __debugbreak();
-    }
-
-    // Use FileCB to set up file stream object in VolCB.
-    VolCB->StreamFileObject->FsContext = FileCB;
-    VolCB->StreamFileObject->SectionObjectPointer = &FileCB->SectionObjectPointers;
-    VolCB->StreamFileObject->PrivateCacheMap = NULL;
-    VolCB->StreamFileObject->Vpb = VolCB->PartitionObj->VolParamBlock;
-
-    // Provide FileCB pointers to VolCB.
-    FileCB->FileObject = VolCB->StreamFileObject;
-    FileCB->VolCB = (PVolumeContextBlock)VolCB->StorageDevice;
-
-    DPRINT1("FileContextBlock created!\n");
-
     // Set file system size information.
-    FilesystemSize.QuadPart = NtfsPart->ClustersInVolume * NtfsPart->SectorsPerCluster * NtfsPart->BytesPerSector;
-
-    FileCB->RFCB.FileSize = FilesystemSize;
-    FileCB->RFCB.ValidDataLength = FilesystemSize;
-    FileCB->RFCB.AllocationSize = FilesystemSize;
+    FilesystemSize.QuadPart = Volume->ClustersInVolume * Volume->SectorsPerCluster * Volume->BytesPerSector;
 
     DPRINT1("FileContextBlock updated!\n");
 
     // Initialize directory resource and set up spin lock for VolCB.
-    ExInitializeResourceLite(&VolCB->DirResource);
-    KeInitializeSpinLock(&VolCB->FileCBListLock);
+    // ExInitializeResourceLite(&VolCB->DirResource);
+    // KeInitializeSpinLock(&VolCB->FileCBListLock);
 
     // Get serial number.
-    FSDeviceObject->Vpb->SerialNumber = NtfsPart->SerialNumber;
+    FSDeviceObject->Vpb->SerialNumber = Volume->SerialNumber;
 
     // Get volume label.
-    Status = NtfsPart->GetVolumeLabel(FSDeviceObject->Vpb->VolumeLabel,
+    Status = Volume->GetVolumeLabel(FSDeviceObject->Vpb->VolumeLabel,
                                       &FSDeviceObject->Vpb->VolumeLabelLength);
 
     DPRINT1("Volume Label updated!\n");

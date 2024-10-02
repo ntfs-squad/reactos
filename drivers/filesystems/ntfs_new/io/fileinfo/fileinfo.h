@@ -15,33 +15,45 @@ GetFileBasicInformation(_In_ PFileContextBlock FileCB,
                         _Out_ PFILE_BASIC_INFORMATION Buffer,
                         _Inout_ PULONG Length)
 {
-#if 0
-    size_t FileInfoSize = sizeof(FILE_BASIC_INFORMATION);
+    if (*Length < sizeof(FILE_BASIC_INFORMATION))
+        return STATUS_BUFFER_TOO_SMALL;
 
-    DPRINT1("Getting file basic information...\n");
+    Buffer->CreationTime = FileCB->CreationTime;
+    Buffer->LastAccessTime = FileCB->LastAccessTime;
+    Buffer->LastWriteTime = FileCB->LastWriteTime;
+    Buffer->ChangeTime = FileCB->ChangeTime;
+    Buffer->FileAttributes = FileCB->FileAttributes;
+
+    *Length -= sizeof(FILE_BASIC_INFORMATION);
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+GetFileStandardInformation(_In_ PFileContextBlock FileCB,
+                           _Out_ PFILE_STANDARD_INFORMATION Buffer,
+                           _Inout_ PULONG Length)
+{
+    size_t FileInfoSize = sizeof(FILE_STANDARD_INFORMATION);
+
+    DPRINT1("Getting file standard information...\n");
 
     if (*Length < FileInfoSize)
         return STATUS_BUFFER_TOO_SMALL;
 
-    RtlZeroMemory(Buffer, FileInfoSize);
+    if (!FileCB)
+        return STATUS_NOT_FOUND;
 
-    // Make something up for now.
-    UNREFERENCED_PARAMETER(FileCB);
-    Buffer->CreationTime.QuadPart = 1;
-    Buffer->LastAccessTime.QuadPart = 1;
-    Buffer->LastWriteTime.QuadPart = 1;
-    Buffer->ChangeTime.QuadPart = 1;
-    Buffer->FileAttributes = FILE_ATTRIBUTE_NORMAL;
+    Buffer->Directory = FileCB->IsDirectory;
+    Buffer->AllocationSize = FileCB->AllocationSize;
+    Buffer->EndOfFile = FileCB->EndOfFile;
+    Buffer->NumberOfLinks = FileCB->NumberOfLinks;
+    Buffer->DeletePending = FileCB->DeletePending;
 
     *Length -= FileInfoSize;
 
     return STATUS_SUCCESS;
-#else
-    UNREFERENCED_PARAMETER(FileCB);
-    UNREFERENCED_PARAMETER(Buffer);
-    UNREFERENCED_PARAMETER(Length);
-    return STATUS_NOT_IMPLEMENTED;
-#endif
 }
 
 static
@@ -53,25 +65,21 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
     ULONG BytesToCopy;
     size_t FileNameInfoSize = sizeof(FILE_NAME_INFORMATION);
 
-    DPRINT1("Getting File Name Information...\n");
+    DPRINT1("Getting file name information...\n");
 
     // If buffer can't hold the File Name Information struct, fail.
     if (*Length < FileNameInfoSize)
         return STATUS_BUFFER_TOO_SMALL;
 
-    // Hack to get drive properties to work
-    UNREFERENCED_PARAMETER(FileCB);
-    WCHAR PathName[4] = L"D:\\";
-
     // Save file name length, and as much file len, as buffer length allows.
-    Buffer->FileNameLength = wcslen(PathName) * sizeof(WCHAR);
+    Buffer->FileNameLength = wcslen(FileCB->FileName) * sizeof(WCHAR);
 
     // Calculate amount of bytes to copy not to overflow the buffer.
     if (*Length < Buffer->FileNameLength + FileNameInfoSize)
     {
         // The buffer isn't big enough. Fill what you can.
         BytesToCopy = *Length - FileNameInfoSize;
-        RtlCopyMemory(Buffer->FileName, PathName, BytesToCopy);
+        RtlCopyMemory(Buffer->FileName, FileCB->FileName, BytesToCopy);
         *Length = 0;
         return STATUS_BUFFER_OVERFLOW;
     }
@@ -80,8 +88,86 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
     {
         // The buffer is big enough. Fill with file name.
         BytesToCopy = Buffer->FileNameLength;
-        RtlCopyMemory(Buffer->FileName, PathName, BytesToCopy);
+        RtlCopyMemory(Buffer->FileName, FileCB->FileName, BytesToCopy);
         *Length -= FileNameInfoSize + BytesToCopy;
         return STATUS_SUCCESS;
     }
+}
+
+static
+NTSTATUS
+GetFileInternalInformation(_In_ PFileContextBlock FileCB,
+                           _Out_ PFILE_INTERNAL_INFORMATION Buffer,
+                           _Inout_ PULONG Length)
+{
+    if (*Length < sizeof(FILE_INTERNAL_INFORMATION))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    Buffer->IndexNumber.QuadPart = FileCB->FileRecordNumber;
+
+    *Length -= sizeof(FILE_INTERNAL_INFORMATION);
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
+                                _In_ PVolumeContextBlock VolCB,
+                                _Out_ PFILE_BOTH_DIR_INFORMATION Buffer,
+                                _Inout_ PULONG Length)
+{
+
+    // TODO: If not root directory, also return . and .. directories!
+    VolCB->Volume->SuperMegaHack = !(VolCB->Volume->SuperMegaHack);
+
+    if(!(VolCB->Volume->SuperMegaHack))
+    {
+        DPRINT1("SuperMega Hack is off!\n");
+        return STATUS_NO_MORE_FILES;
+    }
+
+    DPRINT1("SuperMega Hack is ON!\n");
+    ASSERT(Buffer);
+
+    PrintFileContextBlock(FileCB);
+
+    // Fill with garbage for now
+    Buffer->NextEntryOffset = 0;
+    Buffer->FileIndex = 0;
+    Buffer->CreationTime = FileCB->CreationTime;
+    Buffer->LastAccessTime = FileCB->LastAccessTime;
+    Buffer->LastWriteTime = FileCB->LastWriteTime;
+    Buffer->ChangeTime = FileCB->ChangeTime;
+    Buffer->EndOfFile.QuadPart = 512;
+    Buffer->AllocationSize.QuadPart = 1024;
+    Buffer->FileAttributes = FILE_ATTRIBUTE_NORMAL;
+    Buffer->FileNameLength = 16;
+    Buffer->EaSize = 0;
+    Buffer->ShortNameLength = 22;
+    RtlCopyMemory(Buffer->ShortName, L"HELLO~1.txt", 22);
+    RtlCopyMemory(Buffer->FileName, L"test.txt", 16);
+
+    *Length -= (sizeof(FILE_BOTH_DIR_INFORMATION) + 16);
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
+                              _Out_ PFILE_NETWORK_OPEN_INFORMATION Buffer,
+                              _Inout_ PULONG Length)
+{
+    Buffer->CreationTime = FileCB->CreationTime;
+    Buffer->LastAccessTime = FileCB->LastAccessTime;
+    Buffer->LastWriteTime = FileCB->LastWriteTime;
+    Buffer->ChangeTime = FileCB->ChangeTime;
+    Buffer->AllocationSize = FileCB->AllocationSize;
+    Buffer->EndOfFile = FileCB->EndOfFile;
+    Buffer->FileAttributes = FileCB->FileAttributes;
+
+    *Length -= (sizeof(PFILE_NETWORK_OPEN_INFORMATION));
+
+    return STATUS_SUCCESS;
 }

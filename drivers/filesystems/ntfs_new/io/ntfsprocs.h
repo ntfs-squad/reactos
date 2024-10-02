@@ -20,6 +20,7 @@
 #include <pseh/pseh2.h>
 
 #define TAG_NTFS 'NTFS'
+#define NTFS_DEBUG
 
 typedef enum _TYPE_OF_OPEN {
 
@@ -117,7 +118,7 @@ NTAPI
 NtfsFsdFlushBuffers (_In_ PDEVICE_OBJECT VolumeDeviceObject,
                      _Inout_ PIRP Irp);
 
-/* Create.cpp */
+/* create.cpp */
 _Function_class_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -268,12 +269,13 @@ DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 
-#include "../mft/attributes.h"
-#include "../ntfspartition.h"
-#include "../mft/filerecord.h"
+#include "../filerecord/attributes.h"
+#include "../ntfsvol.h"
+#include "../filerecord/filerecord.h"
 
 #include <debug.h>
 
+#ifdef NTFS_DEBUG
 /* Debug print functions. REMOVE WHEN DONE. */
 static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 {
@@ -286,48 +288,45 @@ static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
     DPRINT1("MFT Record Number: %ld\n", FRH->MFTRecordNumber);
 }
 
-static inline void PrintAttributeHeader(IAttribute* Attr)
+static inline void PrintAttributeHeader(PAttribute Attr)
 {
     DPRINT1("Attribute Type:   0x%X\n", Attr->AttributeType);
     DPRINT1("Length:           %ld\n", Attr->Length);
-    DPRINT1("Nonresident Flag: %ld\n", Attr->NonResidentFlag);
+    DPRINT1("Nonresident Flag: %ld\n", Attr->IsNonResident);
     DPRINT1("Name Length:      %ld\n", Attr->NameLength);
     DPRINT1("Name Offset:      %ld\n", Attr->NameOffset);
     DPRINT1("Flags:            0x%X\n", Attr->Flags);
     DPRINT1("Attribute ID:     %ld\n", Attr->AttributeID);
-}
 
-static inline void PrintResidentAttributeHeader(ResidentAttribute* Attr)
-{
-    PrintAttributeHeader(Attr);
+    if (!(Attr->IsNonResident))
+    {
+        DPRINT1("Data Length:      %ld\n", Attr->Resident.DataLength);
+        DPRINT1("Data Offset:      0x%X\n", Attr->Resident.DataLength);
+        DPRINT1("Indexed Flag:     %ld\n", Attr->Resident.IndexedFlag);
+    }
 
-    DPRINT1("Attribute Length: %ld\n", Attr->AttributeLength);
-    DPRINT1("Attribute Offset: 0x%X\n", Attr->AttributeOffset);
-    DPRINT1("IndexedFlag:      %ld\n", Attr->IndexedFlag);
-}
-
-static inline void PrintNonResidentAttributeHeader(NonResidentAttribute* Attr)
-{
-    PrintAttributeHeader(Attr);
-
-    DPRINT1("First VCN:                %ld\n", Attr->FirstVCN);
-    DPRINT1("Last VCN:                 %ld\n", Attr->LastVCN);
-    DPRINT1("Data Run Offset:          %ld\n", Attr->DataRunsOffset);
-    DPRINT1("Compression Unit Size:    %ld\n", Attr->CompressionUnitSize);
-    DPRINT1("Allocated Attribute Size: %ld\n", Attr->AllocatedAttributeSize);
-    DPRINT1("Actual Attribute Size:    %ld\n", Attr->ActualAttributeSize);
-    DPRINT1("Initialized Data Size:    %ld\n", Attr->InitalizedDataSize);
+    else
+    {
+        DPRINT1("First VCN:                %ld\n", Attr->NonResident.FirstVCN);
+        DPRINT1("Last VCN:                 %ld\n", Attr->NonResident.LastVCN);
+        DPRINT1("Data Run Offset:          %ld\n", Attr->NonResident.DataRunsOffset);
+        DPRINT1("Compression Unit Size:    %ld\n", Attr->NonResident.CompressionUnitSize);
+        DPRINT1("Allocated Size:           %ld\n", Attr->NonResident.AllocatedSize);
+        DPRINT1("Data Size:                %ld\n", Attr->NonResident.DataSize);
+        DPRINT1("Initialized Data Size:    %ld\n", Attr->NonResident.InitalizedDataSize);
+        DPRINT1("Compressed Data Size:     %ld\n", Attr->NonResident.CompressedDataSize);
+    }
 }
 
 static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
 {
-    DPRINT1("FileCreation: %ld\n", Attr->FileCreation);
-    DPRINT1("FileChanged: %ld\n", Attr->FileChanged);
-    DPRINT1("MftChanged: %ld\n", Attr->MftChanged);
-    DPRINT1("FileRead: %ld\n", Attr->FileRead);
-    DPRINT1("AllocatedSize: %ld\n", Attr->AllocatedSize);
-    DPRINT1("RealSize: %ld\n", Attr->RealSize);
-    DPRINT1("FilenameChars: %ld\n", Attr->FilenameChars);
+    DPRINT1("Creation Time:    %ld\n", Attr->CreationTime);
+    DPRINT1("Last Write Time:  %ld\n", Attr->LastWriteTime);
+    DPRINT1("Change Time:      %ld\n", Attr->ChangeTime);
+    DPRINT1("Last Access Time: %ld\n", Attr->LastAccessTime);
+    DPRINT1("Allocated Size:   %ld\n", Attr->AllocatedSize);
+    DPRINT1("Data Size:        %ld\n", Attr->DataSize);
+    DPRINT1("Flags:            0x%X\n", Attr->Flags);
 }
 
 static inline void PrintNTFSBootSector(BootSector* PartBootSector)
@@ -347,9 +346,28 @@ static inline void PrintNTFSBootSector(BootSector* PartBootSector)
 
 static inline void PrintFileContextBlock(PFileContextBlock FileCB)
 {
-    DPRINT1("File Record Number: \"%S\"\n", FileCB->FileRecordNumber);
+    DPRINT1("File Record Number: %lu\n", FileCB->FileRecordNumber);
+    DPRINT1("File name:          \"%S\"\n", FileCB->FileName);
+
+    if (FileCB->IsDirectory)
+        DPRINT1("Directory:          TRUE\n");
+    else
+        DPRINT1("Directory:          FALSE\n");
+
+    DPRINT1("Number of Links:    %lu\n", FileCB->NumberOfLinks);
+    DPRINT1("Change Time:        %lu\n", FileCB->ChangeTime);
+    DPRINT1("Last Access Time:   %lu\n", FileCB->LastAccessTime);
+    DPRINT1("Last Write Time:    %lu\n", FileCB->LastWriteTime);
+    DPRINT1("Creation Time:      %lu\n", FileCB->CreationTime);
 };
 
+static inline void PrintStdInfoEx(StandardInformationEx* StdInfo)
+{
+    DPRINT1("Change Time:      %lu\n", StdInfo->ChangeTime);
+    DPRINT1("Last Access Time: %lu\n", StdInfo->LastAccessTime);
+    DPRINT1("Last Write Time:  %lu\n", StdInfo->LastWriteTime);
+    DPRINT1("Creation Time:    %lu\n", StdInfo->CreationTime);
+}
+#endif
+
 #endif // _NTFSPROCS_
-
-

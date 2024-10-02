@@ -33,6 +33,39 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType)
     return pObject;
 }
 
+void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag)
+{
+
+    Size = (Size != 0) ? Size : 1;
+    void* pObject = ExAllocatePoolWithTag(PoolType, Size, Tag);
+
+#if DBG
+    if (pObject != NULL)
+    {
+        RtlFillMemory(pObject, Size, 0xCD);
+    }
+#endif // DBG
+
+    return pObject;
+}
+
+void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag)
+{
+
+    Size = (Size != 0) ? Size : 1;
+
+    void* pObject = ExAllocatePoolWithTag(PoolType, Size, Tag);
+
+#if DBG
+    if (pObject != NULL)
+    {
+        RtlFillMemory(pObject, Size, 0xCD);
+    }
+#endif // DBG
+
+    return pObject;
+}
+
 void __cdecl operator delete(void* pObject)
 {
     if (pObject != NULL)
