@@ -1,143 +1,7 @@
 #include "io/ntfsprocs.h"
 
-/* *** FILE RECORD IMPLEMENTATIONS *** */
-
 NTSTATUS
-FileRecord::LoadData(_In_ PUCHAR FileRecordData,
-                     _In_ UINT Length)
-{
-    PAGED_CODE();
-    RtlCopyMemory(Data, FileRecordData, Length);
-    return STATUS_SUCCESS;
-}
-
-/* Find Attribute Functions */
-
-PIAttribute
-FileRecord::FindAttributePointer(_In_ AttributeType Type,
-                                 _In_ PCWSTR Name)
-{
-    ULONG DataPtr;
-    PIAttribute TestAttr;
-
-    // Progress data pointer to attribute section.
-    DataPtr = Header->AttributeOffset;
-
-    while (DataPtr < Header->ActualSize)
-    {
-        // Test current attribute
-        TestAttr = (PIAttribute)(&Data[DataPtr]);
-
-        if (TestAttr->AttributeType == Type)
-        {
-            // TODO: Search by attribute name.
-            if (Name)
-                continue;
-
-            return (PIAttribute)&Data[DataPtr];
-        }
-
-        else
-        {
-            // If the test attribute is 0 length, we are done.
-            if (!TestAttr->Length)
-                return NULL;
-
-            DataPtr += TestAttr->Length;
-        }
-    }
-
-    return NULL;
-}
-
-PDataRun
-FileRecord::FindNonResidentData(_In_ NonResidentAttribute* DataAttr)
-{
-
-    /* TODO:
-     * 1. Read Data run. (Attribute: Data)
-     * 2. Parse it.
-     *   - First byte describes the length of the offset and length`.
-     *   - Next section is the length (in clusters).
-     *   - Next section is the offset^ (in clusters).
-     *   - Next byte is the next data run (if it's fragmented).
-     *   - List of data runs is terminated with 0x00.
-     * 3. Return head of linked list.
-     *
-     * ` First nibble is the length. Second nibble is the offset.
-     *
-     * ^ From 0 for the first, from the previous offset for the rest.
-     *   Can be negative.
-     */
-
-    char* DataRunPtr;
-    PDataRun Head, Temp;
-    UINT8 LengthSize, OffsetSize;
-    ULONGLONG PreviousOffset;
-
-    // Get pointer to data run.
-    DataRunPtr = ((char*)DataAttr) + DataAttr->DataRunsOffset;
-
-    // Populate Head.
-    Head = new(NonPagedPool) DataRun();
-    Head->NextRun = NULL;
-
-    // Length size is LSB, Offset size is MSB.
-    LengthSize = DataRunPtr[0] & 0xF;
-    OffsetSize = DataRunPtr[0] >> 4;
-
-    // Copy length and LCN into linked list head.
-    RtlCopyMemory(&Head->Length,
-                  DataRunPtr + 1,
-                  LengthSize);
-
-    RtlCopyMemory(&Head->LCN,
-                  DataRunPtr + 1 + LengthSize,
-                  OffsetSize);
-
-    // Populate children data runs for head, if available.
-    Temp = Head;
-    PreviousOffset = Temp->LCN;
-    DataRunPtr += (1 + LengthSize + OffsetSize);
-
-    while (DataRunPtr[0])
-    {
-        // Initialize next item in linked list.
-        Temp->NextRun = new(NonPagedPool) DataRun();
-        Temp = Temp->NextRun;
-
-        // Get length and offset for current data run.
-        LengthSize = DataRunPtr[0] & 0xF;
-        OffsetSize = DataRunPtr[0] >> 4;
-
-        // Copy length and LCN into child data run.
-        RtlCopyMemory(&Temp->Length,
-                      DataRunPtr + 1,
-                      LengthSize);
-
-        /* Note: Child LCN's are relative to previous offset. They can be negative.
-         * So the real LCN = Previous Offset + LCN.
-         * TODO: Make this work with negative offsets.
-         */
-        RtlCopyMemory(&Temp->LCN,
-                      DataRunPtr + 1 + LengthSize,
-                      OffsetSize);
-
-        Temp->LCN += PreviousOffset;
-
-        // Move data run pointer to next item.
-        DataRunPtr += (1 + LengthSize + OffsetSize);
-
-        // Update Previous Offset
-        PreviousOffset = Temp->LCN;
-    }
-
-    // The caller is responsible for freeing the linked list.
-    return Head;
-}
-
-NTSTATUS
-FileRecord::UpdateResidentAttribute(_In_ ResidentAttribute* Attr)
+FileRecord::UpdateResidentAttribute(_In_ PAttribute Attr)
 {
     /* TODO:
      * Implement support for named attributes.
@@ -146,16 +10,14 @@ FileRecord::UpdateResidentAttribute(_In_ ResidentAttribute* Attr)
      */
     UCHAR OldData[FILE_RECORD_BUFFER_SIZE];
     ULONG DataPtr, OldDataPtr, OldDataLen, AttrType;
-    PIAttribute TestAttr;
+    PAttribute TestAttr;
     BOOLEAN NewAttrWritten = FALSE;
 
     // Ensure this function wasn't called with a non-resident attribute
-#if DBG
-    ASSERT(!Attr->NonResidentFlag);
-#endif
+    ASSERT(!(Attr->IsNonResident));
 
     DPRINT1("Attempting to update resident attribute...What is in Attr?\n");
-    PrintResidentAttributeHeader(Attr);
+    PrintAttributeHeader(Attr);
 
     // Start pointers at attribute offset.
     DataPtr = Header->AttributeOffset;
@@ -177,8 +39,8 @@ FileRecord::UpdateResidentAttribute(_In_ ResidentAttribute* Attr)
     while (OldDataPtr < OldDataLen)
     {
         // Test current attribute.
-        TestAttr = (PIAttribute)(&OldData[OldDataPtr]);
-        // PrintResidentAttributeHeader((ResidentAttribute*)TestAttr);
+        TestAttr = (PAttribute)(&OldData[OldDataPtr]);
+        // PrintAttributeHeader(TestAttr);
 
         // If the test attribute is 0 length, we are done.
         if (!TestAttr->Length)
@@ -206,7 +68,7 @@ FileRecord::UpdateResidentAttribute(_In_ ResidentAttribute* Attr)
                               FILE_RECORD_BUFFER_SIZE - DataPtr);
 
                 DPRINT1("Let's see what the new attribute looks like:\n");
-                PrintResidentAttributeHeader((ResidentAttribute*)Attr);
+                PrintAttributeHeader(Attr);
 
                 DPRINT1("Copying new attribute...\n");
 
@@ -216,7 +78,7 @@ FileRecord::UpdateResidentAttribute(_In_ ResidentAttribute* Attr)
                               Attr->Length);
 
                 DPRINT1("Let's check out the attribute header we just copied...\n");
-                PrintResidentAttributeHeader((ResidentAttribute*)&Data[DataPtr]);
+                PrintAttributeHeader((PAttribute)&Data[DataPtr]);
 
                 // Update pointer.
                 DataPtr += Attr->Length;
@@ -231,7 +93,7 @@ FileRecord::UpdateResidentAttribute(_In_ ResidentAttribute* Attr)
                                   TestAttr,
                                   TestAttr->Length);
 
-                    PrintResidentAttributeHeader((ResidentAttribute*)&Data[DataPtr]);
+                    PrintAttributeHeader((PAttribute)&Data[DataPtr]);
 
                     // Update attribute data pointer.
                     DataPtr += Attr->Length;
@@ -258,7 +120,7 @@ FileRecord::UpdateResidentAttribute(_In_ ResidentAttribute* Attr)
                               TestAttr->Length);
 
                 DPRINT1("Attribute copied:\n");
-                PrintAttributeHeader((PIAttribute)&Data[DataPtr]);
+                PrintAttributeHeader((PAttribute)&Data[DataPtr]);
 
                 // Update attribute data pointer.
                 DataPtr += TestAttr->Length;
@@ -279,4 +141,21 @@ FileRecord::UpdateResidentAttribute(_In_ ResidentAttribute* Attr)
     Header->ActualSize = DataPtr + 4;
 
     return STATUS_SUCCESS;
+}
+
+NTSTATUS
+FileRecord::SetAttribute(_In_ PAttribute Attr)
+{
+    if (!(Attr->IsNonResident))
+    {
+        // Attribute is resident.
+    }
+
+    else
+    {
+        // Attribute is non-resident.
+    }
+
+    __debugbreak();
+    return STATUS_NOT_IMPLEMENTED;
 }

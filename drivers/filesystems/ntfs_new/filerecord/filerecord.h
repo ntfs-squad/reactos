@@ -57,9 +57,17 @@ struct DataRun
     ULONGLONG Length;
 };
 
-struct FileRecordHeader
+typedef struct
 {
-    UCHAR  TypeID[4];              // Offset 0x00, Size 4 (Should be 'FILE')
+    UCHAR  TypeID[4];              // Offset 0x00, Size 4 ('FILE' or 'INDX')
+    UINT16 UpdateSequenceOffset;   // Offset 0x04, Size 2
+    UINT16 SizeOfUpdateSequence;   // Offset 0x06, Size 2
+    UINT64 LogFileSequenceNumber;  // Offset 0x08, Size 8
+} NTFSRecordHeader, *PNTFSRecordHeader;
+
+typedef struct
+{
+    UCHAR  TypeID[4];              // Offset 0x00, Size 4 ('FILE')
     UINT16 UpdateSequenceOffset;   // Offset 0x04, Size 2
     UINT16 SizeOfUpdateSequence;   // Offset 0x06, Size 2
     UINT64 LogFileSequenceNumber;  // Offset 0x08, Size 8
@@ -73,16 +81,39 @@ struct FileRecordHeader
     UINT16 NextAttributeID;        // Offset 0x28, Size 2
     UINT16 Padding;
     UINT32 MFTRecordNumber;        // Offset 0x2C, Size 4
-};
+} FileRecordHeader, *PFileRecordHeader;
 
-class FileRecord
+typedef class FileRecord
 {
 public:
     UCHAR Data[FILE_RECORD_BUFFER_SIZE];
     FileRecordHeader *Header = (FileRecordHeader*)&Data[0];
+
+    // ./filerecord.cpp
+    FileRecord(PNTFSVolume ThisVolume);
     NTSTATUS LoadData(PUCHAR FileRecordData, UINT Length);
-    PIAttribute FindAttributePointer(_In_ AttributeType Type,
-                                     _In_ PCWSTR Name);
-    PDataRun FindNonResidentData(_In_ NonResidentAttribute* Attr);
-    NTSTATUS UpdateResidentAttribute(_In_ ResidentAttribute* Attr);
-};
+
+    // ./find.cpp
+    PAttribute GetAttribute(_In_ AttributeType Type,
+                            _In_ PCWSTR Name);
+    PDataRun FindNonResidentData(_In_ PAttribute Attr);
+
+    // ./copy.cpp
+    NTSTATUS CopyData(_In_ PAttribute Attr,
+                      _In_ PUCHAR Buffer,
+                      _In_ ULONGLONG Offset,
+                      _Inout_ PULONGLONG Length);
+    NTSTATUS CopyData(_In_ PAttribute Attr,
+                      _In_ PUCHAR Buffer,
+                      _Inout_ PULONGLONG Length);
+    NTSTATUS CopyData(_In_ AttributeType Type,
+                      _In_ PCWSTR Name,
+                      _In_ PUCHAR Buffer,
+                      _Inout_ PULONGLONG Length);
+
+    // ./write.cpp
+    NTSTATUS UpdateResidentAttribute(_In_ PAttribute Attr);
+    NTSTATUS SetAttribute(_In_ PAttribute Attr);
+private:
+    PNTFSVolume Volume;
+} *PFileRecord;

@@ -46,48 +46,68 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PFILE_OBJECT FileObject;
     ULONG BufferLength;
 
-    DPRINT1("NtfsFsdQueryInformation Called!\n");
-
     IoStack = IoGetCurrentIrpStackLocation(Irp);
     FileInfoRequest = IoStack->Parameters.QueryFile.FileInformationClass;
     FileObject = IoStack->FileObject;
     VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
     FileCB = (PFileContextBlock)FileObject->FsContext;
+
     SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
     BufferLength = IoStack->Parameters.QueryFile.Length;
 
     switch (FileInfoRequest)
     {
         case FileBasicInformation:
+            DPRINT1("File basic information requested!\n");
             Status = GetFileBasicInformation(FileCB,
                                              (PFILE_BASIC_INFORMATION)SystemBuffer,
                                              &BufferLength);
             break;
         case FileStandardInformation:
-            DPRINT1("File standard information requested! We don't have this sadly :(\n");
-            Status = STATUS_INVALID_DEVICE_REQUEST;
+            DPRINT1("File standard information requested!\n");
+            Status = GetFileStandardInformation(FileCB,
+                                                (PFILE_STANDARD_INFORMATION)SystemBuffer,
+                                                &BufferLength);
             break;
         case FileInternalInformation:
-            DPRINT1("File internal information requested! We don't have this sadly :(\n");
-            Status = STATUS_INVALID_DEVICE_REQUEST;
+            DPRINT1("File internal information requested!\n");
+            Status = GetFileInternalInformation(FileCB,
+                                                (PFILE_INTERNAL_INFORMATION)SystemBuffer,
+                                                &BufferLength);
             break;
         case FileNameInformation:
+            DPRINT1("File name information requested!\n");
             Status = GetFileNameInformation(FileCB,
                                             (PFILE_NAME_INFORMATION)SystemBuffer,
                                             &BufferLength);
-            DPRINT1("Buffer Contents: \"%S\", Length: %ld\n", ((PFILE_NAME_INFORMATION)SystemBuffer)->FileName, ((PFILE_NAME_INFORMATION)SystemBuffer)->FileNameLength);
+            break;
+        case FileNetworkOpenInformation:
+            DPRINT1("FileNetworkOpenInformation requested!\n");
+            Status = GetFileNetworkOpenInformation(FileCB,
+                                                   (PFILE_NETWORK_OPEN_INFORMATION)SystemBuffer,
+                                                   &BufferLength);
             break;
         default:
-            DPRINT1("Unhandled File Information Request %d!\n", FileInfoRequest);
+            DPRINT1("Unhandled file information request %d!\n", FileInfoRequest);
             Status = STATUS_INVALID_DEVICE_REQUEST;
             break;
     }
 
     if (NT_SUCCESS(Status))
-        Irp->IoStatus.Information =
-            IoStack->Parameters.QueryFile.Length - BufferLength;
+    {
+        Irp->IoStatus.Information = IoStack->Parameters.QueryFile.Length - BufferLength;
+        DPRINT1("Buffer Length: %lu\nRemaining Buffer Length: %lu\nI/O Status Info: %lu\n", IoStack->Parameters.QueryFile.Length, BufferLength, Irp->IoStatus.Information);
+
+        // HACK!!!
+        Irp->UserIosb->Information = Irp->IoStatus.Information;
+    }
     else
+    {
         Irp->IoStatus.Information = 0;
+    }
+
+    if (FileCB)
+        PrintFileContextBlock(FileCB);
 
     return Status;
 }
@@ -166,6 +186,15 @@ NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     return 0;
 }
 
+PVOID
+GetUserBuffer(PIRP Irp)
+{
+    if (Irp->MdlAddress != NULL)
+        return MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+    else
+        return Irp->UserBuffer;
+}
+
 _Function_class_(IRP_MJ_DIRECTORY_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -178,10 +207,91 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-directory-control
      */
 
-    // TODO: make this actually work
-    UNREFERENCED_PARAMETER(VolumeDeviceObject);
-    UNREFERENCED_PARAMETER(Irp);
+    PIO_STACK_LOCATION IrpSp;
+    NTSTATUS Status = STATUS_UNSUCCESSFUL;
+    FILE_INFORMATION_CLASS FileInformationRequest;
+    PVolumeContextBlock VolCB;
+    PFileContextBlock FileCB;
+    PVOID SystemBuffer;
+    ULONG BufferLength;
 
-    DPRINT1("Called NtfsFsdDirectoryControl() which is a STUB!\n");
-    return STATUS_NOT_IMPLEMENTED;
+    DPRINT1("NtfsDirectoryControl() called\n");
+
+    IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    FileCB = (PFileContextBlock)(IrpSp->FileObject->FsContext);
+    VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
+    SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+    BufferLength = IrpSp->Parameters.QueryDirectory.Length;
+
+    if (!SystemBuffer)
+        __debugbreak();
+
+    if (IrpSp->MinorFunction == IRP_MN_QUERY_DIRECTORY)
+    {
+        FileInformationRequest = IrpSp->Parameters.QueryDirectory.FileInformationClass;
+
+        switch(FileInformationRequest)
+        {
+            case FileBothDirectoryInformation:
+                DPRINT1("FileBothDirectoryInformation request!\n");
+                Status = GetFileBothDirectoryInformation(FileCB,
+                                                         VolCB,
+                                                         (PFILE_BOTH_DIR_INFORMATION)SystemBuffer,
+                                                         &BufferLength);
+                break;
+            case FileDirectoryInformation:
+                DPRINT1("FileDirectoryInformation request!\n");
+                break;
+            case FileFullDirectoryInformation:
+                DPRINT1("FileFullDirectoryInformation request!\n");
+                break;
+            case FileIdBothDirectoryInformation:
+                DPRINT1("FileIdBothDirectoryInformation request!\n");
+                break;
+            case FileIdFullDirectoryInformation:
+                DPRINT1("FileIdFullDirectoryInformation request!\n");
+                break;
+            case FileNamesInformation:
+                DPRINT1("FileNamesInformation request!\n");
+                break;
+            case FileObjectIdInformation:
+                DPRINT1("FileObjectIdInformation request!\n");
+                break;
+            case FileReparsePointInformation:
+                DPRINT1("FileReparsePointInformation request!\n");
+                break;
+            default:
+                DPRINT1("Unknown directory query request! %lu\n", FileInformationRequest);
+                break;
+        }
+    }
+
+    else
+    {
+        if (IrpSp->MinorFunction == IRP_MN_NOTIFY_CHANGE_DIRECTORY)
+        {
+            DPRINT1("IRP_MN_NOTIFY_CHANGE_DIRECTORY\n");
+            Status = STATUS_SUCCESS;
+        }
+
+        else
+        {
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+        }
+    }
+
+    // Set to number of bytes written
+    if (NT_SUCCESS(Status))
+    {
+        Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - BufferLength;
+        DPRINT1("Buffer Length: %lu\nRemaining Buffer Length: %lu\nI/O Status Info: %lu\n", IrpSp->Parameters.QueryDirectory.Length, BufferLength, Irp->IoStatus.Information);
+    }
+    else
+    {
+        Irp->IoStatus.Information = 0;
+    }
+
+    // __debugbreak();
+
+    return Status;
 }

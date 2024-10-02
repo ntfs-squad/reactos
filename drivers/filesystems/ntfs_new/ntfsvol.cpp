@@ -13,7 +13,7 @@ const UINT8 Zeros[16] = { 4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0 };
 UCHAR DiskBuffer[MAX_CLUSTER_SIZE];
 
 NTSTATUS
-NtfsPartition::LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount)
+NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 {
     DISK_GEOMETRY DiskGeometry;
     NTSTATUS Status;
@@ -147,7 +147,7 @@ Cleanup:
 }
 
 NTSTATUS
-NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
+NTFSVolume::DumpBlocks(_Inout_ PUCHAR Buffer,
                           _In_    ULONG Lba,
                           _In_    ULONG LbaCount)
 {
@@ -160,8 +160,8 @@ NtfsPartition::DumpBlocks(_Inout_ PUCHAR Buffer,
 }
 
 NTSTATUS
-NtfsPartition::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
-                             _Out_ FileRecord* File)
+NTFSVolume::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
+                          _Out_ FileRecord* File)
 {
     /* TODO: We need to use VCN-to-LCN mapping.
      * From Windows Internals 7th ed, Part 2:
@@ -191,16 +191,16 @@ NtfsPartition::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
 }
 
 NTSTATUS
-NtfsPartition::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
-                              _Inout_ PUSHORT Length)
+NTFSVolume::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
+                           _Inout_ PUSHORT Length)
 {
     NTSTATUS Status;
     FileRecord* VolumeFileRecord;
-    ResidentAttribute* VolumeNameAttr;
+    PAttribute VolumeNameAttr;
     UINT32 AttrLength;
 
     // Allocate memory for $Volume file record.
-    VolumeFileRecord = new(NonPagedPool) FileRecord();
+    VolumeFileRecord = new(NonPagedPool) FileRecord(this);
 
     // Retrieve file record.
     Status = GetFileRecord(_Volume, VolumeFileRecord);
@@ -210,7 +210,7 @@ NtfsPartition::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
         goto cleanup;
 
     // Get pointer for the VolumeName attribute.
-    VolumeNameAttr = (ResidentAttribute*)VolumeFileRecord->FindAttributePointer(VolumeName, NULL);
+    VolumeNameAttr = (PAttribute)VolumeFileRecord->GetAttribute(AttributeType::VolumeName, NULL);
 
     if (!VolumeNameAttr)
     {
@@ -220,7 +220,7 @@ NtfsPartition::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
         goto cleanup;
     }
 
-    AttrLength = VolumeNameAttr->AttributeLength;
+    AttrLength = VolumeNameAttr->Resident.DataLength;
 
     // Copy volume name into VolumeLabel.
     RtlCopyMemory(VolumeLabel,
@@ -239,7 +239,7 @@ cleanup:
 }
 
 NTSTATUS
-NtfsPartition::WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
+NTFSVolume::WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
                                _In_ FileRecord* File)
 {
     PAGED_CODE();
@@ -273,16 +273,16 @@ NtfsPartition::WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
 }
 
 NTSTATUS
-NtfsPartition::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
+NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
                               _In_ USHORT Length)
 {
     NTSTATUS Status;
     FileRecord* VolumeFileRecord;
-    ResidentAttribute* VolumeNameAttr;
+    PAttribute VolumeNameAttr;
     // UCHAR NewVolNameAttr[0x100]; // max size for volume name attribute
 
     // Allocate memory for $Volume file record.
-    VolumeFileRecord = new(NonPagedPool) FileRecord();
+    VolumeFileRecord = new(NonPagedPool) FileRecord(this);
 
     // Retrieve file record.
     Status = GetFileRecord(_Volume, VolumeFileRecord);
@@ -292,11 +292,11 @@ NtfsPartition::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
         goto cleanup;
 
     // Get pointer for $VolumeName attribute.
-    VolumeNameAttr = (ResidentAttribute*)VolumeFileRecord->FindAttributePointer(VolumeName, NULL);
+    VolumeNameAttr = (PAttribute)VolumeFileRecord->GetAttribute(AttributeType::VolumeName, NULL);
 
     // Copy new volume label into the $VolumeName attribute.
     // HACK! We don't move around the data structure yet.
-    ASSERT(Length <= VolumeNameAttr->AttributeLength);
+    ASSERT(Length <= VolumeNameAttr->Resident.DataLength);
     RtlCopyMemory(GetResidentDataPointer(VolumeNameAttr),
                   VolumeLabel,
                   Length);
@@ -324,20 +324,19 @@ cleanup:
 }
 
 NTSTATUS
-NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
+NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 {
     // Note: $Bitmap is *always* non-resident on Windows.
     NTSTATUS Status;
     FileRecord* BitmapFileRecord;
-    NonResidentAttribute* BitmapData;
-    ResidentAttribute* BitmapFileNameAttr;
-    FileNameEx* BitmapFileNameAttrEx;
+    PAttribute BitmapData, BitmapFileName;
+    FileNameEx* BitmapFileNameEx;
     PDataRun DRHead, DRCurrent;
     UINT64 BytesToRead, ClusterReadSize;
     ULONG BytesPerCluster, ClusterPtr;
 
     // Get file record for $Bitmap
-    BitmapFileRecord = new(NonPagedPool) FileRecord();
+    BitmapFileRecord = new(NonPagedPool) FileRecord(this);
     Status = GetFileRecord(_Bitmap, BitmapFileRecord);
 
     if (Status != STATUS_SUCCESS)
@@ -347,18 +346,18 @@ NtfsPartition::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     BytesPerCluster = BytesPerSector * SectorsPerCluster;
 
     // Get pointers for $Bitmap to get data runs and file size.
-    BitmapData = (NonResidentAttribute*)(BitmapFileRecord->FindAttributePointer(Data, NULL));
-    BitmapFileNameAttr = (ResidentAttribute*)(BitmapFileRecord->FindAttributePointer(FileName, NULL));
-    BitmapFileNameAttrEx = (FileNameEx*)(GetResidentDataPointer(BitmapFileNameAttr));
+    BitmapData = BitmapFileRecord->GetAttribute(AttributeType::Data, NULL);
+    BitmapFileName = BitmapFileRecord->GetAttribute(AttributeType::FileName, NULL);
+    BitmapFileNameEx = (FileNameEx*)(GetResidentDataPointer(BitmapFileName));
 
-    if (!BitmapData | !BitmapFileNameAttr | !BitmapFileNameAttrEx)
+    if (!BitmapData | !BitmapFileName | !BitmapFileNameEx)
     {
         Status = STATUS_NOT_FOUND;
         goto cleanup;
     }
 
     // Get the size of $Bitmap
-    BytesToRead = BitmapFileNameAttrEx->RealSize;
+    BytesToRead = BitmapFileNameEx->DataSize;
 
     // Loop through data runs to calculate free space
     DRHead = BitmapFileRecord->FindNonResidentData(BitmapData);
@@ -411,7 +410,7 @@ cleanup:
 
 /* SEPARATING OUT FOR SANITY */
 void
-NtfsPartition::SanityCheckBlockIO()
+NTFSVolume::SanityCheckBlockIO()
 {
 
     DPRINT1("Running a very close sanity check by reading one block, writing one block and re reading\n\n\n\n");
@@ -462,12 +461,12 @@ NtfsPartition::SanityCheckBlockIO()
     }
 }
 void
-NtfsPartition::RunSanityChecks()
+NTFSVolume::RunSanityChecks()
 {
     PAGED_CODE();
 
     DPRINT1("RunSanityChecks() called\n");
-    SanityCheckBlockIO();
+    // SanityCheckBlockIO();
 
 // Wipe drive
 #if 0
@@ -491,14 +490,14 @@ NtfsPartition::RunSanityChecks()
 
 }
 
-NtfsPartition::~NtfsPartition()
+NTFSVolume::~NTFSVolume()
 {
 
 
 }
 
 void
-NtfsPartition::CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject)
+NTFSVolume::CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject)
 {
 
 }

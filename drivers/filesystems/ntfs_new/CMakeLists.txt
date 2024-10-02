@@ -1,5 +1,6 @@
 list(APPEND SOURCE
      io/ntfsinit.cpp
+     io/ntfsprocs.h
      io/util.cpp
      io/fastio.cpp
      io/read/read.cpp
@@ -7,14 +8,17 @@ list(APPEND SOURCE
      io/write.cpp
      io/vol/vol.cpp
      io/pnp.cpp
-     io/create.cpp
+     io/create/create.cpp
      io/close.cpp
      io/fileinfo/fileinfo.cpp
      io/ntblockio.cpp
      io/fsctrl/fsctrl.cpp
-     mft/filerecord.cpp
-     ntfspartition.cpp
-     io/ntfsprocs.h)
+     filerecord/copy.cpp
+     filerecord/filerecord.cpp
+     filerecord/find.cpp
+     filerecord/write.cpp
+     ntfsvol.cpp
+     btree/btree.cpp)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
 set_module_type(ntfs kernelmodedriver)

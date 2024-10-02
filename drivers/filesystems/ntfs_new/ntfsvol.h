@@ -26,9 +26,10 @@ struct BootSector
     USHORT EndSector;
 };
 
-typedef class NtfsPartition
+typedef class NTFSVolume
 {
 public:
+    BOOLEAN SuperMegaHack = FALSE;
     ULONG  BytesPerSector;
     UINT8  SectorsPerCluster;
     UINT32 ClustersInVolume;
@@ -46,8 +47,8 @@ public:
 
     PVPB VolParamBlock;
 
-    ~NtfsPartition();
-    NTSTATUS LoadNtfsDevice(_In_ PDEVICE_OBJECT DeviceToMount);
+    ~NTFSVolume();
+    NTSTATUS LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
     void     CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject);
     NTSTATUS DumpBlocks(_Inout_ PUCHAR Buffer,
                         _In_    ULONG Lba,
@@ -66,5 +67,5 @@ public:
     void SanityCheckBlockIO();
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
-} *PNtfsPartition;
+} *PNTFSVolume;
 

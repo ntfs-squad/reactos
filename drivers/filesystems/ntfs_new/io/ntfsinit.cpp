@@ -150,8 +150,9 @@ NtfsFsdShutdown (_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Do any cleanup needed and return STATUS_SUCCESS.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-shutdown
      */
-    DPRINT1("NtfsFsdShutdown: called\r\n");
-    return 0;
+    DPRINT1("NtfsFsdShutdown: called!\n");
+    DPRINT1("No cleanup routine exists yet!\n");
+    return STATUS_SUCCESS;
 }
 
 _Function_class_(DRIVER_UNLOAD)
@@ -177,6 +178,6 @@ NtfsFsdCleanup(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Otherwise, perform any cleanup as needed.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-cleanup
      */
-    DPRINT1("NtfsFsdCleanup: called\r\n");
+    DPRINT1("NtfsFsdCleanup: called\n");
     return 0;
 }
