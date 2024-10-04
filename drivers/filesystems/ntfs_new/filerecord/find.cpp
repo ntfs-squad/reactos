@@ -32,17 +32,19 @@ FileRecord::GetAttribute(_In_ AttributeType Type,
 
             else
             {
-                if (TestAttr->NameLength == NameLength &&
-                    RtlCompareMemory(TestAttr + TestAttr->NameOffset,
-                                     Name,
-                                     NameLength) == NameLength)
-                {
-                    // We found the named attribute!
-                    return (PAttribute)&Data[DataPtr];
-                }
+                // if (TestAttr->NameLength == NameLength &&
+                //     RtlCompareMemory(TestAttr + TestAttr->NameOffset,
+                //                      Name,
+                //                      NameLength) == NameLength)
+                // {
+                //     // We found the named attribute!
+                //     return (PAttribute)&Data[DataPtr];
+                // }
+
+                // Hack, lets just return it for now
+                return (PAttribute)&Data[DataPtr];
 
                 // This one isn't it. Try again.
-                continue;
             }
         }
 
@@ -55,10 +57,7 @@ FileRecord::GetAttribute(_In_ AttributeType Type,
             return NULL;
         }
 
-        else
-        {
-            DataPtr += TestAttr->Length;
-        }
+        DataPtr += TestAttr->Length;
     }
 
     // We went through the whole record and didn't find it.

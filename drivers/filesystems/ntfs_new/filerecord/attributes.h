@@ -31,22 +31,23 @@
 // Attribute types
 enum AttributeType
 {
-    StandardInformation = 0x10,
-    AttributeList       = 0x20,
-    FileName            = 0x30,
-    ObjectId            = 0x40,
-    SecurityDescriptor  = 0x50,
-    VolumeName          = 0x60,
-    VolumeInformation   = 0x70,
-    Data                = 0x80,
-    IndexRoot           = 0x90,
-    IndexAllocation     = 0xA0,
-    Bitmap              = 0xB0,
-    ReparsePoint        = 0xC0,
-    EAInformation       = 0xD0,
-    EA                  = 0xE0,
-    LoggedUtilityStream = 0x100,
+    TypeStandardInformation = 0x10,
+    TypeAttributeList       = 0x20,
+    TypeFileName            = 0x30,
+    TypeObjectId            = 0x40,
+    TypeSecurityDescriptor  = 0x50,
+    TypeVolumeName          = 0x60,
+    TypeVolumeInformation   = 0x70,
+    TypeData                = 0x80,
+    TypeIndexRoot           = 0x90,
+    TypeIndexAllocation     = 0xA0,
+    TypeBitmap              = 0xB0,
+    TypeReparsePoint        = 0xC0,
+    TypeEAInformation       = 0xD0,
+    TypeEA                  = 0xE0,
+    TypeLoggedUtilityStream = 0x100,
 };
+
 
 struct IndexNodeHeader
 {
@@ -93,13 +94,14 @@ typedef struct
             UINT64 AllocatedSize;          // Offset 0x28, Size 8
             UINT64 DataSize;               // Offset 0x30, Size 8
             UINT64 InitalizedDataSize;     // Offset 0x38, Size 8
-            UINT64 CompressedDataSize;     // Offset 0x40, Size 8
+            // This was in the old driver but I don't think it exists.
+            // UINT64 CompressedDataSize;     // Offset 0x40, Size 8
         } NonResident;
     };
 } Attribute, *PAttribute;
 
 /* Macro to get data pointer from a resident attribute pointer. */
-#define GetResidentDataPointer(x) (char*)x + x->Resident.DataOffset
+#define GetResidentDataPointer(x) (((char*)x) + (x->Resident.DataOffset))
 
 /* Macro to free memory from data run. */
 #define FreeDataRun(x) while(x) {\
@@ -230,3 +232,25 @@ typedef struct
     UINT8  NameLength;    // Offset 0x05, Size 1
     UINT16 ValueLength;   // Offset 0x06, Size 2
 } EAEx, *PEAEx;
+
+typedef struct
+{
+    union
+    {
+        struct                     // Offset 0x00, Size 8
+        {
+            ULONGLONG IndexedFile;
+        } Directory;
+        struct
+        {
+            USHORT    DataOffset;
+            USHORT    DataLength;
+            ULONG     Reserved;
+        } ViewIndex;
+    } Data;
+    UINT16 EntryLength;            // Offset 0x08, Size 2
+    UINT16 StreamLength;           // Offset 0x0A, Size 2
+    UINT8  Flags;                  // Offset 0x0C, Size 1
+    // Not sure why old driver devs thought this pointer was appropriate.
+    FileNameEx        FileName; // Probably should be UCHAR Data[1];
+} IndexEntry, *PIndexEntry;

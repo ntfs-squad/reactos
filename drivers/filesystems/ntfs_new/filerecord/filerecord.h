@@ -88,6 +88,8 @@ typedef class FileRecord
 public:
     UCHAR Data[FILE_RECORD_BUFFER_SIZE];
     FileRecordHeader *Header = (FileRecordHeader*)&Data[0];
+    // This is a hack, make private when we've fixed everything else.
+    PNTFSVolume Volume;
 
     // ./filerecord.cpp
     FileRecord(PNTFSVolume ThisVolume);
@@ -114,6 +116,5 @@ public:
     // ./write.cpp
     NTSTATUS UpdateResidentAttribute(_In_ PAttribute Attr);
     NTSTATUS SetAttribute(_In_ PAttribute Attr);
-private:
-    PNTFSVolume Volume;
+
 } *PFileRecord;
