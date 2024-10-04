@@ -210,7 +210,7 @@ NTFSVolume::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
         goto cleanup;
 
     // Get pointer for the VolumeName attribute.
-    VolumeNameAttr = (PAttribute)VolumeFileRecord->GetAttribute(AttributeType::VolumeName, NULL);
+    VolumeNameAttr = (PAttribute)VolumeFileRecord->GetAttribute(TypeVolumeName, NULL);
 
     if (!VolumeNameAttr)
     {
@@ -292,7 +292,7 @@ NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
         goto cleanup;
 
     // Get pointer for $VolumeName attribute.
-    VolumeNameAttr = (PAttribute)VolumeFileRecord->GetAttribute(AttributeType::VolumeName, NULL);
+    VolumeNameAttr = (PAttribute)VolumeFileRecord->GetAttribute(TypeVolumeName, NULL);
 
     // Copy new volume label into the $VolumeName attribute.
     // HACK! We don't move around the data structure yet.
@@ -346,8 +346,8 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     BytesPerCluster = BytesPerSector * SectorsPerCluster;
 
     // Get pointers for $Bitmap to get data runs and file size.
-    BitmapData = BitmapFileRecord->GetAttribute(AttributeType::Data, NULL);
-    BitmapFileName = BitmapFileRecord->GetAttribute(AttributeType::FileName, NULL);
+    BitmapData = BitmapFileRecord->GetAttribute(TypeData, NULL);
+    BitmapFileName = BitmapFileRecord->GetAttribute(TypeFileName, NULL);
     BitmapFileNameEx = (FileNameEx*)(GetResidentDataPointer(BitmapFileName));
 
     if (!BitmapData | !BitmapFileName | !BitmapFileNameEx)

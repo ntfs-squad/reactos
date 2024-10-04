@@ -1,5 +1,3 @@
-#include "../io/ntfsprocs.h"
-
 #define INDEX_ROOT_SMALL 0x0
 #define INDEX_ROOT_LARGE 0x1
 
@@ -42,8 +40,8 @@ typedef struct
         } Directory;
         struct
         {
-            USHORT    DataOffset;
-            USHORT    DataLength;
+            USHORT   DataOffset;
+            USHORT   DataLength;
             ULONG    Reserved;
         } ViewIndex;
     } Data;
@@ -51,7 +49,7 @@ typedef struct
     USHORT            KeyLength;
     USHORT            Flags;
     USHORT            Reserved;
-    FileNameEx        FileName;
+    // FileNameEx        FileName;
 } INDEX_ENTRY_ATTRIBUTE, *PINDEX_ENTRY_ATTRIBUTE;
 
 struct _BTreeFilenameNode;
@@ -60,9 +58,9 @@ typedef struct _BTreeFilenameNode BTreeFilenameNode;
 // Keys are arranged in nodes as an ordered, linked list
 typedef struct _BTreeKey
 {
-    struct _BTreeKey *NextKey;
+    struct _BTreeKey  *NextKey;
     BTreeFilenameNode *LesserChild;  // Child-Node. All the keys in this node will be sorted before IndexEntry
-    PINDEX_ENTRY_ATTRIBUTE IndexEntry;  // must be last member for FIELD_OFFSET
+    PIndexEntry       IndexEntry;  // must be last member for FIELD_OFFSET
 }BTreeKey, *PBTreeKey;
 
 // Every Node is just an ordered list of keys.
@@ -81,3 +79,52 @@ typedef struct
 {
     PBTreeFilenameNode RootNode;
 } BTree, *PBTree;
+
+VOID
+PrintAllVCNs(PNTFSVolume Volume,
+             PFileRecord File,
+             PAttribute Attr,
+             ULONG NodeSize);
+
+ULONG GetFileNameAttributeLength(PFileNameEx FileNameAttribute);
+
+VOID
+DumpBTreeKey(PBTree Tree,
+             PBTreeKey Key,
+             ULONG Number,
+             ULONG Depth);
+
+VOID
+DestroyBTreeNode(PBTreeFilenameNode Node);
+
+VOID
+DumpBTreeNode(PBTree Tree,
+              PBTreeFilenameNode Node,
+              ULONG Number,
+              ULONG Depth);
+
+VOID
+DestroyBTree(PBTree Tree);
+
+VOID
+DumpBTree(PBTree Tree);
+
+VOID
+DumpBTreeKey(PBTree Tree,
+             PBTreeKey Key,
+             ULONG Number,
+             ULONG Depth);
+
+PBTreeFilenameNode
+CreateBTreeNodeFromIndexNode(PNTFSVolume Volume,
+                             PFileRecord File,
+                             IndexRootEx* IndexRoot,
+                             PAttribute IndexAllocationAttribute,
+                             PINDEX_ENTRY_ATTRIBUTE NodeEntry);
+
+NTSTATUS
+CreateBTreeFromFile(PFileRecord File,
+                    PBTree *NewTree);
+PBTreeKey
+CreateBTreeKeyFromFilename(ULONGLONG FileReference, PFileNameEx FileNameAttribute);
+

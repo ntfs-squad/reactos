@@ -272,6 +272,7 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 #include "../filerecord/attributes.h"
 #include "../ntfsvol.h"
 #include "../filerecord/filerecord.h"
+#include "../btree/btree.h"
 
 #include <debug.h>
 
@@ -290,31 +291,31 @@ static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 
 static inline void PrintAttributeHeader(PAttribute Attr)
 {
-    DPRINT1("Attribute Type:   0x%X\n", Attr->AttributeType);
-    DPRINT1("Length:           %ld\n", Attr->Length);
-    DPRINT1("Nonresident Flag: %ld\n", Attr->IsNonResident);
-    DPRINT1("Name Length:      %ld\n", Attr->NameLength);
-    DPRINT1("Name Offset:      %ld\n", Attr->NameOffset);
-    DPRINT1("Flags:            0x%X\n", Attr->Flags);
-    DPRINT1("Attribute ID:     %ld\n", Attr->AttributeID);
+    DPRINT1("Attribute Type:        0x%X\n", Attr->AttributeType);
+    DPRINT1("Length:                %ld\n", Attr->Length);
+    DPRINT1("Nonresident Flag:      %ld\n", Attr->IsNonResident);
+    DPRINT1("Name Length:           %ld\n", Attr->NameLength);
+    DPRINT1("Name Offset:           %ld\n", Attr->NameOffset);
+    DPRINT1("Flags:                 0x%X\n", Attr->Flags);
+    DPRINT1("Attribute ID:          %ld\n", Attr->AttributeID);
 
     if (!(Attr->IsNonResident))
     {
-        DPRINT1("Data Length:      %ld\n", Attr->Resident.DataLength);
-        DPRINT1("Data Offset:      0x%X\n", Attr->Resident.DataLength);
-        DPRINT1("Indexed Flag:     %ld\n", Attr->Resident.IndexedFlag);
+        DPRINT1("Data Length:           %ld\n", Attr->Resident.DataLength);
+        DPRINT1("Data Offset:           0x%X\n", Attr->Resident.DataLength);
+        DPRINT1("Indexed Flag:          %ld\n", Attr->Resident.IndexedFlag);
     }
 
     else
     {
-        DPRINT1("First VCN:                %ld\n", Attr->NonResident.FirstVCN);
-        DPRINT1("Last VCN:                 %ld\n", Attr->NonResident.LastVCN);
-        DPRINT1("Data Run Offset:          %ld\n", Attr->NonResident.DataRunsOffset);
-        DPRINT1("Compression Unit Size:    %ld\n", Attr->NonResident.CompressionUnitSize);
-        DPRINT1("Allocated Size:           %ld\n", Attr->NonResident.AllocatedSize);
-        DPRINT1("Data Size:                %ld\n", Attr->NonResident.DataSize);
-        DPRINT1("Initialized Data Size:    %ld\n", Attr->NonResident.InitalizedDataSize);
-        DPRINT1("Compressed Data Size:     %ld\n", Attr->NonResident.CompressedDataSize);
+        DPRINT1("First VCN:             %ld\n", Attr->NonResident.FirstVCN);
+        DPRINT1("Last VCN:              %ld\n", Attr->NonResident.LastVCN);
+        DPRINT1("Data Run Offset:       %ld\n", Attr->NonResident.DataRunsOffset);
+        DPRINT1("Compression Unit Size: %ld\n", Attr->NonResident.CompressionUnitSize);
+        DPRINT1("Allocated Size:        %ld\n", Attr->NonResident.AllocatedSize);
+        DPRINT1("Data Size:             %ld\n", Attr->NonResident.DataSize);
+        DPRINT1("Initialized Data Size: %ld\n", Attr->NonResident.InitalizedDataSize);
+        // DPRINT1("Compressed Data Size:  %ld\n", Attr->NonResident.CompressedDataSize);
     }
 }
 
@@ -367,6 +368,14 @@ static inline void PrintStdInfoEx(StandardInformationEx* StdInfo)
     DPRINT1("Last Access Time: %lu\n", StdInfo->LastAccessTime);
     DPRINT1("Last Write Time:  %lu\n", StdInfo->LastWriteTime);
     DPRINT1("Creation Time:    %lu\n", StdInfo->CreationTime);
+}
+
+static inline void PrintIndexRootEx(PIndexRootEx IndexRootData)
+{
+    DPRINT1("Attribute Type:            0x%X\n", IndexRootData->AttributeType);
+    DPRINT1("Collation Rule:            0x%X\n", IndexRootData->CollationRule);
+    DPRINT1("Bytes per Index Record:    %ld\n", IndexRootData->BytesPerIndexRec);
+    DPRINT1("Clusters per Index Record: %ld\n", IndexRootData->ClusPerIndexRec);
 }
 #endif
 

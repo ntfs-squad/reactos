@@ -104,38 +104,85 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                   IrpSp->FileObject->FileName.Buffer,
                   IrpSp->FileObject->FileName.Length);
 
-    // This only works on the root file for now.
-    // ASSERT(wcscmp(L"\\", FileName) == 0);
-    CurrentFile = new(PagedPool) FileRecord(VolCB->Volume);
-    VolCB->Volume->GetFileRecord(30, CurrentFile);
-    PrintFileRecordHeader(CurrentFile->Header);
-    Attr = CurrentFile->GetAttribute(AttributeType::StandardInformation,
-                                     NULL);
-    PrintAttributeHeader(Attr);
-    StdInfo = new(PagedPool) StandardInformationEx();
-    RtlCopyMemory(StdInfo,
-                  GetResidentDataPointer(Attr),
-                  sizeof(StandardInformationEx));
-    PrintStdInfoEx(StdInfo);
-    FileCB->FileRecordNumber = 30;
-    FileCB->NumberOfLinks = 1;
-
-    // Fill out standard information
-    FileCB->CreationTime.QuadPart = StdInfo->CreationTime;
-    FileCB->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
-    FileCB->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
-    FileCB->ChangeTime.QuadPart = StdInfo->ChangeTime;
-    FileCB->FileAttributes = StdInfo->FilePermissions;
-
-    if (IsDirectory(FileName))
+    if (wcscmp(L"\\", FileName) == 0)
     {
-        FileCB->IsDirectory = TRUE;
-        FileCB->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+        // We're the root file. Let's try to do this right.
+        CurrentFile = new(PagedPool) FileRecord(VolCB->Volume);
+
+        VolCB->Volume->GetFileRecord(_Root, CurrentFile);
+        Attr = CurrentFile->GetAttribute(TypeStandardInformation,
+                                         NULL);
+        StdInfo = new(PagedPool) StandardInformationEx();
+        RtlCopyMemory(StdInfo,
+                      GetResidentDataPointer(Attr),
+                      sizeof(StandardInformationEx));
+        FileCB->FileRecordNumber = _Root;
+
+        // From file record
+        FileCB->NumberOfLinks = CurrentFile->Header->HardLinkCount;
+
+        // From standard information
+        FileCB->CreationTime.QuadPart = StdInfo->CreationTime;
+        FileCB->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
+        FileCB->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
+        FileCB->ChangeTime.QuadPart = StdInfo->ChangeTime;
+        FileCB->FileAttributes = StdInfo->FilePermissions;
+
+
+
+        // Pretty sure this is a directory ;)
+        if (1)
+        {
+            FileCB->IsDirectory = TRUE;
+            FileCB->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+#if 1
+            // Here goes nothing...
+            PBTree NewTree = NULL;
+            CreateBTreeFromFile(CurrentFile, &NewTree);
+            DumpBTree(NewTree);
+            __debugbreak();
+#endif
+        }
+
+        // Set FsContext to the file context block and open file.
+        FileObject->FsContext = FileCB;
+        Irp->IoStatus.Information = FILE_OPENED;
     }
 
-    // Set FsContext to the file context block and open file.
-    FileObject->FsContext = FileCB;
-    Irp->IoStatus.Information = FILE_OPENED;
+    else
+    {
+        // We're some other file, hack for now.
+        CurrentFile = new(PagedPool) FileRecord(VolCB->Volume);
+        VolCB->Volume->GetFileRecord(30, CurrentFile);
+        PrintFileRecordHeader(CurrentFile->Header);
+        Attr = CurrentFile->GetAttribute(TypeStandardInformation,
+                                         NULL);
+        PrintAttributeHeader(Attr);
+        StdInfo = new(PagedPool) StandardInformationEx();
+        RtlCopyMemory(StdInfo,
+                      GetResidentDataPointer(Attr),
+                      sizeof(StandardInformationEx));
+        PrintStdInfoEx(StdInfo);
+        FileCB->FileRecordNumber = 30;
+        FileCB->NumberOfLinks = 1;
+
+        // Fill out standard information
+        FileCB->CreationTime.QuadPart = StdInfo->CreationTime;
+        FileCB->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
+        FileCB->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
+        FileCB->ChangeTime.QuadPart = StdInfo->ChangeTime;
+        FileCB->FileAttributes = StdInfo->FilePermissions;
+
+        if (IsDirectory(FileName))
+        {
+            FileCB->IsDirectory = TRUE;
+            FileCB->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+        }
+
+        // Set FsContext to the file context block and open file.
+        FileObject->FsContext = FileCB;
+        Irp->IoStatus.Information = FILE_OPENED;
+    }
 
     DPRINT1("Opened file!\n");
 
