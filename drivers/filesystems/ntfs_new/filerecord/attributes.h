@@ -19,6 +19,8 @@
 #define FN_OFFLINE         0x1000
 #define FN_NOTINDEXED      0x2000
 #define FN_ENCRYPTED       0x4000
+#define FN_DIRECTORY       0x10000000
+#define FN_INDEX_VIEW      0x20000000
 
 // Volume Information Flags
 #define VOL_DIRTY          0x0001

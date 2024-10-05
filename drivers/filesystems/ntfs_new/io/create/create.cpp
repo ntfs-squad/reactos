@@ -120,6 +120,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
         // From file record
         FileCB->NumberOfLinks = CurrentFile->Header->HardLinkCount;
+        FileCB->IsDirectory = !!(CurrentFile->Header->Flags & FR_IS_DIRECTORY);
 
         // From standard information
         FileCB->CreationTime.QuadPart = StdInfo->CreationTime;
@@ -128,20 +129,19 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         FileCB->ChangeTime.QuadPart = StdInfo->ChangeTime;
         FileCB->FileAttributes = StdInfo->FilePermissions;
 
+        // Add pointer for file record
+        FileCB->FileRec = CurrentFile;
 
-
-        // Pretty sure this is a directory ;)
-        if (1)
+        if (FileCB->IsDirectory)
         {
-            FileCB->IsDirectory = TRUE;
-            FileCB->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
-#if 1
-            // Here goes nothing...
-            PBTree NewTree = NULL;
-            CreateBTreeFromFile(CurrentFile, &NewTree);
-            DumpBTree(NewTree);
-            __debugbreak();
-#endif
+            // Not sure if we need this anymore.
+            // FileCB->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+
+            // Let's get the Btree...
+            // PBTree NewTree = NULL;
+            // CreateBTreeFromFile(CurrentFile, &NewTree);
+            // DumpBTree(NewTree);
+            // __debugbreak();
         }
 
         // Set FsContext to the file context block and open file.
