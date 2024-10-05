@@ -725,6 +725,10 @@ CreateBTreeFromFile(PFileRecord File,
 
     DPRINT("CreateBTreeFromIndex(%p, %p)\n", File, NewTree);
 
+#ifdef NTFS_DEBUG
+    ASSERT(File);
+#endif
+
     if (!Tree || !RootNode || !CurrentKey)
     {
         DPRINT1("Couldn't allocate enough memory for B-Tree!\n");

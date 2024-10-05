@@ -33,8 +33,6 @@ typedef enum _TYPE_OF_OPEN {
     EaFile,
 } TYPE_OF_OPEN;
 
-#include "contextblocks.h"
-
 /* ntfsinit.cpp */
 
 _Function_class_(DRIVER_UNLOAD)
@@ -54,7 +52,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdCleanup (_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdCleanup (_In_    PDEVICE_OBJECT VolumeDeviceObject,
                 _Inout_ PIRP Irp);
 
 _Function_class_(IRP_MJ_LOCK_CONTROL)
@@ -62,7 +60,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdLockControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdLockControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                    _Inout_ PIRP Irp)
 
 _Function_class_(IRP_MJ_DEVICE_CONTROL)
@@ -70,7 +68,7 @@ _Function_class_(DRIVER_DISPATCH);
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdDeviceControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdDeviceControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                      _Inout_ PIRP Irp);
 
 
@@ -79,7 +77,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdShutdown (_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdShutdown (_In_    PDEVICE_OBJECT VolumeDeviceObject,
                  _Inout_ PIRP Irp);
 /* fastio */
 BOOLEAN NTAPI
@@ -107,7 +105,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdFileSystemControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdFileSystemControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                          _Inout_ PIRP Irp);
 
 _Function_class_(IRP_MJ_FLUSH_BUFFERS)
@@ -115,7 +113,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdFlushBuffers (_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdFlushBuffers (_In_    PDEVICE_OBJECT VolumeDeviceObject,
                      _Inout_ PIRP Irp);
 
 /* create.cpp */
@@ -124,7 +122,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdCreate(_In_    PDEVICE_OBJECT VolumeDeviceObject,
               _Inout_ PIRP Irp);
 
 /* close.cpp  */
@@ -133,7 +131,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdClose (_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdClose (_In_    PDEVICE_OBJECT VolumeDeviceObject,
               _Inout_ PIRP Irp);
 
 /* read.cpp */
@@ -142,7 +140,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdRead(_In_    PDEVICE_OBJECT VolumeDeviceObject,
             _Inout_ PIRP Irp);
 
 /* write.cpp */
@@ -151,7 +149,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdWrite (_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdWrite (_In_    PDEVICE_OBJECT VolumeDeviceObject,
               _Inout_ PIRP Irp);
 
 /* fileinfo.cpp */
@@ -161,7 +159,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                         _Inout_ PIRP Irp);
 
 _Function_class_(IRP_MJ_DIRECTORY_CONTROL)
@@ -169,7 +167,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdDirectoryControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                         _Inout_ PIRP Irp);
 
 _Function_class_(IRP_MJ_SET_INFORMATION)
@@ -177,7 +175,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdSetInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                       _Inout_ PIRP Irp);
 /* ea.cpp */
 _Function_class_(IRP_MJ_QUERY_EA)
@@ -185,7 +183,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdQueryEa(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdQueryEa(_In_   PDEVICE_OBJECT VolumeDeviceObject,
               _Inout_ PIRP Irp);
 
 _Function_class_(IRP_MJ_SET_EA)
@@ -193,7 +191,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdSetEa(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdSetEa(_In_   PDEVICE_OBJECT VolumeDeviceObject,
             _Inout_ PIRP Irp);
 
 /* vol.cpp */
@@ -202,7 +200,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdQueryVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdQueryVolumeInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                               _Inout_ PIRP Irp);
 
 _Requires_lock_held_(_Global_critical_region_)
@@ -217,7 +215,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdSetVolumeInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                             _Inout_ PIRP Irp);
 /* pnp.cpp */
 _Function_class_(IRP_MJ_PNP)
@@ -225,7 +223,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdPnp(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdPnp(_In_    PDEVICE_OBJECT VolumeDeviceObject,
            _Inout_ PIRP Irp);
 
 /* ntblockio.cpp*/
@@ -246,13 +244,13 @@ ReadBlock(_In_    PDEVICE_OBJECT DeviceObject,
           _In_    BOOLEAN Override);
 
 NTSTATUS
-WriteDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
-          _In_    LONGLONG StartingOffset,
-          _In_    ULONG AmountOfBytes,
-          _In_    PUCHAR BufferToWrite);
+WriteDisk(_In_ PDEVICE_OBJECT DeviceBeingRead,
+          _In_ LONGLONG StartingOffset,
+          _In_ ULONG AmountOfBytes,
+          _In_ PUCHAR BufferToWrite);
 
 NTSTATUS
-WriteBlock(_In_    PDEVICE_OBJECT DeviceObject,
+WriteBlock(_In_   PDEVICE_OBJECT DeviceObject,
           _In_    ULONG DiskSector,
           _In_    ULONG SectorCount,
           _In_    ULONG SectorSize,
@@ -269,6 +267,7 @@ DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 
+#include "contextblocks.h"
 #include "../filerecord/attributes.h"
 #include "../ntfsvol.h"
 #include "../filerecord/filerecord.h"
@@ -328,6 +327,7 @@ static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
     DPRINT1("Allocated Size:   %ld\n", Attr->AllocatedSize);
     DPRINT1("Data Size:        %ld\n", Attr->DataSize);
     DPRINT1("Flags:            0x%X\n", Attr->Flags);
+    DPRINT1("Filename:        \"%S\"\n", Attr->Name);
 }
 
 static inline void PrintNTFSBootSector(BootSector* PartBootSector)
