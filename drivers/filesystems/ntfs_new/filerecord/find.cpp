@@ -30,22 +30,16 @@ FileRecord::GetAttribute(_In_ AttributeType Type,
                 return (PAttribute)&Data[DataPtr];
             }
 
-            else
+            else if ((TestAttr->NameLength) * sizeof(WCHAR) == NameLength &&
+                     RtlCompareMemory(GetNamePointer(TestAttr),
+                                      Name,
+                                      NameLength) == NameLength)
             {
-                // if (TestAttr->NameLength == NameLength &&
-                //     RtlCompareMemory(TestAttr + TestAttr->NameOffset,
-                //                      Name,
-                //                      NameLength) == NameLength)
-                // {
-                //     // We found the named attribute!
-                //     return (PAttribute)&Data[DataPtr];
-                // }
-
-                // Hack, lets just return it for now
+                // We found the attribute!
                 return (PAttribute)&Data[DataPtr];
-
-                // This one isn't it. Try again.
             }
+
+            // This one isn't it. Try again.
         }
 
         else if (!TestAttr->Length ||

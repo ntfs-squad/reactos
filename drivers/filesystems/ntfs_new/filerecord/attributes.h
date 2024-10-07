@@ -104,6 +104,7 @@ typedef struct
 
 /* Macro to get data pointer from a resident attribute pointer. */
 #define GetResidentDataPointer(x) (((char*)x) + (x->Resident.DataOffset))
+#define GetNamePointer(x) (((char*)x) + (x->NameOffset))
 
 /* Macro to free memory from data run. */
 #define FreeDataRun(x) while(x) {\

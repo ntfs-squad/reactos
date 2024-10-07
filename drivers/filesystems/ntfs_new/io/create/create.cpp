@@ -85,6 +85,8 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         FileRecordNumber = _Root;
     else if (wcscmp(L"\\folder\\", FileName) == 0)
         FileRecordNumber = 38;
+    else if (wcscmp(L"\\folder\\folder2\\", FileName) == 0)
+        FileRecordNumber = 39;
     else
         FileRecordNumber = 30;
 
