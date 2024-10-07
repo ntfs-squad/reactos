@@ -69,19 +69,7 @@ typedef struct _FCB
     // USHORT LinkCount;
 } FileContextBlock, *PFileContextBlock;
 
-// I like the idea of this, but haven't needed it yet.
-// typedef struct
+// typedef struct _SCB
 // {
-//     PIO_STACK_LOCATION Stack;
-//     UCHAR MajorFunction;
-//     UCHAR MinorFunction;
-//     PIRP Irp;
-//     PDEVICE_OBJECT DeviceObject;
-//     // PFILE_OBJECT FileObject;
 
-//     // We will uncomment these when needed.
-//     // ULONG Flags;
-//     // BOOLEAN IsTopLevel;
-//     // CCHAR PriorityBoost;
-
-// } IoRequestContext, *PIoRequestContext;
+// } StreamContextBlock, *StreamContextBlock;

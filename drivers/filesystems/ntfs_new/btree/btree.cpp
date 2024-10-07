@@ -750,8 +750,11 @@ CreateBTreeFromFile(PFileRecord File,
     // See if the file record has an attribute allocation
     IndexAllocationAttribute = File->GetAttribute(TypeIndexAllocation, L"$I30");
 
-    DPRINT1("Got attribute! Lets look at it!\n");
-    PrintAttributeHeader(IndexAllocationAttribute);
+    if (IndexAllocationAttribute)
+    {
+        DPRINT1("Got attribute! Lets look at it!\n");
+        PrintAttributeHeader(IndexAllocationAttribute);
+    }
 
     // Setup the Tree
     RootNode->FirstKey = CurrentKey;

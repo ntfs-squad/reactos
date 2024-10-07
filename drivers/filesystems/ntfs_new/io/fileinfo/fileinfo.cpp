@@ -98,7 +98,7 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         Irp->IoStatus.Information = IoStack->Parameters.QueryFile.Length - BufferLength;
         DPRINT1("Buffer Length: %lu\nRemaining Buffer Length: %lu\nI/O Status Info: %lu\n", IoStack->Parameters.QueryFile.Length, BufferLength, Irp->IoStatus.Information);
 
-        // HACK!!!
+        // HACK!!! Why is this still needed?
         Irp->UserIosb->Information = Irp->IoStatus.Information;
     }
     else
