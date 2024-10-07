@@ -112,6 +112,10 @@ typedef struct
     x = tmp;\
 }
 
+// Macros to get values from a file reference
+#define GetFileRecordNumberFromFileReference(x) x & 0xFFFFFFFFFFFF
+#define GetSequenceNumberFromFileReference(x) (x << 6) >> 6
+
 /* *** EXTENDED ATTRIBUTE HEADERS *** */
 
 // $STANDARD_INFORMATION (0x10)
@@ -147,14 +151,14 @@ typedef struct
 // $FILE_NAME (0x30)
 typedef struct
 {
-    UINT64 ParentDirectory;    // Offset 0x00, Size 8
-    UINT64 CreationTime;       // Offset 0x08, Size 8
-    UINT64 LastWriteTime;      // Offset 0x10, Size 8
-    UINT64 ChangeTime;         // Offset 0x18, Size 8
-    UINT64 LastAccessTime;     // Offset 0x20, Size 8
-    UINT64 AllocatedSize;      // Offset 0x28, Size 8
-    UINT64 DataSize;           // Offset 0x30, Size 8
-    UINT32 Flags;              // Offset 0x38, Size 4
+    UINT64 ParentFileReference; // Offset 0x00, Size 8
+    UINT64 CreationTime;        // Offset 0x08, Size 8
+    UINT64 LastWriteTime;       // Offset 0x10, Size 8
+    UINT64 ChangeTime;          // Offset 0x18, Size 8
+    UINT64 LastAccessTime;      // Offset 0x20, Size 8
+    UINT64 AllocatedSize;       // Offset 0x28, Size 8
+    UINT64 DataSize;            // Offset 0x30, Size 8
+    UINT32 Flags;               // Offset 0x38, Size 4
     union
     {
         struct
@@ -164,9 +168,9 @@ typedef struct
         } EAInfo;
         ULONG ReparseTag;
     } Extended;
-    UINT8  NameLength;         // Offset 0x40, Size 1
-    UINT8  NameType;           // Offset 0x41, Size 1
-    WCHAR  Name[1];            // Offset 0x42
+    UINT8  NameLength;          // Offset 0x40, Size 1
+    UINT8  NameType;            // Offset 0x41, Size 1
+    WCHAR  Name[1];             // Offset 0x42
 } FileNameEx, *PFileNameEx;
 
 // $OBJECT_ID (0x40)

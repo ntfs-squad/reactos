@@ -163,9 +163,19 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
     DPRINT1("Let's check out the Btree...\n");
     DumpBTree(NewTree);
 
-    // HACK! Just jump to first child node
-    CurrentKey = NewTree->RootNode->FirstKey->LesserChild->FirstKey;
-    KeysInNode = NewTree->RootNode->FirstKey->LesserChild->KeyCount;
+    // HACK! Jump to first child node if we're on the root file
+    if (FileCB->FileRecordNumber == _Root)
+    {
+        CurrentKey = NewTree->RootNode->FirstKey->LesserChild->FirstKey;
+        KeysInNode = NewTree->RootNode->FirstKey->LesserChild->KeyCount;
+    }
+
+    else
+    {
+        CurrentKey = NewTree->RootNode->FirstKey;
+        KeysInNode = NewTree->RootNode->KeyCount;
+    }
+
     BufferPtr = Buffer;
 
     // Hack for only returning one file if requested
@@ -175,7 +185,16 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
     DPRINT1("Searching BTree!\n");
     DPRINT1("Key count: %lu\n", KeysInNode);
 
-    for (int i = 0; i < KeysInNode; i++)
+    int i = 0;
+
+    // Hack! Skip first entry if we're not returning a single entry.
+    if (!ReturnSingleEntry)
+    {
+        CurrentKey = CurrentKey->NextKey;
+        i = 1;
+    }
+
+    for (; i < KeysInNode; i++)
     {
         DPRINT1("Reading key %i...\n", i);
 
@@ -183,7 +202,6 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
         {
             // This is a dummy key.
             DPRINT1("Got dummy key!\n");
-            __debugbreak();
             break;
         }
 

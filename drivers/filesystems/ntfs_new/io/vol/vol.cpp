@@ -168,7 +168,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
 
     if (!NT_SUCCESS(Status))
         __debugbreak();
-    DPRINT1("Io device created!\n");
 
     // Tell IO Manager to directly transfer data to FSDeviceObject.
     FSDeviceObject->Flags |= DO_BUFFERED_IO; // DO_DIRECT_IO;
@@ -180,8 +179,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
 
     // Give VolCB access to Ntfs Partition object
     VolCB->Volume = Volume;
-
-    DPRINT1("VolCB created!\n");
 
     // Set up storage device in VolCB.
     VolCB->StorageDevice = TargetDeviceObject;
@@ -196,18 +193,9 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     // Create file stream object.
     VolCB->StreamFileObject = IoCreateStreamFileObject(NULL,
                                                        VolCB->StorageDevice);
-    // InitializeListHead(&VolCB->FileCBListHead);
-
-    DPRINT1("Created Stream File Object!\n");
 
     // Set file system size information.
     FilesystemSize.QuadPart = Volume->ClustersInVolume * Volume->SectorsPerCluster * Volume->BytesPerSector;
-
-    DPRINT1("FileContextBlock updated!\n");
-
-    // Initialize directory resource and set up spin lock for VolCB.
-    // ExInitializeResourceLite(&VolCB->DirResource);
-    // KeInitializeSpinLock(&VolCB->FileCBListLock);
 
     // Get serial number.
     FSDeviceObject->Vpb->SerialNumber = Volume->SerialNumber;
@@ -215,11 +203,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     // Get volume label.
     Status = Volume->GetVolumeLabel(FSDeviceObject->Vpb->VolumeLabel,
                                       &FSDeviceObject->Vpb->VolumeLabelLength);
-
-    DPRINT1("Volume Label updated!\n");
-    DPRINT1("Label: \"%S\", Length: %ld\n",
-            FSDeviceObject->Vpb->VolumeLabel,
-            FSDeviceObject->Vpb->VolumeLabelLength);
 
     // Mount volume.
     FsRtlNotifyVolumeEvent(VolCB->StreamFileObject, FSRTL_VOLUME_MOUNT);

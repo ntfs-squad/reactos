@@ -314,12 +314,16 @@ static inline void PrintAttributeHeader(PAttribute Attr)
         DPRINT1("Allocated Size:        %ld\n", Attr->NonResident.AllocatedSize);
         DPRINT1("Data Size:             %ld\n", Attr->NonResident.DataSize);
         DPRINT1("Initialized Data Size: %ld\n", Attr->NonResident.InitalizedDataSize);
-        // DPRINT1("Compressed Data Size:  %ld\n", Attr->NonResident.CompressedDataSize);
     }
 }
 
 static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
 {
+    UINT64 FRN = GetFileRecordNumberFromFileReference(Attr->ParentFileReference);
+    UINT16 SQN = GetSequenceNumberFromFileReference(Attr->ParentFileReference);
+
+    DPRINT1("Parent Dir FRN:   %ld\n", FRN);
+    DPRINT1("Parent Dir SQN:   %ld\n", SQN);
     DPRINT1("Creation Time:    %ld\n", Attr->CreationTime);
     DPRINT1("Last Write Time:  %ld\n", Attr->LastWriteTime);
     DPRINT1("Change Time:      %ld\n", Attr->ChangeTime);
