@@ -38,16 +38,10 @@ FileRecord::CopyData(_In_ PAttribute Attr,
     ASSERT(!Offset);
 #endif
 
-    DPRINT1("Copy data called!\n");
-
     if (!(Attr->IsNonResident))
     {
-        DPRINT1("Attribute is resident!\n");
-
         // Determine number of bytes we need to write.
         BytesToWrite = (Attr->Resident.DataLength);
-
-        DPRINT1("Bytes to write: %ld\n", BytesToWrite);
 
         // If the buffer is too small, fail.
         if (*Length < BytesToWrite)
@@ -59,15 +53,11 @@ FileRecord::CopyData(_In_ PAttribute Attr,
         // Adjust length for caller.
         *Length -= BytesToWrite;
 
-        DPRINT1("Length is now: %ld\n", *Length);
-
         return STATUS_SUCCESS;
     }
 
     else
     {
-        DPRINT1("Attribute is non-resident!\n");
-
         // Attribute is nonresident.
         Head = FindNonResidentData(Attr);
         CurrentDR = Head;

@@ -19,8 +19,90 @@
 #pragma alloc_text(PAGE, NtfsFsdCreate)
 #endif
 
+#define GetDisposition(x) ((x >> 24) & 0xFF)
+#define GetCreateOptions(x) (x & 0xFFFFFF)
+
 /* FUNCTIONS ****************************************************************/
 extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
+
+NTSTATUS
+GetFileRecordNumber(_In_  PWCHAR FileName,
+                    _In_  UINT FileNameLength,
+                    _In_  PNTFSVolume Volume,
+                    _Out_ PULONGLONG FileRecordNumber)
+{
+    NTSTATUS Status;
+    PFileRecord CurrentFile;
+    PBTree CurrentBTree;
+    PBTreeKey CurrentKey;
+    PWCHAR CurrentElement, EndOfFileName;
+    ULONGLONG CurrentFRN;
+
+    // Let's start with the root directory, which is hardcoded.
+    if (FileName[0] == L'\0' ||
+        wcscmp(L"\\", FileName) == 0)
+    {
+        *FileRecordNumber = _Root;
+        return STATUS_SUCCESS;
+    }
+
+    /* Every other file will be inside of the root directory.
+     * Parse the file name to find the file record number.
+     */
+    CurrentElement = &FileName[1];
+    EndOfFileName = FileName + (FileNameLength * sizeof(WCHAR));
+    CurrentFile = new(PagedPool) FileRecord(Volume);
+    Volume->GetFileRecord(_Root, CurrentFile);
+    CreateBTreeFromFile(CurrentFile, &CurrentBTree);
+
+    while (CurrentElement)
+    {
+        // Is the element in the current Btree?
+        CurrentKey = FindKeyFromFileName(CurrentBTree, CurrentElement);
+
+        if (!CurrentKey)
+        {
+            DPRINT1("Failed to find: \"%S\"\n", CurrentElement);
+            Status = STATUS_NOT_FOUND;
+            goto cleanup;
+        }
+
+        // We have the relevant key from BTree. Let's find the FRN.
+        CurrentFRN = GetFRNFromFileRef(CurrentKey->IndexEntry->Data.Directory.IndexedFile);
+
+        // Proceed to next element in the string. Sets NextElement to NULL if we are done.
+        CurrentElement = wcschr(CurrentElement, L'\\');
+        if (CurrentElement)
+        {
+            CurrentElement++;
+            if (CurrentElement[0] != L'\0')
+            {
+                // Destroy the old BTree and make a new one if we're going in another layer.
+                DestroyBTreeNode(CurrentBTree->RootNode);
+                Volume->GetFileRecord(CurrentFRN, CurrentFile);
+                if (!NT_SUCCESS(CreateBTreeFromFile(CurrentFile, &CurrentBTree)))
+                {
+                    DPRINT1("Unable to get BTree!\n");
+                    delete CurrentBTree;
+                    delete CurrentFile;
+                    return STATUS_NOT_FOUND;
+                }
+            }
+            else
+            {
+                CurrentElement = NULL;
+            }
+        }
+    }
+
+    *FileRecordNumber = CurrentFRN;
+    Status = STATUS_SUCCESS;
+
+cleanup:
+    DestroyBTree(CurrentBTree);
+    delete CurrentFile;
+    return Status;
+}
 
 _Function_class_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
@@ -38,15 +120,17 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PIO_STACK_LOCATION IrpSp;
     PVolumeContextBlock VolCB;
     PFileContextBlock FileCB;
-    // NTSTATUS Status;
+    NTSTATUS Status;
     PFILE_OBJECT FileObject;
     BOOLEAN PerformAccessChecks;
     PWCH FileName;
     FileRecord* CurrentFile;
     PAttribute Attr;
     StandardInformationEx* StdInfo;
+    UINT8 Disposition;
+    ULONG CreateOptions;
 
-    ULONG FileRecordNumber;
+    ULONGLONG FileRecordNumber;
 
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
     {
@@ -61,13 +145,34 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     FileObject = IrpSp->FileObject;
     VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
     FileName = IrpSp->FileObject->FileName.Buffer;
-
-    DPRINT1("On Partition \"%S\"\n", IrpSp->DeviceObject->Vpb->VolumeLabel);
-    DPRINT1("Looking for file: \"%S\"\n", FileName);
+    Disposition = GetDisposition(IrpSp->Parameters.Create.Options);
+    CreateOptions = GetCreateOptions(IrpSp->Parameters.Create.Options);
 
     // Determine if we should check access rights
     PerformAccessChecks = (Irp->RequestorMode == UserMode) ||
                           (IrpSp->Flags & SL_FORCE_ACCESS_CHECK);
+
+    // Hack: Fail certain requests we aren't ready for
+    if (Disposition == FILE_SUPERSEDE ||
+        Disposition == FILE_CREATE ||
+        Disposition == FILE_OVERWRITE ||
+        Disposition == FILE_OVERWRITE_IF ||
+        wcschr(FileName, L':'))
+    {
+        DPRINT1("Rejecting file open!\n");
+        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    // Get the file record number
+    Status = GetFileRecordNumber(FileName, IrpSp->FileObject->FileName.Length, VolCB->Volume, &FileRecordNumber);
+    if (!NT_SUCCESS(Status))
+    {
+        // This isn't always an issue, but it isn't implemented yet.
+        DPRINT1("File not found!\n");
+        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+        return Status;
+    }
 
     // TODO: Check if we have rights to access file here.
 
@@ -80,25 +185,15 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                   IrpSp->FileObject->FileName.Buffer,
                   IrpSp->FileObject->FileName.Length);
 
-    // Hack: pick a file record number
-    if (wcscmp(L"\\", FileName) == 0)
-        FileRecordNumber = _Root;
-    else if (wcscmp(L"\\folder\\", FileName) == 0)
-        FileRecordNumber = 38;
-    else if (wcscmp(L"\\folder\\folder2\\", FileName) == 0)
-        FileRecordNumber = 39;
-    else
-        FileRecordNumber = 30;
-
     CurrentFile = new(PagedPool) FileRecord(VolCB->Volume);
 
     VolCB->Volume->GetFileRecord(FileRecordNumber, CurrentFile);
     Attr = CurrentFile->GetAttribute(TypeStandardInformation,
-                                        NULL);
+                                     NULL);
     StdInfo = new(PagedPool) StandardInformationEx();
     RtlCopyMemory(StdInfo,
-                    GetResidentDataPointer(Attr),
-                    sizeof(StandardInformationEx));
+                  GetResidentDataPointer(Attr),
+                  sizeof(StandardInformationEx));
     FileCB->FileRecordNumber = FileRecordNumber;
 
     // From file record
@@ -118,8 +213,6 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     // Set FsContext to the file context block and open file.
     FileObject->FsContext = FileCB;
     Irp->IoStatus.Information = FILE_OPENED;
-
-    DPRINT1("Opened file!\n");
 
     return STATUS_SUCCESS;
 }

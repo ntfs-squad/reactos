@@ -128,3 +128,5 @@ CreateBTreeFromFile(PFileRecord File,
 PBTreeKey
 CreateBTreeKeyFromFilename(ULONGLONG FileReference, PFileNameEx FileNameAttribute);
 
+PBTreeKey
+FindKeyFromFileName(PBTree Tree, PWCHAR FileName);

@@ -276,6 +276,9 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 #include <debug.h>
 
 #ifdef NTFS_DEBUG
+
+#define PrintFlag(Item, Flag, FlagName) if(Item & Flag) \
+DPRINT1("    %s\n", FlagName); \
 /* Debug print functions. REMOVE WHEN DONE. */
 static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 {
@@ -319,8 +322,8 @@ static inline void PrintAttributeHeader(PAttribute Attr)
 
 static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
 {
-    UINT64 FRN = GetFileRecordNumberFromFileReference(Attr->ParentFileReference);
-    UINT16 SQN = GetSequenceNumberFromFileReference(Attr->ParentFileReference);
+    UINT64 FRN = GetFRNFromFileRef(Attr->ParentFileReference);
+    UINT16 SQN = GetSQNFromFileRef(Attr->ParentFileReference);
 
     DPRINT1("Parent Dir FRN:   %ld\n", FRN);
     DPRINT1("Parent Dir SQN:   %ld\n", SQN);
@@ -380,6 +383,59 @@ static inline void PrintIndexRootEx(PIndexRootEx IndexRootData)
     DPRINT1("Collation Rule:            0x%X\n", IndexRootData->CollationRule);
     DPRINT1("Bytes per Index Record:    %ld\n", IndexRootData->BytesPerIndexRec);
     DPRINT1("Clusters per Index Record: %ld\n", IndexRootData->ClusPerIndexRec);
+}
+
+static inline void PrintFileBothDirEntry(PFILE_BOTH_DIR_INFORMATION Data)
+{
+    DPRINT1("Short File Name: \"%S\"\n", Data->ShortName);
+    DPRINT1("File Name:       \"%S\"\n", Data->FileName);
+}
+
+static inline void PrintFileCreateOptions(UINT8 Disposition, ULONG CreateOptions)
+{
+    switch (Disposition)
+    {
+        case FILE_SUPERSEDE:
+            DPRINT1("Disposition: FILE_SUPERSEDE\n");
+            break;
+        case FILE_CREATE:
+            DPRINT1("Disposition: FILE_CREATE\n");
+            break;
+        case FILE_OPEN:
+            DPRINT1("Disposition: FILE_OPEN\n");
+            break;
+        case FILE_OPEN_IF:
+            DPRINT1("Disposition: FILE_OPEN_IF\n");
+            break;
+        case FILE_OVERWRITE:
+            DPRINT1("Disposition: FILE_OVERWRITE\n");
+            break;
+        case FILE_OVERWRITE_IF:
+            DPRINT1("Disposition: FILE_OVERWRITE_IF\n");
+            break;
+        default:
+            DPRINT1("Disposition: UNKNOWN\n");
+            break;
+    }
+
+    DPRINT1("Create Options Flags:\n");
+    PrintFlag(CreateOptions, FILE_DIRECTORY_FILE, "FILE_DIRECTORY_FILE");
+    PrintFlag(CreateOptions, FILE_NON_DIRECTORY_FILE, "FILE_NON_DIRECTORY_FILE");
+    PrintFlag(CreateOptions, FILE_WRITE_THROUGH, "FILE_WRITE_THROUGH");
+    PrintFlag(CreateOptions, FILE_SEQUENTIAL_ONLY, "FILE_SEQUENTIAL_ONLY");
+    PrintFlag(CreateOptions, FILE_RANDOM_ACCESS, "FILE_RANDOM_ACCESS");
+    PrintFlag(CreateOptions, FILE_NO_INTERMEDIATE_BUFFERING, "FILE_NO_INTERMEDIATE_BUFFERING");
+    PrintFlag(CreateOptions, FILE_SYNCHRONOUS_IO_ALERT, "FILE_SYNCHRONOUS_IO_ALERT");
+    PrintFlag(CreateOptions, FILE_SYNCHRONOUS_IO_NONALERT, "FILE_SYNCHRONOUS_IO_NONALERT");
+    PrintFlag(CreateOptions, FILE_CREATE_TREE_CONNECTION, "FILE_CREATE_TREE_CONNECTION");
+    PrintFlag(CreateOptions, FILE_COMPLETE_IF_OPLOCKED, "FILE_COMPLETE_IF_OPLOCKED");
+    PrintFlag(CreateOptions, FILE_NO_EA_KNOWLEDGE, "FILE_NO_EA_KNOWLEDGE");
+    PrintFlag(CreateOptions, FILE_OPEN_REPARSE_POINT, "FILE_OPEN_REPARSE_POINT");
+    PrintFlag(CreateOptions, FILE_DELETE_ON_CLOSE, "FILE_DELETE_ON_CLOSE");
+    PrintFlag(CreateOptions, FILE_OPEN_BY_FILE_ID, "FILE_OPEN_BY_FILE_ID");
+    PrintFlag(CreateOptions, FILE_OPEN_FOR_BACKUP_INTENT, "FILE_OPEN_FOR_BACKUP_INTENT");
+    // PrintFlag(CreateOptions, FILE_OPEN_REQUIRING_OPLOCK, "FILE_OPEN_REQUIRING_OPLOCK");
+    PrintFlag(CreateOptions, FILE_RESERVE_OPFILTER, "FILE_RESERVE_OPFILTER");
 }
 #endif
 
