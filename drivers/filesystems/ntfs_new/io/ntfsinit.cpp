@@ -85,16 +85,6 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
 
     NtfsDiskFileSystemDeviceObject->Flags |= DO_DIRECT_IO;
 
-
-    /* Initialize lookaside list for IRP contexts */
-    /*ExInitializeNPagedLookasideList(&IrpContextLookasideList,
-                                    NULL, NULL, 0, sizeof(NTFS_IRP_CONTEXT), TAG_IRP_CTXT, 0);*/
-        /* Initialize lookaside list for FCBs */
-    /*ExInitializeNPagedLookasideList(&FcbLookasideList,
-                                    NULL, NULL, 0, sizeof(NTFS_FCB), TAG_FCB, 0);*/
-    /* Initialize lookaside list for attributes contexts */
-    /*ExInitializeNPagedLookasideList(&AttrCtxtLookasideList,
-                                    NULL, NULL, 0, sizeof(NTFS_ATTR_CONTEXT), TAG_ATT_CTXT, 0);*/
     /* Register file system */
     IoRegisterFileSystem(NtfsDiskFileSystemDeviceObject);
     ObReferenceObject(NtfsDiskFileSystemDeviceObject);
@@ -132,8 +122,10 @@ NtfsFsdDeviceControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * If not, fail the IRP.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-device-control
      */
+
+    // TODO: Ensure volume is open before blindly completing the IRP.
+    DPRINT1("NtfsFsdDeviceControl called which is a STUB!\n");
     IoSkipCurrentIrpStackLocation(Irp);
-    __debugbreak();
     return 0;
 }
 

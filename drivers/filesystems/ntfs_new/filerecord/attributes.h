@@ -114,8 +114,8 @@ typedef struct
 }
 
 // Macros to get values from a file reference
-#define GetFileRecordNumberFromFileReference(x) x & 0xFFFFFFFFFFFF
-#define GetSequenceNumberFromFileReference(x) (x << 6) >> 6
+#define GetFRNFromFileRef(x) (x & 0xFFFFFFFFFFFF)
+#define GetSQNFromFileRef(x) ((x << 6) >> 6)
 
 /* *** EXTENDED ATTRIBUTE HEADERS *** */
 
@@ -258,6 +258,5 @@ typedef struct
     UINT16 EntryLength;            // Offset 0x08, Size 2
     UINT16 StreamLength;           // Offset 0x0A, Size 2
     UINT8  Flags;                  // Offset 0x0C, Size 1
-    // Not sure why old driver devs thought this pointer was appropriate.
-    FileNameEx        FileName; // Probably should be UCHAR Data[1];
+    FileNameEx FileName;
 } IndexEntry, *PIndexEntry;

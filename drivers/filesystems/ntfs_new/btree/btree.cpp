@@ -543,12 +543,8 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
 
     ASSERT(IndexAllocationAttribute);
 
-    DPRINT1("CreateBTreeNodeFromIndexNode called!\n");
-
     // Get the node number from the end of the node entry
     VCN = (PULONGLONG)((char*)NodeEntry + NodeEntry->EntryLength - sizeof(ULONGLONG));
-
-    DPRINT1("VCN: %ld\n", *VCN);
 
     // Create the new tree node
     NewNode = new(NonPagedPool) BTreeFilenameNode();
@@ -583,8 +579,6 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
     // Calculate offset into index allocation
     IndexNodeOffset = GetAllocationOffsetFromVCN(Volume, IndexBufferSize, *VCN);
 
-    DPRINT1("Index offset: %ld\n", IndexNodeOffset);
-
     // TODO: Confirm index bitmap has this node marked as in-use
     File->CopyData(IndexAllocationAttribute, (PUCHAR)NodeBuffer, &IndexBufferSize);
 
@@ -603,16 +597,12 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
         return NULL;
     }
 
-    DPRINT1("FixupUpdateSequenceArray succeeded!\n");
-
     // Walk through the index and create keys for all the entries
     FirstNodeEntry = (PIndexEntry)((ULONG_PTR)(&NodeBuffer->IndexHeader)
                                                + NodeBuffer->IndexHeader.IndexOffset);
     CurrentNodeEntry = FirstNodeEntry;
     while (CurrentEntryOffset < NodeBuffer->IndexHeader.TotalIndexSize)
     {
-        DPRINT1("Current Entry Offset: %lu\n", CurrentEntryOffset);
-        DPRINT1("TotalIndexSize: %lu\n",  NodeBuffer->IndexHeader.TotalIndexSize);
         // Allocate memory for the current entry
         CurrentKey->IndexEntry = (PIndexEntry)ExAllocatePoolWithTag(NonPagedPool,
                                                                     CurrentNodeEntry->EntryLength,
@@ -683,7 +673,6 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
 
     NewNode->VCN = *VCN;
     NewNode->HasValidVCN = TRUE;
-
     delete NodeBuffer;
 
     return NewNode;
@@ -715,19 +704,32 @@ CreateBTreeFromFile(PFileRecord File,
     NTSTATUS Status;
     PIndexEntry CurrentNodeEntry;
     PAttribute IndexAllocationAttribute;
-
-    PAttribute IndexRootAttribute = File->GetAttribute(TypeIndexRoot, NULL);
-    PIndexRootEx IndexRootExData = (PIndexRootEx)GetResidentDataPointer(IndexRootAttribute);
-    PBTree Tree = new(NonPagedPool) BTree();
-    PBTreeFilenameNode RootNode = new(NonPagedPool) BTreeFilenameNode();
-    PBTreeKey CurrentKey = new(NonPagedPool) BTreeKey();
-    ULONG CurrentOffset = IndexRootExData->Header.IndexOffset;
+    PAttribute IndexRootAttribute;
+    PIndexRootEx IndexRootExData;
+    PBTree Tree;
+    PBTreeFilenameNode RootNode;
+    PBTreeKey CurrentKey;
+    ULONG CurrentOffset;
 
     DPRINT("CreateBTreeFromIndex(%p, %p)\n", File, NewTree);
 
 #ifdef NTFS_DEBUG
     ASSERT(File);
 #endif
+
+    IndexRootAttribute = File->GetAttribute(TypeIndexRoot, NULL);
+
+    if (!IndexRootAttribute)
+    {
+        DPRINT1("No index root attribute for MFT ID %ld!\n", File->Header->MFTRecordNumber);
+        return STATUS_NOT_FOUND;
+    }
+
+    IndexRootExData = (PIndexRootEx)GetResidentDataPointer(IndexRootAttribute);
+    CurrentOffset = IndexRootExData->Header.IndexOffset;
+    Tree = new(NonPagedPool) BTree();
+    RootNode = new(NonPagedPool) BTreeFilenameNode();
+    CurrentKey = new(NonPagedPool) BTreeKey();
 
     if (!Tree || !RootNode || !CurrentKey)
     {
@@ -745,22 +747,12 @@ CreateBTreeFromFile(PFileRecord File,
     RtlZeroMemory(RootNode, sizeof(BTreeFilenameNode));
     RtlZeroMemory(CurrentKey, sizeof(BTreeKey));
 
-    DPRINT1("Getting $I30 Index Allocation attribute...\n");
-
     // See if the file record has an attribute allocation
     IndexAllocationAttribute = File->GetAttribute(TypeIndexAllocation, L"$I30");
-
-    if (IndexAllocationAttribute)
-    {
-        DPRINT1("Got attribute! Lets look at it!\n");
-        PrintAttributeHeader(IndexAllocationAttribute);
-    }
 
     // Setup the Tree
     RootNode->FirstKey = CurrentKey;
     Tree->RootNode = RootNode;
-
-    DPRINT1("Tree is set up!\n");
 
     // Make sure we won't try reading past the attribute-end
     if (FIELD_OFFSET(IndexRootEx, Header) + IndexRootExData->Header.TotalIndexSize > IndexRootAttribute->Resident.DataLength)
@@ -775,13 +767,9 @@ CreateBTreeFromFile(PFileRecord File,
                                      (FIELD_OFFSET(IndexRootEx, Header)) +
                                      (IndexRootExData->Header.IndexOffset));
 
-    DPRINT1("Got current node!\n");
-
     // Create a key for each entry in the node
     while (CurrentOffset < IndexRootExData->Header.TotalIndexSize)
     {
-        DPRINT1("Current offset: 0x%X, TotalIndexSize: 0x%X\n", CurrentOffset, IndexRootExData->Header.TotalIndexSize);
-
         ASSERT(CurrentNodeEntry->EntryLength);
 
         // Allocate memory for the current entry
@@ -800,7 +788,6 @@ CreateBTreeFromFile(PFileRecord File,
         // If this isn't the last entry
         if (!(CurrentNodeEntry->Flags & NTFS_INDEX_ENTRY_END))
         {
-            DPRINT1("Not the last entry!\n");
             // Create the next key
             PBTreeKey NextKey = new(NonPagedPool) BTreeKey();
             if (!NextKey)
@@ -842,7 +829,6 @@ CreateBTreeFromFile(PFileRecord File,
         }
         else
         {
-            DPRINT1("We are the last entry!\n");
             // Copy the final entry to its key
             RtlCopyMemory(CurrentKey->IndexEntry, CurrentNodeEntry, CurrentNodeEntry->EntryLength);
             CurrentKey->NextKey = NULL;
@@ -850,8 +836,6 @@ CreateBTreeFromFile(PFileRecord File,
             // Does this key have a sub-node?
             if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
             {
-                DPRINT1("Key has subnode!\n");
-
                 // Create the child node
                 CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(File,
                                                                        IndexRootAttribute,
@@ -864,8 +848,6 @@ CreateBTreeFromFile(PFileRecord File,
                     return STATUS_NOT_IMPLEMENTED;
                 }
             }
-
-            DPRINT1("Going to next key!\n");
 
             break;
         }
@@ -886,8 +868,8 @@ CreateBTreeKeyFromFilename(ULONGLONG FileReference, PFileNameEx FileNameAttribut
 
     // Create a new Index Entry for the file
     PIndexEntry NewEntry = (PIndexEntry)ExAllocatePoolWithTag(NonPagedPool,
-                                                                                    EntrySize,
-                                                                                    TAG_NTFS);
+                                                              EntrySize,
+                                                              TAG_NTFS);
     if (!NewEntry)
     {
         DPRINT1("ERROR: Failed to allocate memory for Index Entry!\n");
@@ -915,4 +897,42 @@ CreateBTreeKeyFromFilename(ULONGLONG FileReference, PFileNameEx FileNameAttribut
     NewKey->NextKey = NULL;
 
     return NewKey;
+}
+
+PBTreeKey
+FindKeyFromFileName(PBTree Tree, PWCHAR FileName)
+{
+    UINT Length;
+    PBTreeKey CurrentKey = Tree->RootNode->FirstKey;
+
+    if (wcschr(FileName, L'\\'))
+            Length = (wcschr(FileName, L'\\') - FileName);
+    else
+        Length = wcslen(FileName);
+
+    while(CurrentKey)
+    {
+        if (RtlCompareMemory(&CurrentKey->IndexEntry->FileName.Name,
+                             FileName,
+                             Length) == Length)
+        {
+            // We found the key!
+            return CurrentKey;
+        }
+
+        // Go to the next key
+        if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
+        {
+            // Hack! go to lesser child if we're an index node.
+            CurrentKey = CurrentKey->LesserChild->FirstKey;
+        }
+        else
+        {
+            CurrentKey = CurrentKey->NextKey;
+        }
+
+    }
+
+    // We didn't find the key
+    return NULL;
 }

@@ -13,6 +13,8 @@
 #define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
 #define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
 #define ULONG_ROUND_UP(x)   ROUND_UP((x), (sizeof(ULONG)))
+#define MAX_SHORTNAME_LENGTH 12
+#define FileRef(x) x->IndexEntry->Data.Directory.IndexedFile
 
 static
 NTSTATUS
@@ -20,6 +22,9 @@ GetFileBasicInformation(_In_ PFileContextBlock FileCB,
                         _Out_ PFILE_BASIC_INFORMATION Buffer,
                         _Inout_ PULONG Length)
 {
+    if (!FileCB)
+        return STATUS_INVALID_PARAMETER;
+
     if (*Length < sizeof(FILE_BASIC_INFORMATION))
         return STATUS_BUFFER_TOO_SMALL;
 
@@ -41,8 +46,6 @@ GetFileStandardInformation(_In_ PFileContextBlock FileCB,
                            _Inout_ PULONG Length)
 {
     size_t FileInfoSize = sizeof(FILE_STANDARD_INFORMATION);
-
-    DPRINT1("Getting file standard information...\n");
 
     if (*Length < FileInfoSize)
         return STATUS_BUFFER_TOO_SMALL;
@@ -69,8 +72,6 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
 {
     ULONG BytesToCopy;
     size_t FileNameInfoSize = sizeof(FILE_NAME_INFORMATION);
-
-    DPRINT1("Getting file name information...\n");
 
     // If buffer can't hold the File Name Information struct, fail.
     if (*Length < FileNameInfoSize)
@@ -149,8 +150,6 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
     DPRINT1("SuperMega Hack is ON!\n");
     ASSERT(Buffer);
 
-    PrintFileContextBlock(FileCB);
-
     // Let's get the btree for this file
     NewTree = NULL;
     Status = CreateBTreeFromFile(FileCB->FileRec, &NewTree);
@@ -159,9 +158,6 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
         DPRINT1("Failed to get BTree!\n");
         return Status;
     }
-
-    DPRINT1("Let's check out the Btree...\n");
-    DumpBTree(NewTree);
 
     // HACK! Jump to first child node if we're on the root file
     if (FileCB->FileRecordNumber == _Root)
@@ -182,22 +178,8 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
     if (ReturnSingleEntry)
         KeysInNode = 1;
 
-    DPRINT1("Searching BTree!\n");
-    DPRINT1("Key count: %lu\n", KeysInNode);
-
-    int i = 0;
-
-    // Hack! Skip first entry if we're not returning a single entry.
-    if (!ReturnSingleEntry)
+    for (int i = 0; i < KeysInNode; i++)
     {
-        CurrentKey = CurrentKey->NextKey;
-        i = 1;
-    }
-
-    for (; i < KeysInNode; i++)
-    {
-        DPRINT1("Reading key %i...\n", i);
-
         if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_END)
         {
             // This is a dummy key.
@@ -206,7 +188,6 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
         }
 
         FileNameData = &(CurrentKey->IndexEntry->FileName);
-        PrintFilenameAttrHeader(FileNameData);
 
         BufferPtr->FileIndex = 0; // NOTE: Undefined for NTFS
         BufferPtr->CreationTime.QuadPart = FileNameData->CreationTime;
@@ -218,14 +199,47 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
         BufferPtr->FileAttributes = FileNameData->Flags;
         BufferPtr->FileNameLength = GetWStrLength(FileNameData->NameLength);
         BufferPtr->EaSize = FileNameData->Extended.EAInfo.PackedEASize;
-        BufferPtr->ShortNameLength = 14;
-        RtlCopyMemory(BufferPtr->ShortName, L"NOT.IMP", 14);
         RtlCopyMemory(BufferPtr->FileName,
                       FileNameData->Name,
                       GetWStrLength(FileNameData->NameLength));
 
+        // Mark file as folder if it is a directory
         if (FileNameData->Flags & FN_DIRECTORY)
             BufferPtr->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+
+        // Let's get the short name
+        RtlZeroMemory(BufferPtr->ShortName, MAX_SHORTNAME_LENGTH * sizeof(WCHAR));
+
+        if (FileNameData->NameLength <= MAX_SHORTNAME_LENGTH)
+        {
+            // We don't need a short name.
+            BufferPtr->ShortNameLength = 0;
+        }
+
+        // Check the next key in the B-tree for the short name.
+        else if (GetFRNFromFileRef(FileRef(CurrentKey)) == GetFRNFromFileRef(FileRef(CurrentKey->NextKey)))
+        {
+            // Both keys point to the same file. Assert that it is a valid short name.
+            ASSERT(CurrentKey->NextKey->IndexEntry->FileName.NameLength <= MAX_SHORTNAME_LENGTH);
+
+            // Move to next key
+            CurrentKey = CurrentKey->NextKey;
+            FileNameData = &(CurrentKey->IndexEntry->FileName);
+
+            // Copy short name data into the buffer
+            BufferPtr->ShortNameLength = GetWStrLength(FileNameData->NameLength);
+            RtlCopyMemory(BufferPtr->ShortName,
+                            FileNameData->Name,
+                            GetWStrLength(FileNameData->NameLength));
+        }
+
+        else
+        {
+            // The short name is not the next key in the btree. Something is wrong.
+            __debugbreak();
+            BufferPtr->ShortNameLength = 20;
+            RtlCopyMemory(BufferPtr->ShortName, L"ERROR.XXX", 20);
+        }
 
         // Calculate the size of the structure we just made
         SizeOfStruct = sizeof(FILE_BOTH_DIR_INFORMATION) +

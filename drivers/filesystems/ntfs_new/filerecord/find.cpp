@@ -12,8 +12,6 @@ FileRecord::GetAttribute(_In_ AttributeType Type,
     if (Name)
         NameLength = wcslen(Name) * sizeof(WCHAR);
 
-    DPRINT1("Get attribute called!\n");
-
     // Progress data pointer to attribute section.
     DataPtr = Header->AttributeOffset;
 
