@@ -2,11 +2,9 @@
 
 NTSTATUS
 ReadDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
-         _In_    LONGLONG StartingOffset,
-         _In_    ULONG AmountOfSectors,
-         _In_    ULONG SectorSize,
-         _Inout_ PUCHAR Buffer,
-         _In_    BOOLEAN Override)
+         _In_    LONGLONG Offset,
+         _In_    ULONG Length,
+         _Inout_ PUCHAR Buffer)
 {
     KEVENT Event;
     PIRP Irp;
@@ -19,12 +17,16 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
     //  Initialize the event we're going to use
     KeInitializeEvent( &Event, NotificationEvent, FALSE );
 
+    DPRINT1("ReadDisk called!\n");
+    DPRINT1("Offset: %ld\n", Offset);
+    DPRINT1("Length: %ld\n", Length);
+
     //  Build the irp for the operation and also set the overrride flag
-    ByteOffset.QuadPart = StartingOffset;
+    ByteOffset.QuadPart = Offset;
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ,
                                        DeviceBeingRead,
                                        Buffer,
-                                       AmountOfSectors,
+                                       Length,
                                        &ByteOffset,
                                        &Event,
                                        &Iosb);
@@ -63,7 +65,6 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
     //  And return to our caller.
     return Status;
 }
-
 
 /* You might notice carl this looks exactly like ReadDisk, So let's go over WHY..*/
 NTSTATUS
@@ -138,8 +139,7 @@ ReadBlock(_In_    PDEVICE_OBJECT DeviceObject,
           _In_    ULONG DiskSector,
           _In_    ULONG SectorCount,
           _In_    ULONG SectorSize,
-          _Inout_ PUCHAR Buffer,
-          _In_    BOOLEAN Override)
+          _Inout_ PUCHAR Buffer)
 {
     LONGLONG Offset;
     ULONG BlockSize;
@@ -147,7 +147,7 @@ ReadBlock(_In_    PDEVICE_OBJECT DeviceObject,
     Offset = (LONGLONG)DiskSector * (LONGLONG)SectorSize;
     BlockSize = SectorCount * SectorSize;
 
-    return ReadDisk(DeviceObject, Offset, BlockSize, SectorSize, Buffer, Override);
+    return ReadDisk(DeviceObject, Offset, BlockSize, Buffer);
 }
 
 NTSTATUS

@@ -3,54 +3,51 @@
 #include <debug.h>
 
 static
-PVOID
+PUCHAR
 GetUserBuffer(PIRP Irp,
               BOOLEAN Paging)
 {
     if (Irp->MdlAddress != NULL)
-        return MmGetSystemAddressForMdlSafe(Irp->MdlAddress, (Paging ? HighPagePriority : NormalPagePriority));
+        return (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, (Paging ? HighPagePriority : NormalPagePriority));
 
     else
-        return Irp->UserBuffer;
+        return (PUCHAR)Irp->UserBuffer;
 }
 
 static
 NTSTATUS
-ReadFile(_In_ PIO_STACK_LOCATION IoStack,
-         _Out_ PVOID Buffer,
-         _In_ ULONG RequestedLength,
+ReadFile(_In_  PFileContextBlock FileCB,
+         _In_  ULONG Offset,
+         _In_  ULONG RequestedLength,
+         _Out_ PUCHAR Buffer,
          _Out_ PULONG ReadLength)
 {
-    // NTSTATUS Status;
-    PFileContextBlock FileCB;
-    // ResidentAttribute* StdInfoAttr;
-    // StandardInformationEx* StdInfoAttrEx;
+    NTSTATUS Status;
+    PFileRecord FileRecord;
+    PAttribute CurrentAttribute;
+    PStandardInformationEx StdInfoAttrEx;
 
     // If we aren't reading anything, don't read anything.
     if (!RequestedLength)
         return STATUS_SUCCESS;
 
-    FileCB = (PFileContextBlock)IoStack->FileObject->FsContext;
+    FileRecord = FileCB->FileRec;
 
-    DPRINT1("File Context Block found!\n");
-
-    if (!FileCB || !FileCB->FileRecordNumber)
+    if (!FileCB || !FileCB->FileRecordNumber || !FileRecord)
     {
         // If there is no file record, we can't find the file.
         DPRINT1("File context block is invalid!\n");
         return STATUS_FILE_NOT_AVAILABLE;
     }
 
-    DPRINT1("File record found!\n");
-
     // Get standard information for file.
-    // StdInfoAttr = (ResidentAttribute*)(FileCB->FileRec->GetAttribute(StandardInformation, NULL));
-    // StdInfoAttrEx = (StandardInformationEx*)(GetResidentDataPointer(StdInfoAttr));
+    CurrentAttribute = FileRecord->GetAttribute(TypeStandardInformation, NULL);
+    StdInfoAttrEx = (StandardInformationEx*)(GetResidentDataPointer(CurrentAttribute));
 
     // Check if file is compressed.
-    /*if (StdInfoAttrEx->FilePermissions & FILE_PERM_COMPRESSED)
+    if (StdInfoAttrEx->FilePermissions & FILE_PERM_COMPRESSED)
     {
-        UNIMPLEMENTED;
+        DPRINT1("File Record is compressed!\n");
         Status = STATUS_NOT_IMPLEMENTED;
         goto cleanup;
     }
@@ -58,13 +55,20 @@ ReadFile(_In_ PIO_STACK_LOCATION IoStack,
     // Check if file is encrypted.
     if(StdInfoAttrEx->FilePermissions & FILE_PERM_ENCRYPTED)
     {
-        UNIMPLEMENTED;
+        DPRINT1("File Record is encrypted!\n");
         Status = STATUS_NOT_IMPLEMENTED;
         goto cleanup;
-    }*/
+    }
 
     // TODO: COMPLETE!!!
-    // Status = FileCB->FileRec->GetAttribute(Data, NULL, (PUCHAR)Buffer);
+    *ReadLength = RequestedLength;
+    CurrentAttribute = FileRecord->GetAttribute(TypeData, NULL);
+    Status = FileRecord->CopyData(CurrentAttribute,
+                                  Buffer,
+                                  Offset,
+                                  &RequestedLength);
+    *ReadLength -= RequestedLength;
 
-    return STATUS_NOT_IMPLEMENTED;
+cleanup:
+    return Status;
 }
