@@ -81,6 +81,7 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
     Buffer->FileNameLength = wcslen(FileCB->FileName) * sizeof(WCHAR);
 
     // Calculate amount of bytes to copy not to overflow the buffer.
+    // TODO: Determine if we need this
     if (*Length < Buffer->FileNameLength + FileNameInfoSize)
     {
         // The buffer isn't big enough. Fill what you can.

@@ -229,19 +229,16 @@ NtfsFsdPnp(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 /* ntblockio.cpp*/
 NTSTATUS
 ReadDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
-         _In_    LONGLONG StartingOffset,
-         _In_    ULONG AmountOfSectors,
-         _In_    ULONG SectorSize,
-         _Inout_ PUCHAR Buffer,
-         _In_    BOOLEAN Override);
+         _In_    LONGLONG Offset,
+         _In_    ULONG Length,
+         _Inout_ PUCHAR Buffer);
 
 NTSTATUS
 ReadBlock(_In_    PDEVICE_OBJECT DeviceObject,
           _In_    ULONG DiskSector,
           _In_    ULONG SectorCount,
           _In_    ULONG SectorSize,
-          _Inout_ PUCHAR Buffer,
-          _In_    BOOLEAN Override);
+          _Inout_ PUCHAR Buffer);
 
 NTSTATUS
 WriteDisk(_In_ PDEVICE_OBJECT DeviceBeingRead,

@@ -53,8 +53,7 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
               0,
               1,
               DiskGeometry.BytesPerSector,
-              (PUCHAR)PartBootSector,
-              TRUE);
+              (PUCHAR)PartBootSector);
 
     if (!NT_SUCCESS(Status))
         goto Cleanup;
@@ -155,8 +154,7 @@ NTFSVolume::DumpBlocks(_Inout_ PUCHAR Buffer,
                      Lba,
                      LbaCount,
                      BytesPerSector,
-                     (PUCHAR)Buffer,
-                     TRUE);
+                     (PUCHAR)Buffer);
 }
 
 NTSTATUS
@@ -378,8 +376,7 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
                       (DRCurrent->LCN) + ClusterPtr,
                       1,
                       BytesPerCluster,
-                      DiskBuffer,
-                      TRUE);
+                      DiskBuffer);
 
             // Adjust cluster read size and the number of bytes to read according to actual file size.
             if (ClusterReadSize > BytesToRead)
@@ -422,8 +419,7 @@ NTFSVolume::SanityCheckBlockIO()
                      1,
                      1,
                      BytesPerSector,
-                     (PUCHAR)ReadBuffer,
-                     TRUE);
+                     (PUCHAR)ReadBuffer);
 
         //erase disk
         WriteBlock(PartDeviceObj,
@@ -443,8 +439,7 @@ NTFSVolume::SanityCheckBlockIO()
                      1,
                      1,
                      BytesPerSector,
-                     (PUCHAR)PostWriteBuffer,
-                     TRUE);
+                     (PUCHAR)PostWriteBuffer);
     for (int i = 0; i < 512; i++)
     {
         DPRINT1("ReadBuffer at Location %d, is value: %X\n", i, ReadBuffer[i]);

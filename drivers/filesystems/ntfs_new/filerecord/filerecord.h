@@ -104,14 +104,14 @@ public:
     NTSTATUS CopyData(_In_ PAttribute Attr,
                       _In_ PUCHAR Buffer,
                       _In_ ULONGLONG Offset,
-                      _Inout_ PULONGLONG Length);
+                      _Inout_ PULONG Length);
     NTSTATUS CopyData(_In_ PAttribute Attr,
                       _In_ PUCHAR Buffer,
-                      _Inout_ PULONGLONG Length);
+                      _Inout_ PULONG Length);
     NTSTATUS CopyData(_In_ AttributeType Type,
                       _In_ PCWSTR Name,
                       _In_ PUCHAR Buffer,
-                      _Inout_ PULONGLONG Length);
+                      _Inout_ PULONG Length);
 
     // ./write.cpp
     NTSTATUS UpdateResidentAttribute(_In_ PAttribute Attr);

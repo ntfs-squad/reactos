@@ -26,6 +26,11 @@ typedef struct
 
 } VolumeContextBlock, *PVolumeContextBlock;
 
+typedef struct _SCB
+{
+    SECTION_OBJECT_POINTERS SectionObjectPointers;
+} StreamContextBlock, *PStreamContextBlock;
+
 typedef struct _FCB
 {
     ULONGLONG FileRecordNumber;
@@ -53,10 +58,12 @@ typedef struct _FCB
     LARGE_INTEGER EndOfFile;
     ULONG NumberOfLinks;
 
+    // Consider moving, multiple files can point to the same stream in NTFS.
+    PStreamContextBlock StreamCB;
+
     // We will uncomment these when/if we need them.
     // PVolumeContextBlock VolCB;
     // FSRTL_COMMON_FCB_HEADER RFCB; // DDK
-    // SECTION_OBJECT_POINTERS SectionObjectPointers; //DDK
     // PFILE_OBJECT FileObject; //DDK
     // ERESOURCE MainResource; //DDK
     // struct _FCB* ParentFileCB;
@@ -68,8 +75,3 @@ typedef struct _FCB
     // ULONG OpenHandleCount;
     // USHORT LinkCount;
 } FileContextBlock, *PFileContextBlock;
-
-// typedef struct _SCB
-// {
-
-// } StreamContextBlock, *StreamContextBlock;

@@ -96,7 +96,7 @@ typedef struct
             UINT64 AllocatedSize;          // Offset 0x28, Size 8
             UINT64 DataSize;               // Offset 0x30, Size 8
             UINT64 InitalizedDataSize;     // Offset 0x38, Size 8
-            // This was in the old driver but I don't think it exists.
+            // This was in the old driver but I think this is wrong.
             // UINT64 CompressedDataSize;     // Offset 0x40, Size 8
         } NonResident;
     };

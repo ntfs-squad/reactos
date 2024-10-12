@@ -28,28 +28,34 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     UNREFERENCED_PARAMETER(VolumeDeviceObject);
     UNREFERENCED_PARAMETER(Irp);
 
-    PIO_STACK_LOCATION IoStack;
+    PIO_STACK_LOCATION IrpSp;
     NTSTATUS Status;
-    PVOID Buffer;
+    PUCHAR Buffer;
     ULONG ReadLength;
     LARGE_INTEGER ReadOffset;
     ULONG RequestedLength;
 
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
+    IrpSp = IoGetCurrentIrpStackLocation(Irp);
     Buffer = GetUserBuffer(Irp, BooleanFlagOn(Irp->Flags, IRP_PAGING_IO));
-    ReadOffset = IoStack->Parameters.Read.ByteOffset;
-    RequestedLength = IoStack->Parameters.Read.Length;
+    ReadOffset = IrpSp->Parameters.Read.ByteOffset;
+    RequestedLength = IrpSp->Parameters.Read.Length;
 
-    Status = ReadFile(IoStack,
-                      Buffer,
+    DPRINT1("Incoming read request!\n");
+    DPRINT1("Requested Length: 0x%X\n", RequestedLength);
+    DPRINT1("Read offset: 0x%X\n", ReadOffset);
+
+    // TODO: Consider axing the read length parameter
+    Status = ReadFile((PFileContextBlock)IrpSp->FileObject->FsContext,
+                      ReadOffset.QuadPart,
                       RequestedLength,
+                      Buffer,
                       &ReadLength);
 
     if (NT_SUCCESS(Status))
     {
-        if (IoStack->FileObject->Flags & FO_SYNCHRONOUS_IO)
+        if (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO)
         {
-            IoStack->FileObject->CurrentByteOffset.QuadPart =
+            IrpSp->FileObject->CurrentByteOffset.QuadPart =
                 ReadOffset.QuadPart + ReadLength;
         }
 

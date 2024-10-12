@@ -126,7 +126,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PWCH FileName;
     FileRecord* CurrentFile;
     PAttribute Attr;
-    StandardInformationEx* StdInfo;
+    PStandardInformationEx StdInfo;
     UINT8 Disposition;
     ULONG CreateOptions;
 
@@ -185,30 +185,46 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                   IrpSp->FileObject->FileName.Buffer,
                   IrpSp->FileObject->FileName.Length);
 
-    CurrentFile = new(PagedPool) FileRecord(VolCB->Volume);
-
-    VolCB->Volume->GetFileRecord(FileRecordNumber, CurrentFile);
-    Attr = CurrentFile->GetAttribute(TypeStandardInformation,
-                                     NULL);
-    StdInfo = new(PagedPool) StandardInformationEx();
-    RtlCopyMemory(StdInfo,
-                  GetResidentDataPointer(Attr),
-                  sizeof(StandardInformationEx));
     FileCB->FileRecordNumber = FileRecordNumber;
+    CurrentFile = new(PagedPool) FileRecord(VolCB->Volume);
+    VolCB->Volume->GetFileRecord(FileRecordNumber, CurrentFile);
 
     // From file record
     FileCB->NumberOfLinks = CurrentFile->Header->HardLinkCount;
     FileCB->IsDirectory = !!(CurrentFile->Header->Flags & FR_IS_DIRECTORY);
 
-    // From standard information
+    // From $STANDARD_INFORMATION
+    Attr = CurrentFile->GetAttribute(TypeStandardInformation,
+                                     NULL);
+    StdInfo = (PStandardInformationEx)GetResidentDataPointer(Attr);
     FileCB->CreationTime.QuadPart = StdInfo->CreationTime;
     FileCB->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
     FileCB->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
     FileCB->ChangeTime.QuadPart = StdInfo->ChangeTime;
     FileCB->FileAttributes = StdInfo->FilePermissions;
 
+    // From $DATA
+    Attr = CurrentFile->GetAttribute(TypeData,
+                                     NULL);
+    if (Attr)
+    {
+        if (Attr->IsNonResident)
+            FileCB->EndOfFile.QuadPart = Attr->NonResident.DataSize;
+        else
+            FileCB->EndOfFile.QuadPart = Attr->Resident.DataLength;
+    }
+
     // Add pointer for file record
     FileCB->FileRec = CurrentFile;
+
+    /* Assume that this is the first file stream request.
+     * For more details see:
+     * https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_section_object_pointers
+     *
+     * TODO: Handle multiple opened files pointing to the same stream properly.
+     */
+    FileCB->StreamCB = new(NonPagedPool) StreamContextBlock();
+    FileCB->StreamCB->SectionObjectPointers = {0};
 
     // Set FsContext to the file context block and open file.
     FileObject->FsContext = FileCB;

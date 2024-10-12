@@ -51,6 +51,14 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     FileObject = IoStack->FileObject;
     VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
     FileCB = (PFileContextBlock)FileObject->FsContext;
+    if (!FileCB)
+    {
+        DPRINT1("File not found!\n");
+        Status = STATUS_NOT_FOUND;
+        goto done;
+    }
+
+    FileObject->SectionObjectPointer = &(FileCB->StreamCB->SectionObjectPointers);
 
     SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
     BufferLength = IoStack->Parameters.QueryFile.Length;
@@ -92,13 +100,15 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             Status = STATUS_INVALID_DEVICE_REQUEST;
             break;
     }
-
+done:
     if (NT_SUCCESS(Status))
     {
+        Irp->IoStatus.Status = STATUS_SUCCESS;
         Irp->IoStatus.Information = IoStack->Parameters.QueryFile.Length - BufferLength;
         // DPRINT1("Buffer Length: %lu\nRemaining Buffer Length: %lu\nI/O Status Info: %lu\n", IoStack->Parameters.QueryFile.Length, BufferLength, Irp->IoStatus.Information);
 
         // HACK!!! Why is this still needed?
+        Irp->UserIosb->Status = Irp->IoStatus.Status;
         Irp->UserIosb->Information = Irp->IoStatus.Information;
     }
     else

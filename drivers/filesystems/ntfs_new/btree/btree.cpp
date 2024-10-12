@@ -51,7 +51,7 @@ PrintAllVCNs(PNTFSVolume Volume,
 {
     ULONGLONG CurrentOffset = 0;
     PINDEX_BUFFER CurrentNode, Buffer;
-    ULONGLONG BufferSize = AttributeDataLength(Attr);
+    ULONG BufferSize = AttributeDataLength(Attr);
     ULONGLONG i;
     NTSTATUS Status;
     int Count = 0;
@@ -535,7 +535,7 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
     PIndexEntry FirstNodeEntry;
     ULONG CurrentEntryOffset = 0;
     PINDEX_BUFFER NodeBuffer;
-    ULONGLONG IndexBufferSize = BytesPerIndexRecord(Volume);
+    ULONG IndexBufferSize = BytesPerIndexRecord(Volume);
     PULONGLONG VCN;
     PBTreeKey CurrentKey;
     NTSTATUS Status;
