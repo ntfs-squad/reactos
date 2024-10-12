@@ -26,17 +26,15 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-read
      */
     UNREFERENCED_PARAMETER(VolumeDeviceObject);
-    UNREFERENCED_PARAMETER(Irp);
 
     PIO_STACK_LOCATION IrpSp;
     NTSTATUS Status;
     PUCHAR Buffer;
-    ULONG ReadLength;
     LARGE_INTEGER ReadOffset;
     ULONG RequestedLength;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    Buffer = GetUserBuffer(Irp, BooleanFlagOn(Irp->Flags, IRP_PAGING_IO));
+    Buffer = (PUCHAR)(GetUserBuffer(Irp));
     ReadOffset = IrpSp->Parameters.Read.ByteOffset;
     RequestedLength = IrpSp->Parameters.Read.Length;
 
@@ -44,23 +42,22 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     DPRINT1("Requested Length: 0x%X\n", RequestedLength);
     DPRINT1("Read offset: 0x%X\n", ReadOffset);
 
-    // TODO: Consider axing the read length parameter
     Status = ReadFile((PFileContextBlock)IrpSp->FileObject->FsContext,
                       ReadOffset.QuadPart,
                       RequestedLength,
-                      Buffer,
-                      &ReadLength);
+                      Buffer);
 
     if (NT_SUCCESS(Status))
     {
         if (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO)
         {
             IrpSp->FileObject->CurrentByteOffset.QuadPart =
-                ReadOffset.QuadPart + ReadLength;
+                ReadOffset.QuadPart + (IrpSp->Parameters.Read.Length - RequestedLength);
         }
 
-        Irp->IoStatus.Information = ReadLength;
+        Irp->IoStatus.Information = IrpSp->Parameters.Read.Length - RequestedLength;
     }
+
     else
     {
         Irp->IoStatus.Information = NULL;

@@ -102,11 +102,11 @@ typedef struct
     };
 } Attribute, *PAttribute;
 
-/* Macro to get data pointer from a resident attribute pointer. */
+// Macro to get data pointer from a resident attribute pointer. */
 #define GetResidentDataPointer(x) (((char*)x) + (x->Resident.DataOffset))
 #define GetNamePointer(x) (((char*)x) + (x->NameOffset))
 
-/* Macro to free memory from data run. */
+// Macro to free memory from data run.
 #define FreeDataRun(x) while(x) {\
     PDataRun tmp = x->NextRun;\
     delete x;\
@@ -115,7 +115,7 @@ typedef struct
 
 // Macros to get values from a file reference
 #define GetFRNFromFileRef(x) (x & 0xFFFFFFFFFFFF)
-#define GetSQNFromFileRef(x) ((x << 6) >> 6)
+#define GetSQNFromFileRef(x) ((x << 48) >> 48) & 0xFFFF
 
 /* *** EXTENDED ATTRIBUTE HEADERS *** */
 
@@ -171,7 +171,7 @@ typedef struct
     } Extended;
     UINT8  NameLength;          // Offset 0x40, Size 1
     UINT8  NameType;            // Offset 0x41, Size 1
-    WCHAR  Name[1];             // Offset 0x42
+    WCHAR  Name[1];             // Offset 0x42, Size variable
 } FileNameEx, *PFileNameEx;
 
 // $OBJECT_ID (0x40)
@@ -202,42 +202,42 @@ typedef struct
 // $INDEX_ROOT (0x90)
 typedef struct
 {
-    UINT32 AttributeType;        // Offset 0x00, Size 4
-    UINT32 CollationRule;        // Offset 0x04, Size 4
-    UINT32 BytesPerIndexRec;     // Offset 0x08, Size 4
-    UINT8  ClusPerIndexRec;      // Offset 0x0C, Size 1
-    UCHAR  Padding[3];           // Offset 0x0D, Size 3
-    IndexNodeHeader Header;      // Offset 0x10, Size 16
+    UINT32 AttributeType;    // Offset 0x00, Size 4
+    UINT32 CollationRule;    // Offset 0x04, Size 4
+    UINT32 BytesPerIndexRec; // Offset 0x08, Size 4
+    UINT8  ClusPerIndexRec;  // Offset 0x0C, Size 1
+    UCHAR  Padding[3];       // Offset 0x0D, Size 3
+    IndexNodeHeader Header;  // Offset 0x10, Size 16
 } IndexRootEx, *PIndexRootEx;
 
 // $REPARSE_POINT (0xC0)
 typedef struct
 {
-    UINT32 ReparseType;        // Offset 0x00, Size 4
-    UINT16 ReparseDataLength;  // Offset 0x04, Size 2
-    UINT16 Padding;            // Offset 0x06, Size 2
+    UINT32 ReparseType;       // Offset 0x00, Size 4
+    UINT16 ReparseDataLength; // Offset 0x04, Size 2
+    UINT16 Padding;           // Offset 0x06, Size 2
 } ReparsePointEx, *PReparsePointEx;
 
 struct ThirdPartyReparsePointEx : ReparsePointEx
 {
-    GUID ReparseGUID;          // Offset 0x08, Size 16
+    GUID ReparseGUID; // Offset 0x08, Size 16
 };
 
 // $EA_INFORMATION (0xD0)
 typedef struct
 {
-    UINT16 PackedEASize;      // Offset 0x00, Size 2
-    UINT16 NumEAWithNEED_EA;  // Offset 0x02, Size 2
-    UINT32 UnpackedEASize;    // Offset 0x04, Size 4
+    UINT16 PackedEASize;     // Offset 0x00, Size 2
+    UINT16 NumEAWithNEED_EA; // Offset 0x02, Size 2
+    UINT32 UnpackedEASize;   // Offset 0x04, Size 4
 } EAInformationEx, *PEAInformationEx;
 
 // $EA (0xE0)
 typedef struct
 {
-    UINT32 OffsetNextEA;  // Offset 0x00, Size 4
-    UINT8  Flags;         // Offset 0x04, Size 1
-    UINT8  NameLength;    // Offset 0x05, Size 1
-    UINT16 ValueLength;   // Offset 0x06, Size 2
+    UINT32 OffsetNextEA; // Offset 0x00, Size 4
+    UINT8  Flags;        // Offset 0x04, Size 1
+    UINT8  NameLength;   // Offset 0x05, Size 1
+    UINT16 ValueLength;  // Offset 0x06, Size 2
 } EAEx, *PEAEx;
 
 typedef struct
