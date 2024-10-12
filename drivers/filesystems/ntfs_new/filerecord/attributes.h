@@ -53,11 +53,11 @@ enum AttributeType
 
 struct IndexNodeHeader
 {
-    UINT32 IndexOffset;     // Offset 0x00, Size 4
-    UINT32 TotalIndexSize;  // Offset 0x04, Size 4
-    UINT32 AllocatedSize;   // Offset 0x08, Size 4
-    UINT8  Flags;           // Offset 0x0C, Size 1
-    UCHAR  Padding[3];      // Offset 0x0D, Size 3
+    UINT32 IndexOffset;                    // Offset 0x00, Size 4
+    UINT32 TotalIndexSize;                 // Offset 0x04, Size 4
+    UINT32 AllocatedSize;                  // Offset 0x08, Size 4
+    UINT8  Flags;                          // Offset 0x0C, Size 1
+    UCHAR  Padding[3];                     // Offset 0x0D, Size 3
 };
 
 typedef struct
@@ -122,44 +122,44 @@ typedef struct
 // $STANDARD_INFORMATION (0x10)
 typedef struct
 {
-    UINT64 CreationTime;          // Offset 0x00, Size 8
-    UINT64 LastWriteTime;         // Offset 0x08, Size 8
-    UINT64 ChangeTime;            // Offset 0x10, Size 8
-    UINT64 LastAccessTime;        // Offset 0x18, Size 8
-    UINT32 FilePermissions;       // Offset 0x20, Size 4
-    UINT32 MaxVersions;           // Offset 0x24, Size 4
-    UINT32 VersionNum;            // Offset 0x28, Size 4
-    UINT32 ClassId;               // Offset 0x2C, Size 4
-    UINT32 OwnerId;               // Offset 0x30, Size 4
-    UINT32 SecurityId;            // Offset 0x34, Size 4
-    UINT64 QuotaCharged;          // Offset 0x38, Size 8
-    UINT64 UpdateSequenceNumber;  // Offset 0x40, Size 8
+    UINT64 CreationTime;                   // Offset 0x00, Size 8
+    UINT64 LastWriteTime;                  // Offset 0x08, Size 8
+    UINT64 ChangeTime;                     // Offset 0x10, Size 8
+    UINT64 LastAccessTime;                 // Offset 0x18, Size 8
+    UINT32 FilePermissions;                // Offset 0x20, Size 4
+    UINT32 MaxVersions;                    // Offset 0x24, Size 4
+    UINT32 VersionNum;                     // Offset 0x28, Size 4
+    UINT32 ClassId;                        // Offset 0x2C, Size 4
+    UINT32 OwnerId;                        // Offset 0x30, Size 4
+    UINT32 SecurityId;                     // Offset 0x34, Size 4
+    UINT64 QuotaCharged;                   // Offset 0x38, Size 8
+    UINT64 UpdateSequenceNumber;           // Offset 0x40, Size 8
 } StandardInformationEx, *PStandardInformationEx;
 
 /// $ATTRIBUTE_LIST (0x20)
 typedef struct
 {
-    UINT32 Type;          // Offset 0x00, Size 4
-    UINT16 RecordLength;  // Offset 0x04, Size 2
-    UINT8  NameLength;    // Offset 0x06, Size 1
-    UINT8  NameOffset;    // Offset 0x07, Size 1
-    UINT64 FirstVCN;      // Offset 0x08, Size 8
-    UINT64 BaseFileRef;   // Offset 0x10, Size 2
-    UINT16 AttributeId;   // Offset 0x18, Size 2
-    UCHAR  Padding[6];    // Offset 0x1A, Size 6
+    UINT32 Type;                           // Offset 0x00, Size 4
+    UINT16 RecordLength;                   // Offset 0x04, Size 2
+    UINT8  NameLength;                     // Offset 0x06, Size 1
+    UINT8  NameOffset;                     // Offset 0x07, Size 1
+    UINT64 FirstVCN;                       // Offset 0x08, Size 8
+    UINT64 BaseFileRef;                    // Offset 0x10, Size 2
+    UINT16 AttributeId;                    // Offset 0x18, Size 2
+    UCHAR  Padding[6];                     // Offset 0x1A, Size 6
 } AttributeListEx, *PAttributeListEx;
 
 // $FILE_NAME (0x30)
 typedef struct
 {
-    UINT64 ParentFileReference; // Offset 0x00, Size 8
-    UINT64 CreationTime;        // Offset 0x08, Size 8
-    UINT64 LastWriteTime;       // Offset 0x10, Size 8
-    UINT64 ChangeTime;          // Offset 0x18, Size 8
-    UINT64 LastAccessTime;      // Offset 0x20, Size 8
-    UINT64 AllocatedSize;       // Offset 0x28, Size 8
-    UINT64 DataSize;            // Offset 0x30, Size 8
-    UINT32 Flags;               // Offset 0x38, Size 4
+    UINT64 ParentFileReference;            // Offset 0x00, Size 8
+    UINT64 CreationTime;                   // Offset 0x08, Size 8
+    UINT64 LastWriteTime;                  // Offset 0x10, Size 8
+    UINT64 ChangeTime;                     // Offset 0x18, Size 8
+    UINT64 LastAccessTime;                 // Offset 0x20, Size 8
+    UINT64 AllocatedSize;                  // Offset 0x28, Size 8
+    UINT64 DataSize;                       // Offset 0x30, Size 8
+    UINT32 Flags;                          // Offset 0x38, Size 4
     union
     {
         struct
@@ -169,18 +169,18 @@ typedef struct
         } EAInfo;
         ULONG ReparseTag;
     } Extended;
-    UINT8  NameLength;          // Offset 0x40, Size 1
-    UINT8  NameType;            // Offset 0x41, Size 1
-    WCHAR  Name[1];             // Offset 0x42, Size variable
+    UINT8  NameLength;                     // Offset 0x40, Size 1
+    UINT8  NameType;                       // Offset 0x41, Size 1
+    WCHAR  Name[1];                        // Offset 0x42, Size variable
 } FileNameEx, *PFileNameEx;
 
 // $OBJECT_ID (0x40)
 typedef struct ObjectIdEx
 {
-    GUID ObjectId;    // Offset 0x00, Size 16
-    GUID BirthVolId;  // Offset 0x10, Size 16
-    GUID BirthObjId;  // Offset 0x20, Size 16
-    GUID DomainId;    // Offset 0x30, Size 16
+    GUID ObjectId;                         // Offset 0x00, Size 16
+    GUID BirthVolId;                       // Offset 0x10, Size 16
+    GUID BirthObjId;                       // Offset 0x20, Size 16
+    GUID DomainId;                         // Offset 0x30, Size 16
 } ObjectIdEx, *PObjectIdEx;
 
 // $SECURITY_DESCRIPTOR (0x50)
@@ -192,30 +192,30 @@ typedef struct ObjectIdEx
 // $VOLUME_INFORMATION (0x70)
 typedef struct
 {
-    UINT64 Reserved1;     // Offset 0x00, Size 8
-    UINT8  MajorVersion;  // Offset 0x08, Size 1
-    UINT8  MinorVersion;  // Offset 0x09, Size 1
-    UINT16 Flags;         // Offset 0x0A, Size 2
-    UINT32 Reserved2;     // Offset 0x0C, Size 4
+    UINT64 Reserved1;                      // Offset 0x00, Size 8
+    UINT8  MajorVersion;                   // Offset 0x08, Size 1
+    UINT8  MinorVersion;                   // Offset 0x09, Size 1
+    UINT16 Flags;                          // Offset 0x0A, Size 2
+    UINT32 Reserved2;                      // Offset 0x0C, Size 4
 } VolumeInformationEx, *PVolumeInformationEx;
 
 // $INDEX_ROOT (0x90)
 typedef struct
 {
-    UINT32 AttributeType;    // Offset 0x00, Size 4
-    UINT32 CollationRule;    // Offset 0x04, Size 4
-    UINT32 BytesPerIndexRec; // Offset 0x08, Size 4
-    UINT8  ClusPerIndexRec;  // Offset 0x0C, Size 1
-    UCHAR  Padding[3];       // Offset 0x0D, Size 3
-    IndexNodeHeader Header;  // Offset 0x10, Size 16
+    UINT32 AttributeType;                  // Offset 0x00, Size 4
+    UINT32 CollationRule;                  // Offset 0x04, Size 4
+    UINT32 BytesPerIndexRec;               // Offset 0x08, Size 4
+    UINT8  ClusPerIndexRec;                // Offset 0x0C, Size 1
+    UCHAR  Padding[3];                     // Offset 0x0D, Size 3
+    IndexNodeHeader Header;                // Offset 0x10, Size 16
 } IndexRootEx, *PIndexRootEx;
 
 // $REPARSE_POINT (0xC0)
 typedef struct
 {
-    UINT32 ReparseType;       // Offset 0x00, Size 4
-    UINT16 ReparseDataLength; // Offset 0x04, Size 2
-    UINT16 Padding;           // Offset 0x06, Size 2
+    UINT32 ReparseType;                    // Offset 0x00, Size 4
+    UINT16 ReparseDataLength;              // Offset 0x04, Size 2
+    UINT16 Padding;                        // Offset 0x06, Size 2
 } ReparsePointEx, *PReparsePointEx;
 
 struct ThirdPartyReparsePointEx : ReparsePointEx
@@ -226,25 +226,25 @@ struct ThirdPartyReparsePointEx : ReparsePointEx
 // $EA_INFORMATION (0xD0)
 typedef struct
 {
-    UINT16 PackedEASize;     // Offset 0x00, Size 2
-    UINT16 NumEAWithNEED_EA; // Offset 0x02, Size 2
-    UINT32 UnpackedEASize;   // Offset 0x04, Size 4
+    UINT16 PackedEASize;                   // Offset 0x00, Size 2
+    UINT16 NumEAWithNEED_EA;               // Offset 0x02, Size 2
+    UINT32 UnpackedEASize;                 // Offset 0x04, Size 4
 } EAInformationEx, *PEAInformationEx;
 
 // $EA (0xE0)
 typedef struct
 {
-    UINT32 OffsetNextEA; // Offset 0x00, Size 4
-    UINT8  Flags;        // Offset 0x04, Size 1
-    UINT8  NameLength;   // Offset 0x05, Size 1
-    UINT16 ValueLength;  // Offset 0x06, Size 2
+    UINT32 OffsetNextEA;                   // Offset 0x00, Size 4
+    UINT8  Flags;                          // Offset 0x04, Size 1
+    UINT8  NameLength;                     // Offset 0x05, Size 1
+    UINT16 ValueLength;                    // Offset 0x06, Size 2
 } EAEx, *PEAEx;
 
 typedef struct
 {
     union
     {
-        struct                     // Offset 0x00, Size 8
+        struct                             // Offset 0x00, Size 8
         {
             ULONGLONG IndexedFile;
         } Directory;
@@ -255,8 +255,8 @@ typedef struct
             ULONG     Reserved;
         } ViewIndex;
     } Data;
-    UINT16 EntryLength;            // Offset 0x08, Size 2
-    UINT16 StreamLength;           // Offset 0x0A, Size 2
-    UINT8  Flags;                  // Offset 0x0C, Size 1
+    UINT16 EntryLength;                    // Offset 0x08, Size 2
+    UINT16 StreamLength;                   // Offset 0x0A, Size 2
+    UINT8  Flags;                          // Offset 0x0C, Size 1
     FileNameEx FileName;
 } IndexEntry, *PIndexEntry;
