@@ -38,10 +38,6 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     ReadOffset = IrpSp->Parameters.Read.ByteOffset;
     RequestedLength = IrpSp->Parameters.Read.Length;
 
-    DPRINT1("Incoming read request!\n");
-    DPRINT1("Requested Length: 0x%X\n", RequestedLength);
-    DPRINT1("Read offset: 0x%X\n", ReadOffset);
-
     Status = ReadFile((PFileContextBlock)IrpSp->FileObject->FsContext,
                       ReadOffset.QuadPart,
                       RequestedLength,

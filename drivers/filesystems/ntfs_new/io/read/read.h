@@ -14,49 +14,21 @@ ReadFile(_In_  PFileContextBlock FileCB,
          _Out_ PUCHAR Buffer)
 {
     NTSTATUS Status;
-    PFileRecord FileRecord;
-    PAttribute CurrentAttribute;
-    PStandardInformationEx StdInfoAttrEx;
 
     // If we aren't reading anything, don't read anything.
     if (!RequestedLength)
         return STATUS_SUCCESS;
 
-    FileRecord = FileCB->FileRec;
-
-    if (!FileCB || !FileCB->FileRecordNumber || !FileRecord)
-    {
-        // If there is no file record, we can't find the file.
-        DPRINT1("File context block is invalid!\n");
-        return STATUS_FILE_NOT_AVAILABLE;
-    }
-
-    // Get standard information for file.
-    CurrentAttribute = FileRecord->GetAttribute(TypeStandardInformation, NULL);
-    StdInfoAttrEx = (StandardInformationEx*)(GetResidentDataPointer(CurrentAttribute));
-
-    // Check if file is compressed.
-    if (StdInfoAttrEx->FilePermissions & FILE_PERM_COMPRESSED)
-    {
-        DPRINT1("File Record is compressed!\n");
-        Status = STATUS_NOT_IMPLEMENTED;
-        goto cleanup;
-    }
-
-    // Check if file is encrypted.
-    if(StdInfoAttrEx->FilePermissions & FILE_PERM_ENCRYPTED)
-    {
-        DPRINT1("File Record is encrypted!\n");
-        Status = STATUS_NOT_IMPLEMENTED;
-        goto cleanup;
-    }
+#ifdef NTFS_DEBUG
+    ASSERT(FileCB);
+    ASSERT(FileCB->FileRecordNumber);
+    ASSERT(FileCB->FileRec);
+    ASSERT(!(FileCB->FileAttributes & FILE_PERM_COMPRESSED));
+    ASSERT(!(FileCB->FileAttributes & FILE_PERM_ENCRYPTED));
+#endif
 
     // Copy data from $DATA into file buffer.
-    CurrentAttribute = FileRecord->GetAttribute(TypeData, NULL);
-    Status = FileRecord->CopyData(CurrentAttribute,
-                                  Buffer,
-                                  Offset,
-                                  &RequestedLength);
+    Status = FileCB->FileRec->CopyData(TypeData, NULL, Buffer, &RequestedLength, Offset);
 
 cleanup:
     return Status;

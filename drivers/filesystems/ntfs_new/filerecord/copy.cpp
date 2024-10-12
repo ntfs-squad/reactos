@@ -1,15 +1,18 @@
 #include "io/ntfsprocs.h"
 
+#define GetOffset(LCN, Volume) (LCN * Volume->SectorsPerCluster * Volume->BytesPerSector)
+
 NTSTATUS
 FileRecord::CopyData(_In_ AttributeType Type,
                      _In_ PCWSTR Name,
                      _In_ PUCHAR Buffer,
-                     _Inout_ PULONG Length)
+                     _Inout_ PULONG Length,
+                     _In_ ULONGLONG Offset)
 {
     PAttribute Attr = GetAttribute(Type, Name);
 
     if (Attr)
-        return CopyData(Attr, Buffer, Length);
+        return CopyData(Attr, Buffer, Length, Offset);
 
     return STATUS_NOT_FOUND;
 }
@@ -17,16 +20,8 @@ FileRecord::CopyData(_In_ AttributeType Type,
 NTSTATUS
 FileRecord::CopyData(_In_ PAttribute Attr,
                      _In_ PUCHAR Buffer,
-                     _Inout_ PULONG Length)
-{
-    return CopyData(Attr, Buffer, 0, Length);
-}
-
-NTSTATUS
-FileRecord::CopyData(_In_ PAttribute Attr,
-                     _In_ PUCHAR Buffer,
-                     _In_ ULONGLONG Offset,
-                     _Inout_ PULONG Length)
+                     _Inout_ PULONG Length,
+                     _In_ ULONGLONG Offset)
 {
     ULONG BytesToRead, BytesRead, BytesInRun, DataPointer;
     PDataRun Head, CurrentDR;
@@ -53,8 +48,6 @@ FileRecord::CopyData(_In_ PAttribute Attr,
 
         // Determine number of bytes we need to write.
         BytesToRead = min((Attr->Resident.DataLength), (*Length));
-
-        DPRINT1("Bytes to read: %ld\n", BytesToRead);
 
         // Copy attribute data into buffer.
         RtlCopyMemory(Buffer,
@@ -88,33 +81,22 @@ FileRecord::CopyData(_In_ PAttribute Attr,
         while(CurrentDR)
         {
             // Get data run length
-            BytesInRun = (CurrentDR->Length) * Volume->BytesPerSector * Volume->SectorsPerCluster;
+            BytesInRun = (CurrentDR->Length) * Volume->SectorsPerCluster * Volume->BytesPerSector;
 
             // if (BytesInRun > *Length)
             //     BytesRead = *Length;
             // else
             //     BytesRead = BytesInRun;
 
-            // Hack, let's just fill the buffer with the entire file contents.
+            // Hack: let's just fill the buffer with the entire file contents.
             ASSERT(Attr->NonResident.DataSize == ALIGN_UP_BY(Attr->NonResident.DataSize, PAGE_SIZE));
             BytesRead = Attr->NonResident.DataSize;
 
-            DPRINT1("Copying non-resident data...\n");
-            DPRINT1("Buffer Length: %ld bytes.\n", *Length);
-            DPRINT1("We chose to read: %ld bytes.\n", BytesRead);
-            DPRINT1("Starting sector: %ld\n", (CurrentDR->LCN) * (Volume->SectorsPerCluster));
-            DPRINT1("Sector size: 0x%X\n", Volume->BytesPerSector);
-
             // Get data
-            LONGLONG Offset = (LONGLONG)((CurrentDR->LCN)*(Volume->SectorsPerCluster)) * (LONGLONG)(Volume->BytesPerSector);
-
-            ReadDisk(Volume->PartDeviceObj, Offset, BytesRead, Buffer);
-
-            DPRINT1("Buffer contents\n");
-            for(int i = 0; i < 3; i++)
-            {
-                DPRINT1("Buffer[%ld]: %c\n", i, Buffer[i]);
-            }
+            ReadDisk(Volume->PartDeviceObj,
+                     GetOffset(CurrentDR->LCN, Volume),
+                     BytesRead,
+                     Buffer);
 
             // Set up next data run.
             CurrentDR = CurrentDR->NextRun;

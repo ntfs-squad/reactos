@@ -101,17 +101,16 @@ public:
     PDataRun FindNonResidentData(_In_ PAttribute Attr);
 
     // ./copy.cpp
-    NTSTATUS CopyData(_In_ PAttribute Attr,
-                      _In_ PUCHAR Buffer,
-                      _In_ ULONGLONG Offset,
-                      _Inout_ PULONG Length);
-    NTSTATUS CopyData(_In_ PAttribute Attr,
-                      _In_ PUCHAR Buffer,
-                      _Inout_ PULONG Length);
     NTSTATUS CopyData(_In_ AttributeType Type,
                       _In_ PCWSTR Name,
                       _In_ PUCHAR Buffer,
-                      _Inout_ PULONG Length);
+                      _Inout_ PULONG Length,
+                      _In_ ULONGLONG Offset = 0);
+
+    NTSTATUS CopyData(_In_ PAttribute Attr,
+                      _In_ PUCHAR Buffer,
+                      _Inout_ PULONG Length,
+                      _In_ ULONGLONG Offset = 0);
 
     // ./write.cpp
     NTSTATUS UpdateResidentAttribute(_In_ PAttribute Attr);
