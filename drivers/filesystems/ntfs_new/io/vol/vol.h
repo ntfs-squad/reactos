@@ -49,10 +49,10 @@ NtfsGetSizeInfo(PDEVICE_OBJECT DeviceObject,
     if (!Volume)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    Volume->GetFreeClusters(&Buffer->AvailableAllocationUnits); // Set # of free clusters
-    Buffer->TotalAllocationUnits.QuadPart = Volume->ClustersInVolume; //# of total clusters
-    Buffer->SectorsPerAllocationUnit = Volume->SectorsPerCluster; // Sectors per cluster
-    Buffer->BytesPerSector = Volume->BytesPerSector; // Bytes per sector
+    Volume->GetFreeClusters(&Buffer->AvailableAllocationUnits);
+    Buffer->TotalAllocationUnits.QuadPart = Volume->ClustersInVolume;
+    Buffer->SectorsPerAllocationUnit = Volume->SectorsPerCluster;
+    Buffer->BytesPerSector = Volume->BytesPerSector;
 
     *Length -= sizeof(FILE_FS_SIZE_INFORMATION);
 

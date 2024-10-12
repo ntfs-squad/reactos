@@ -46,7 +46,7 @@ FileRecord::CopyData(_In_ PAttribute Attr,
     {
         if (Offset > Attr->Resident.DataLength)
         {
-            // Don't read past the data.
+            // Don't read past the file data.
             DPRINT1("Offset is greater than the data size!\n");
             return STATUS_END_OF_FILE;
         }
@@ -70,9 +70,9 @@ FileRecord::CopyData(_In_ PAttribute Attr,
     else
     {
         // Attribute is nonresident.
-
         if (Offset > Attr->NonResident.DataSize)
         {
+            // Don't read past the file data.
             DPRINT1("Offset is greater than the data size!\n");
             return STATUS_END_OF_FILE;
         }

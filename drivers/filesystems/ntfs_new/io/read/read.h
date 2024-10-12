@@ -2,25 +2,16 @@
 #define NDEBUG
 #include <debug.h>
 
-static
-PUCHAR
-GetUserBuffer(PIRP Irp,
-              BOOLEAN Paging)
-{
-    if (Irp->MdlAddress != NULL)
-        return (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, (Paging ? HighPagePriority : NormalPagePriority));
-
-    else
-        return (PUCHAR)Irp->UserBuffer;
-}
+#define GetUserBuffer(Irp) Irp->MdlAddress ?\
+MmGetSystemAddressForMdlSafe(Irp->MdlAddress, ((Irp->Flags & IRP_PAGING_IO) ? HighPagePriority : NormalPagePriority)) :\
+Irp->UserBuffer
 
 static
 NTSTATUS
 ReadFile(_In_  PFileContextBlock FileCB,
          _In_  ULONG Offset,
          _In_  ULONG RequestedLength,
-         _Out_ PUCHAR Buffer,
-         _Out_ PULONG ReadLength)
+         _Out_ PUCHAR Buffer)
 {
     NTSTATUS Status;
     PFileRecord FileRecord;
@@ -60,14 +51,12 @@ ReadFile(_In_  PFileContextBlock FileCB,
         goto cleanup;
     }
 
-    // TODO: COMPLETE!!!
-    *ReadLength = RequestedLength;
+    // Copy data from $DATA into file buffer.
     CurrentAttribute = FileRecord->GetAttribute(TypeData, NULL);
     Status = FileRecord->CopyData(CurrentAttribute,
                                   Buffer,
                                   Offset,
                                   &RequestedLength);
-    *ReadLength -= RequestedLength;
 
 cleanup:
     return Status;
