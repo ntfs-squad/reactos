@@ -34,24 +34,28 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     ULONG RequestedLength;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    Buffer = (PUCHAR)(GetUserBuffer(Irp));
+    Buffer = (PUCHAR)(GetBuffer(Irp));
     ReadOffset = IrpSp->Parameters.Read.ByteOffset;
     RequestedLength = IrpSp->Parameters.Read.Length;
 
     Status = ReadFile((PFileContextBlock)IrpSp->FileObject->FsContext,
                       ReadOffset.QuadPart,
-                      RequestedLength,
+                      &RequestedLength,
                       Buffer);
 
     if (NT_SUCCESS(Status))
     {
+        DPRINT1("RequestedLength: %ld\n", RequestedLength);
+        DPRINT1("IrpSp->Parameters.Read.Length: %ld\n", IrpSp->Parameters.Read.Length);
+
         if (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO)
         {
             IrpSp->FileObject->CurrentByteOffset.QuadPart =
-                ReadOffset.QuadPart + (IrpSp->Parameters.Read.Length - RequestedLength);
+                ReadOffset.QuadPart + IrpSp->Parameters.Read.Length - RequestedLength;
         }
 
         Irp->IoStatus.Information = IrpSp->Parameters.Read.Length - RequestedLength;
+        DPRINT1("Irp->IoStatus.Information: %ld\n", Irp->IoStatus.Information);
     }
 
     else

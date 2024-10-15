@@ -105,7 +105,6 @@ done:
     {
         Irp->IoStatus.Status = STATUS_SUCCESS;
         Irp->IoStatus.Information = IoStack->Parameters.QueryFile.Length - BufferLength;
-        // DPRINT1("Buffer Length: %lu\nRemaining Buffer Length: %lu\nI/O Status Info: %lu\n", IoStack->Parameters.QueryFile.Length, BufferLength, Irp->IoStatus.Information);
 
         // HACK!!! Why is this still needed?
         Irp->UserIosb->Status = Irp->IoStatus.Status;
@@ -193,15 +192,6 @@ NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     return 0;
 }
 
-PVOID
-GetUserBuffer(PIRP Irp)
-{
-    if (Irp->MdlAddress != NULL)
-        return MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
-    else
-        return Irp->UserBuffer;
-}
-
 _Function_class_(IRP_MJ_DIRECTORY_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -227,7 +217,7 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     FileCB = (PFileContextBlock)(IrpSp->FileObject->FsContext);
-    VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
+    VolCB = (PVolumeContextBlock)(VolumeDeviceObject->DeviceExtension);
     SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
     BufferLength = IrpSp->Parameters.QueryDirectory.Length;
 

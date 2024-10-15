@@ -1,13 +1,14 @@
 #include "io/ntfsprocs.h"
 
 #define GetOffset(LCN, Volume) (LCN * Volume->SectorsPerCluster * Volume->BytesPerSector)
+#define GetRunSize(Run, Volume) (Run->Length * Volume->SectorsPerCluster * Volume->BytesPerSector)
 
 NTSTATUS
-FileRecord::CopyData(_In_ AttributeType Type,
-                     _In_ PCWSTR Name,
-                     _In_ PUCHAR Buffer,
+FileRecord::CopyData(_In_    AttributeType Type,
+                     _In_    PCWSTR Name,
+                     _In_    PUCHAR Buffer,
                      _Inout_ PULONG Length,
-                     _In_ ULONGLONG Offset)
+                     _In_    ULONGLONG Offset)
 {
     PAttribute Attr = GetAttribute(Type, Name);
 
@@ -18,18 +19,16 @@ FileRecord::CopyData(_In_ AttributeType Type,
 }
 
 NTSTATUS
-FileRecord::CopyData(_In_ PAttribute Attr,
-                     _In_ PUCHAR Buffer,
+FileRecord::CopyData(_In_    PAttribute Attr,
+                     _In_    PUCHAR Buffer,
                      _Inout_ PULONG Length,
-                     _In_ ULONGLONG Offset)
+                     _In_    ULONGLONG Offset)
 {
     ULONG BytesToRead, BytesRead, BytesInRun, DataPointer;
     PDataRun Head, CurrentDR;
 
-#ifdef NTFS_DEBUG
     ASSERT(Buffer);
     ASSERT(Attr);
-#endif
 
     if (*Length == 0)
     {
@@ -37,77 +36,84 @@ FileRecord::CopyData(_In_ PAttribute Attr,
         return STATUS_SUCCESS;
     }
 
-    if (!(Attr->IsNonResident))
+    if (!(Attr->IsNonResident)) // Attribute is resident.
     {
-        if (Offset > Attr->Resident.DataLength)
+        if (Offset >= Attr->Resident.DataLength)
         {
             // Don't read past the file data.
-            DPRINT1("Offset is greater than the data size!\n");
+            DPRINT1("Offset is greater than or equal to the data size!\n");
             return STATUS_END_OF_FILE;
         }
 
-        // Determine number of bytes we need to write.
-        BytesToRead = min((Attr->Resident.DataLength), (*Length));
+        // Determine number of bytes we need to copy.
+        BytesToRead = min((Attr->Resident.DataLength - Offset), (*Length));
 
         // Copy attribute data into buffer.
         RtlCopyMemory(Buffer,
                       GetResidentDataPointer(Attr) + Offset,
                       BytesToRead);
-
-        // Adjust length for caller.
-        *Length -= BytesToRead;
-
-        return STATUS_SUCCESS;
     }
 
-    else
+    else // Attribute is nonresident.
     {
-        // Attribute is nonresident.
-        if (Offset > Attr->NonResident.DataSize)
+        if (Offset >= Attr->NonResident.DataSize)
         {
             // Don't read past the file data.
-            DPRINT1("Offset is greater than the data size!\n");
+            DPRINT1("Offset is greater than or equal to the data size!\n");
             return STATUS_END_OF_FILE;
         }
 
+        // Determine number of bytes we need to copy.
+        BytesToRead = min((Attr->NonResident.DataSize - Offset), (*Length));
+
+        // Set up data runs
         Head = FindNonResidentData(Attr);
         CurrentDR = Head;
         BytesRead = 0;
         DataPointer = 0;
 
-        // We only support non-fragmented files for now.
-        ASSERT(!(CurrentDR->NextRun));
-
         while(CurrentDR)
         {
             // Get data run length
-            BytesInRun = (CurrentDR->Length) * Volume->SectorsPerCluster * Volume->BytesPerSector;
+            BytesInRun = GetRunSize(CurrentDR, Volume);
 
-            // if (BytesInRun > *Length)
-            //     BytesRead = *Length;
-            // else
-            //     BytesRead = BytesInRun;
+            if (Offset >= BytesInRun)
+            {
+                Offset -= BytesInRun;
+            }
 
-            // Hack: let's just fill the buffer with the entire file contents.
-            ASSERT(Attr->NonResident.DataSize == ALIGN_UP_BY(Attr->NonResident.DataSize, PAGE_SIZE));
-            BytesRead = Attr->NonResident.DataSize;
+            else
+            {
+                // We need to copy data from this run before moving to the next one.
 
-            // Get data
-            ReadDisk(Volume->PartDeviceObj,
-                     GetOffset(CurrentDR->LCN, Volume),
-                     BytesRead,
-                     Buffer);
+                // Get data
+                ReadDiskUnaligned(Volume->PartDeviceObj,
+                                  GetOffset(CurrentDR->LCN, Volume) + Offset,
+                                  min(BytesToRead, (BytesInRun - Offset)),
+                                  Buffer);
 
-            // Set up next data run.
+                // Adjust bytes read
+                BytesRead += min(BytesToRead, (BytesInRun - Offset));
+
+                // Are we done reading?
+                if (BytesRead == BytesToRead)
+                    break;
+
+                // Clear offset
+                if (Offset)
+                    Offset = 0;
+            }
+
+            // Set up next data run
             CurrentDR = CurrentDR->NextRun;
         }
 
-        *Length -= Attr->NonResident.DataSize;
-
-done:
         // Free data run
         FreeDataRun(Head);
-
-        return STATUS_SUCCESS;
     }
+
+    // Adjust length for caller
+    *Length -= BytesToRead;
+
+    return STATUS_SUCCESS;
 }
