@@ -1,7 +1,7 @@
 #include "ntfsprocs.h"
 
 NTSTATUS
-ReadDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
+ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
          _In_    LONGLONG Offset,
          _In_    ULONG Length,
          _Inout_ PUCHAR Buffer)
@@ -15,16 +15,12 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
     PAGED_CODE();
 
     //  Initialize the event we're going to use
-    KeInitializeEvent( &Event, NotificationEvent, FALSE );
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
 
-    DPRINT1("ReadDisk called!\n");
-    DPRINT1("Offset: %ld\n", Offset);
-    DPRINT1("Length: %ld\n", Length);
-
-    //  Build the irp for the operation and also set the overrride flag
+    //  Build the irp for the operation
     ByteOffset.QuadPart = Offset;
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ,
-                                       DeviceBeingRead,
+                                       DeviceToRead,
                                        Buffer,
                                        Length,
                                        &ByteOffset,
@@ -37,14 +33,14 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
         //FatRaiseStatus( IrpContext, STATUS_INSUFFICIENT_RESOURCES );
     }
 
-    SetFlag(IoGetNextIrpStackLocation( Irp )->Flags, SL_OVERRIDE_VERIFY_VOLUME);
+    SetFlag(IoGetNextIrpStackLocation(Irp)->Flags, SL_OVERRIDE_VERIFY_VOLUME);
 
     //  Call the device to do the read and wait for it to finish.
-    Status = IoCallDriver(DeviceBeingRead, Irp);
+    Status = IoCallDriver(DeviceToRead, Irp);
 
     if (Status == STATUS_PENDING)
     {
-        (VOID)KeWaitForSingleObject( &Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL );
+        (VOID)KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL);
         Status = Iosb.Status;
     }
 
@@ -66,7 +62,51 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
     return Status;
 }
 
-/* You might notice carl this looks exactly like ReadDisk, So let's go over WHY..*/
+NTSTATUS
+ReadDiskUnaligned(_In_     PDEVICE_OBJECT DeviceToRead,
+                   _In_    LONGLONG Offset,
+                   _In_    ULONG Length,
+                   _Inout_ PUCHAR Buffer)
+{
+    NTSTATUS Status;
+    PUCHAR PageAlignmentBuffer = NULL;
+    USHORT RaggedEdgeSize = 0;
+    USHORT SectorSize;
+
+    ASSERT(Length);
+    SectorSize = DeviceToRead->SectorSize;
+
+    if (ALIGN_UP_BY(Length, SectorSize) != Length)
+    {
+        DPRINT1("ALIGN_UP_BY(Length, SectorSize) != Length\n");
+        DPRINT1("%ld != %ld\n", ALIGN_UP_BY(Length, SectorSize), Length);
+        RaggedEdgeSize = ALIGN_UP_BY(Length, SectorSize) - Length;
+        PageAlignmentBuffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, RaggedEdgeSize, TAG_NTFS);
+        RtlCopyMemory(PageAlignmentBuffer,
+                      Buffer + Length,
+                      RaggedEdgeSize);
+    }
+
+    Status = ReadDisk(DeviceToRead,
+                      Offset,
+                      ALIGN_UP_BY(Length, SectorSize),
+                      Buffer);
+
+    if (PageAlignmentBuffer)
+    {
+        // Copy data back where we overwrote it
+        RtlCopyMemory(Buffer + Length,
+                      PageAlignmentBuffer,
+                      RaggedEdgeSize);
+
+        // Free page alignment buffer
+        delete PageAlignmentBuffer;
+    }
+
+    return Status;
+}
+
+// You might notice Carl this looks exactly like ReadDisk, So let's go over WHY...
 NTSTATUS
 WriteDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
           _In_    LONGLONG StartingOffset,
@@ -83,7 +123,7 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
     PAGED_CODE();
 
     //  Initialize an event which will be used to STALL THE OS UNTIL THE OPERATION COMPLETES
-    KeInitializeEvent( &Event, NotificationEvent, FALSE );
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
 
     //  Convert the offset into a LARGE_INTEGER
     ByteOffset.QuadPart = StartingOffset;
@@ -152,10 +192,10 @@ ReadBlock(_In_    PDEVICE_OBJECT DeviceObject,
 
 NTSTATUS
 WriteBlock(_In_    PDEVICE_OBJECT DeviceObject,
-          _In_    ULONG DiskSector,
-          _In_    ULONG SectorCount,
-          _In_    ULONG SectorSize,
-          _Inout_ PUCHAR Buffer)
+           _In_    ULONG DiskSector,
+           _In_    ULONG SectorCount,
+           _In_    ULONG SectorSize,
+           _Inout_ PUCHAR Buffer)
 {
     LONGLONG Offset;
     ULONG BlockSize;

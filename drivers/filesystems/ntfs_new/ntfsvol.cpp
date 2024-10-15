@@ -21,7 +21,6 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     USHORT i;
     BootSector* PartBootSector;
 
-    DPRINT1("Loading NTFS Device...\n");
     PartDeviceObj = DeviceToMount;
 
     Size = sizeof(DISK_GEOMETRY);
@@ -38,14 +37,10 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
         __debugbreak(); //ASSERT?
     }
 
-    DPRINT1("Got Drive Geometry!...\n");
-
     // Check if we are actually NTFS.
     // Check bytes per sector.
     if (DiskGeometry.BytesPerSector > 512)
         return STATUS_UNRECOGNIZED_VOLUME;
-
-    DPRINT1("Bytes per sector passed!...\n");
 
     // Get boot sector information.
     PartBootSector = new(NonPagedPool) BootSector();
@@ -65,8 +60,6 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
         Status = STATUS_UNRECOGNIZED_VOLUME;
         goto Cleanup;
     }
-
-    DPRINT1("OEM ID is NTFS!...\n");
 
     // Check if Reserved0 is NULL.
     for (i = 0; i < 7; i++)
@@ -106,12 +99,8 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
         goto Cleanup;
     }
 
-    DPRINT1("Cluster size passed!...\n");
-
-    // We are NTFS.
+    // We are NTFS. Store only the boot sector information we need in memory.
     PrintNTFSBootSector(PartBootSector);
-
-    // Store only the boot sector information we need in memory.
     RtlCopyMemory(&BytesPerSector,
                   &PartBootSector->BytesPerSector,
                   sizeof(UINT16));

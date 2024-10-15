@@ -5,12 +5,13 @@
 #define GetUserBuffer(Irp) Irp->MdlAddress ?\
 MmGetSystemAddressForMdlSafe(Irp->MdlAddress, ((Irp->Flags & IRP_PAGING_IO) ? HighPagePriority : NormalPagePriority)) :\
 Irp->UserBuffer
+#define GetBuffer(Irp) Irp->AssociatedIrp.SystemBuffer ? Irp->AssociatedIrp.SystemBuffer : GetUserBuffer(Irp)
 
 static
 NTSTATUS
 ReadFile(_In_  PFileContextBlock FileCB,
          _In_  ULONG Offset,
-         _In_  ULONG RequestedLength,
+         _In_  PULONG RequestedLength,
          _Out_ PUCHAR Buffer)
 {
     NTSTATUS Status;
@@ -28,7 +29,7 @@ ReadFile(_In_  PFileContextBlock FileCB,
 #endif
 
     // Copy data from $DATA into file buffer.
-    Status = FileCB->FileRec->CopyData(TypeData, NULL, Buffer, &RequestedLength, Offset);
+    Status = FileCB->FileRec->CopyData(TypeData, NULL, Buffer, RequestedLength, Offset);
 
 cleanup:
     return Status;
