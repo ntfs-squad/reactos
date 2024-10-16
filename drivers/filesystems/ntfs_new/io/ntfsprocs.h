@@ -22,6 +22,13 @@
 #define TAG_NTFS 'NTFS'
 #define NTFS_DEBUG
 
+#define GetWStrLength(x) x * sizeof(WCHAR)
+#define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
+#define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
+#define ULONG_ROUND_UP(x)   ROUND_UP((x), (sizeof(ULONG)))
+#define MAX_SHORTNAME_LENGTH 12
+#define FileRef(x) x->IndexEntry->Data.Directory.IndexedFile
+
 typedef enum _TYPE_OF_OPEN {
 
     UnopenedFileObject = 1,
@@ -392,6 +399,23 @@ static inline void PrintFileBothDirEntry(PFILE_BOTH_DIR_INFORMATION Data)
 {
     DPRINT1("Short File Name: \"%S\"\n", Data->ShortName);
     DPRINT1("File Name:       \"%S\"\n", Data->FileName);
+}
+
+static inline void PrintFileBothDirInfo(PFILE_BOTH_DIR_INFORMATION Info, UINT Depth)
+{
+    PFILE_BOTH_DIR_INFORMATION CurrentStruct = Info;
+
+    for (int i = 0; i < Depth; i++)
+    {
+        if (CurrentStruct)
+        {
+            PrintFileBothDirEntry(CurrentStruct);
+            if (CurrentStruct->NextEntryOffset)
+                CurrentStruct = (PFILE_BOTH_DIR_INFORMATION)((char*)CurrentStruct + CurrentStruct->NextEntryOffset);
+            else
+                CurrentStruct = NULL;
+        }
+    }
 }
 
 static inline void PrintFileCreateOptions(UINT8 Disposition, ULONG CreateOptions)

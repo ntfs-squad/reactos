@@ -9,13 +9,6 @@
 #define NDEBUG
 #include <debug.h>
 
-#define GetWStrLength(x) x * sizeof(WCHAR)
-#define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
-#define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
-#define ULONG_ROUND_UP(x)   ROUND_UP((x), (sizeof(ULONG)))
-#define MAX_SHORTNAME_LENGTH 12
-#define FileRef(x) x->IndexEntry->Data.Directory.IndexedFile
-
 static
 NTSTATUS
 GetFileBasicInformation(_In_ PFileContextBlock FileCB,
@@ -117,174 +110,15 @@ GetFileInternalInformation(_In_ PFileContextBlock FileCB,
     return STATUS_SUCCESS;
 }
 
-// TODO: Ensure we don't overrun buffer.
-static
-NTSTATUS
-GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
-                                _In_ PVolumeContextBlock VolCB,
-                                _In_ BOOLEAN ReturnSingleEntry,
-                                _Out_ PFILE_BOTH_DIR_INFORMATION Buffer,
-                                _Inout_ PULONG Length)
-{
-    NTSTATUS Status;
-    PBTree NewTree;
-    PBTreeKey CurrentKey;
-    PFileNameEx FileNameData;
-    PFILE_BOTH_DIR_INFORMATION BufferPtr;
-    ULONG KeysInNode, SizeOfStruct;
-
-    if (ReturnSingleEntry)
-        DPRINT1("Return Single Entry is TRUE!\n");
-    else
-        DPRINT1("Return Single Entry is FALSE!\n");
-
-    // TODO: If not root directory, also return . and .. directories!
-    VolCB->Volume->SuperMegaHack++;
-
-    if(VolCB->Volume->SuperMegaHack >= 3)
-    {
-        DPRINT1("SuperMega Hack is off!\n");
-        VolCB->Volume->SuperMegaHack = 0;
-        return STATUS_NO_MORE_FILES;
-    }
-
-    DPRINT1("SuperMega Hack is ON!\n");
-    ASSERT(Buffer);
-
-    // Let's get the btree for this file
-    NewTree = NULL;
-    Status = CreateBTreeFromFile(FileCB->FileRec, &NewTree);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to get BTree!\n");
-        return Status;
-    }
-
-    // HACK! Jump to first child node if we're on the root file
-    if (FileCB->FileRecordNumber == _Root)
-    {
-        CurrentKey = NewTree->RootNode->FirstKey->LesserChild->FirstKey;
-        KeysInNode = NewTree->RootNode->FirstKey->LesserChild->KeyCount;
-    }
-
-    else
-    {
-        CurrentKey = NewTree->RootNode->FirstKey;
-        KeysInNode = NewTree->RootNode->KeyCount;
-    }
-
-    BufferPtr = Buffer;
-
-    // Hack for only returning one file if requested
-    if (ReturnSingleEntry)
-        KeysInNode = 1;
-
-    for (int i = 0; i < KeysInNode; i++)
-    {
-        if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_END)
-        {
-            // This is a dummy key.
-            DPRINT1("Got dummy key!\n");
-            break;
-        }
-
-        FileNameData = &(CurrentKey->IndexEntry->FileName);
-
-        BufferPtr->FileIndex = 0; // NOTE: Undefined for NTFS
-        BufferPtr->CreationTime.QuadPart = FileNameData->CreationTime;
-        BufferPtr->LastAccessTime.QuadPart = FileNameData->LastAccessTime;
-        BufferPtr->LastWriteTime.QuadPart = FileNameData->LastWriteTime;
-        BufferPtr->ChangeTime.QuadPart = FileNameData->ChangeTime;
-        BufferPtr->EndOfFile.QuadPart = FileNameData->DataSize;
-        BufferPtr->AllocationSize.QuadPart = FileNameData->AllocatedSize;
-        BufferPtr->FileAttributes = FileNameData->Flags;
-        BufferPtr->FileNameLength = GetWStrLength(FileNameData->NameLength);
-        BufferPtr->EaSize = FileNameData->Extended.EAInfo.PackedEASize;
-        RtlCopyMemory(BufferPtr->FileName,
-                      FileNameData->Name,
-                      GetWStrLength(FileNameData->NameLength));
-
-        // Mark file as folder if it is a directory
-        if (FileNameData->Flags & FN_DIRECTORY)
-            BufferPtr->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
-
-        // Let's get the short name
-        RtlZeroMemory(BufferPtr->ShortName, MAX_SHORTNAME_LENGTH * sizeof(WCHAR));
-
-        if (FileNameData->NameLength <= MAX_SHORTNAME_LENGTH)
-        {
-            // We don't need a short name.
-            BufferPtr->ShortNameLength = 0;
-        }
-
-        // Check the next key in the B-tree for the short name.
-        else if (GetFRNFromFileRef(FileRef(CurrentKey)) == GetFRNFromFileRef(FileRef(CurrentKey->NextKey)))
-        {
-            // Both keys point to the same file. Assert that it is a valid short name.
-            ASSERT(CurrentKey->NextKey->IndexEntry->FileName.NameLength <= MAX_SHORTNAME_LENGTH);
-
-            // Move to next key
-            CurrentKey = CurrentKey->NextKey;
-            FileNameData = &(CurrentKey->IndexEntry->FileName);
-
-            // Copy short name data into the buffer
-            BufferPtr->ShortNameLength = GetWStrLength(FileNameData->NameLength);
-            RtlCopyMemory(BufferPtr->ShortName,
-                            FileNameData->Name,
-                            GetWStrLength(FileNameData->NameLength));
-        }
-
-        else
-        {
-            // The short name is not the next key in the btree. Something is wrong.
-            __debugbreak();
-            BufferPtr->ShortNameLength = 20;
-            RtlCopyMemory(BufferPtr->ShortName, L"ERROR.XXX", 20);
-        }
-
-        // Calculate the size of the structure we just made
-        SizeOfStruct = sizeof(FILE_BOTH_DIR_INFORMATION) +
-                       GetWStrLength(FileNameData->NameLength);
-
-        // Adjust length
-        *Length -= SizeOfStruct;
-
-        /* We have to be smart with setting the next entry offset.
-         * If the next entry is a dummy key, the next entry offset should be 0.
-         * If not, it should be the size of the structure we just made.
-         */
-
-        if (i == KeysInNode - 1 ||
-            CurrentKey->NextKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_END)
-        {
-            // The next key is a dummy key.
-            BufferPtr->NextEntryOffset = 0;
-            break;
-        }
-
-        else
-        {
-            // The next key is valid.
-            BufferPtr->NextEntryOffset = SizeOfStruct;
-
-            // Move up to next entry
-            BufferPtr = (PFILE_BOTH_DIR_INFORMATION)(((char*)BufferPtr) +
-                                                     (SizeOfStruct));
-
-            // Go to the next key
-            CurrentKey = CurrentKey->NextKey;
-        }
-    }
-
-    return Status;
-}
-
 static
 NTSTATUS
 GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
                               _Out_ PFILE_NETWORK_OPEN_INFORMATION Buffer,
                               _Inout_ PULONG Length)
 {
+    ASSERT(Buffer);
+    ASSERT(FileCB);
+
     Buffer->CreationTime = FileCB->CreationTime;
     Buffer->LastAccessTime = FileCB->LastAccessTime;
     Buffer->LastWriteTime = FileCB->LastWriteTime;
