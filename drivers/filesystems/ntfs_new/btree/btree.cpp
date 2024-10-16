@@ -10,6 +10,19 @@
 /* INCLUDES *****************************************************************/
 #include "../io/ntfsprocs.h"
 
+#define NDEBUG
+
+// Returns the size of a given FILENAME_ATTRIBUTE, in bytes.
+#define GetFileNameAttributeLength(FileNameAttribute) \
+(FIELD_OFFSET(FileNameEx, Name) + (FileNameAttribute->NameLength * sizeof(WCHAR)))
+
+// Calculates start of Index Buffer relative to the index allocation, given the node's VCN
+#define GetAllocationOffsetFromVCN(Volume, IndexBufferSize, VCN) \
+(IndexBufferSize < BytesPerCluster(Volume)) ? VCN * Volume->BytesPerSector : VCN * BytesPerCluster(Volume)
+
+#define GetIndexEntryVCN(IndexEntry) \
+*((PULONGLONG)((ULONG_PTR)IndexEntry + IndexEntry->EntryLength - sizeof(ULONGLONG)))
+
 NTSTATUS
 FixupUpdateSequenceArray(PNTFSVolume Volume,
                          PNTFSRecordHeader Record)
@@ -23,8 +36,6 @@ FixupUpdateSequenceArray(PNTFSVolume Volume,
     USANumber = *(USA++);
     USACount = Record->SizeOfUpdateSequence - 1; /* Exclude the USA Number. */
     Block = (USHORT*)((PCHAR)Record + Volume->BytesPerSector - 2);
-
-    DPRINT("FixupUpdateSequenceArray\n");
 
     while (USACount)
     {
@@ -86,27 +97,6 @@ PrintAllVCNs(PNTFSVolume Volume,
 
     delete Buffer;
 }
-
-/**
-* @name GetFileNameAttributeLength
-* @implemented
-*
-* Returns the size of a given FILENAME_ATTRIBUTE, in bytes.
-*
-* @param FileNameAttribute
-* Pointer to a FILENAME_ATTRIBUTE to determine the size of.
-*
-* @remarks
-* The length of a FILENAME_ATTRIBUTE is variable and is dependent on the length of the file name stored at the end.
-* This function operates on the FILENAME_ATTRIBUTE proper, so don't try to pass it a PNTFS_ATTR_RECORD.
-*/
-ULONG GetFileNameAttributeLength(PFileNameEx FileNameAttribute)
-{
-    ULONG Length = FIELD_OFFSET(FileNameEx, Name) + (FileNameAttribute->NameLength * sizeof(WCHAR));
-    return Length;
-}
-
-#define NDEBUG
 
 VOID
 DumpBTreeNode(PBTree Tree,
@@ -242,26 +232,6 @@ DestroyBTree(PBTree Tree)
 {
     DestroyBTreeNode(Tree->RootNode);
     delete Tree;
-}
-
-// Calculates start of Index Buffer relative to the index allocation, given the node's VCN
-ULONGLONG
-GetAllocationOffsetFromVCN(PNTFSVolume Volume,
-                           ULONG IndexBufferSize,
-                           ULONGLONG VCN)
-{
-    if (IndexBufferSize < BytesPerCluster(Volume))
-        return VCN * Volume->BytesPerSector;
-
-    return VCN * BytesPerCluster(Volume);
-}
-
-ULONGLONG
-GetIndexEntryVCN(PIndexEntry IndexEntry)
-{
-    PULONGLONG Destination = (PULONGLONG)((ULONG_PTR)IndexEntry + IndexEntry->EntryLength - sizeof(ULONGLONG));
-    ASSERT(IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE);
-    return *Destination;
 }
 
 /**
