@@ -180,6 +180,8 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
     PBTree NewTree;
     PFILE_BOTH_DIR_INFORMATION BufferStart;
 
+    ASSERT(FileCB);
+
     if (ReturnSingleEntry)
         DPRINT1("Return Single Entry is TRUE!\n");
     else
@@ -206,6 +208,10 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
         DPRINT1("Failed to get BTree!\n");
         return Status;
     }
+
+    DumpBTree(NewTree);
+    if (!ReturnSingleEntry)
+        __debugbreak();
 
     /* Populate the buffer.
      * Note: Because some keys can be index nodes, this must be done recursively.
