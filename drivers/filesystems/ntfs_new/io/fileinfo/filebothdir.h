@@ -74,9 +74,12 @@ AddKeyToBothDirInfo(_In_    PBTreeKey Key,
         __debugbreak();
     }
 
-    // Adjust length
-    EntrySize = sizeof(FILE_BOTH_DIR_INFORMATION) +
-                GetWStrLength(FileNameData->NameLength);
+    /* Set the entry size.
+     * Note: Entries in the buffer must be aligned to 8-byte boundaries
+     * See: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/270df317-9ba5-4ccb-ba00-8d22be139bc5
+     */
+    EntrySize = ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) +
+                               GetWStrLength(FileNameData->NameLength));
     *BufferLength -= EntrySize;
 
     // Set next entry offset
@@ -155,7 +158,7 @@ AddNodeEntry(_In_    PBTreeFilenameNode Node,
         ASSERT(EntrySize);
 
         // Increment the buffer
-        Buffer = (PFILE_BOTH_DIR_INFORMATION)((char*)Buffer + EntrySize);
+        Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Buffer + EntrySize);
 
         // Go to the next key
         CurrentKey = CurrentKey->NextKey;
