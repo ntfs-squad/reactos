@@ -10,6 +10,7 @@
 /* INCLUDES *****************************************************************/
 
 #include "fileinfo.h"
+#include "filebothdir.h"
 
 /* GLOBALS *****************************************************************/
 
@@ -284,14 +285,14 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (NT_SUCCESS(Status))
     {
         Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - BufferLength;
-        DPRINT1("Buffer Length: %lu\nRemaining Buffer Length: %lu\nI/O Status Info: %lu\n", IrpSp->Parameters.QueryDirectory.Length, BufferLength, Irp->IoStatus.Information);
+        DPRINT1("Buffer Length: %lu\nRemaining Buffer Length: %lu\nI/O Status Info: %lu\n",
+                IrpSp->Parameters.QueryDirectory.Length,
+                BufferLength, Irp->IoStatus.Information);
     }
     else
     {
         Irp->IoStatus.Information = 0;
     }
-
-    // __debugbreak();
 
     return Status;
 }

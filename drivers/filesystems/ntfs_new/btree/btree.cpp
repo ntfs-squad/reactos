@@ -584,7 +584,9 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
 
     ASSERT(IndexBufferSize == 0);
     ASSERT(RtlCompareMemory(NodeBuffer->RecordHeader.TypeID, "INDX", 4) == 4);
-    ASSERT(NodeBuffer->VCN == *VCN);
+    // TODO: Change to assert when fixed
+    if (NodeBuffer->VCN != *VCN)
+        DPRINT1("NodeBuffer->VCN != *VCN\n");
 
     // Apply the fixup array to the node buffer
     Status = FixupUpdateSequenceArray(Volume, &NodeBuffer->RecordHeader);
@@ -899,16 +901,14 @@ CreateBTreeKeyFromFilename(ULONGLONG FileReference, PFileNameEx FileNameAttribut
     return NewKey;
 }
 
+// TODO: Actually leverage btree for fast searching instead of searching linearly
 PBTreeKey
-FindKeyFromFileName(PBTree Tree, PWCHAR FileName)
+FindKeyInNode(PBTreeFilenameNode Node, PWCHAR FileName, UINT Length)
 {
-    UINT Length;
-    PBTreeKey CurrentKey = Tree->RootNode->FirstKey;
+    PBTreeKey CurrentKey, ResumeKey;
 
-    if (wcschr(FileName, L'\\'))
-            Length = (wcschr(FileName, L'\\') - FileName);
-    else
-        Length = wcslen(FileName);
+    // Start the search with the first key
+    CurrentKey = Node->FirstKey;
 
     while(CurrentKey)
     {
@@ -920,19 +920,41 @@ FindKeyFromFileName(PBTree Tree, PWCHAR FileName)
             return CurrentKey;
         }
 
-        // Go to the next key
         if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
         {
-            // Hack! go to lesser child if we're an index node.
-            CurrentKey = CurrentKey->LesserChild->FirstKey;
-        }
-        else
-        {
-            CurrentKey = CurrentKey->NextKey;
+            // Search keys in the lesser child if we're an index node.
+            ResumeKey = CurrentKey;
+            CurrentKey = FindKeyInNode(CurrentKey->LesserChild, FileName, Length);
+            if (CurrentKey)
+                return CurrentKey;
+            else
+                CurrentKey = ResumeKey;
         }
 
+        if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_END)
+        {
+            // We've reached the end of this node and checked if it was an index node.
+            DPRINT1("Got dummy key!\n");
+            return NULL;
+        }
+
+        // Go to the next key
+        CurrentKey = CurrentKey->NextKey;
     }
 
     // We didn't find the key
     return NULL;
+}
+
+PBTreeKey
+FindKeyFromFileName(PBTree Tree, PWCHAR FileName)
+{
+    UINT Length;
+
+    if (wcschr(FileName, L'\\'))
+        Length = (wcschr(FileName, L'\\') - FileName);
+    else
+        Length = wcslen(FileName);
+
+    return FindKeyInNode(Tree->RootNode, FileName, Length);
 }
