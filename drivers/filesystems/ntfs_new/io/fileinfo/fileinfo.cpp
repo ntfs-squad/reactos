@@ -133,62 +133,6 @@ NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      *
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-set-information
      */
-
-#if 0
-    PIO_STACK_LOCATION IoStack;
-    FILE_INFORMATION_CLASS FileInformationRequest;
-    PVolumeContextBlock VolCB;
-    PFileContextBlock FileCB;
-    NTSTATUS Status;
-    PVOID SystemBuffer;
-    ULONG BufferLength;
-    PFILE_OBJECT FileObject;
-    ULONG BufferLength;
-
-    DPRINT("NtfsSetInformation(%p)\n", IrpContext);
-
-    Irp = IrpContext->Irp;
-    IoStack = IrpContext->Stack;
-    DeviceObject = IrpContext->DeviceObject;
-    DeviceExt = DeviceObject->DeviceExtension;
-    FileInformationRequest = Stack->Parameters.QueryFile.FileInformationClass;
-    FileObject = IrpContext->FileObject;
-    Fcb = FileObject->FsContext;
-
-    SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
-    BufferLength = Stack->Parameters.QueryFile.Length;
-
-    if (!ExAcquireResourceSharedLite(&Fcb->MainResource,
-                                     BooleanFlagOn(IrpContext->Flags, IRPCONTEXT_CANWAIT)))
-    {
-        return NtfsMarkIrpContextForQueue(IrpContext);
-    }
-
-    switch (FileInformationRequest)
-    {
-        PFILE_END_OF_FILE_INFORMATION EndOfFileInfo;
-
-        /* TODO: Allocation size is not actually the same as file end for NTFS,
-           however, few applications are likely to make the distinction. */
-        case FileAllocationInformation:
-            DPRINT1("FIXME: Using hacky method of setting FileAllocationInformation.\n");
-        case FileEndOfFileInformation:
-            EndOfFileInfo = (PFILE_END_OF_FILE_INFORMATION)SystemBuffer;
-            Status = NtfsSetEndOfFile(Fcb,
-                                      FileObject,
-                                      DeviceExt,
-                                      Irp->Flags,
-                                      BooleanFlagOn(Stack->Flags, SL_CASE_SENSITIVE),
-                                      &EndOfFileInfo->EndOfFile);
-            break;
-
-        // TODO: all other information classes
-
-        default:
-            DPRINT1("FIXME: Unimplemented information class: %s\n", GetInfoClassName(FileInformationClass));
-            Status = STATUS_NOT_IMPLEMENTED;
-    }
-#endif
     DPRINT1("NtfsFsdSetInformation Called!\n");
     return 0;
 }
