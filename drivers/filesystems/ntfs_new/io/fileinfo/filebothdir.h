@@ -9,7 +9,7 @@
 #define NDEBUG
 #include <debug.h>
 
-#define IsLastEntry(Key) !!(Key->NextKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_END) && !(Key->NextKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
+#define IsLastEntry(Key, RootNode) RootNode && !!(Key->NextKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_END) && !(Key->NextKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
 
 static
 NTSTATUS
@@ -24,6 +24,13 @@ AddKeyToBothDirInfo(_In_    PBTreeKey Key,
 
     // Set the file name data pointer
     FileNameData = &(Key->IndexEntry->FileName);
+
+    if (*BufferLength < ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) + GetWStrLength(FileNameData->NameLength)))
+    {
+        // We will overrun the buffer if we continue
+        DPRINT1("Unable to add key to buffer: too small!\n");
+        return STATUS_BUFFER_TOO_SMALL;
+    }
 
     Buffer->FileIndex = 0;                                            // Undefined for NTFS
     Buffer->CreationTime.QuadPart = FileNameData->CreationTime;
@@ -91,7 +98,8 @@ AddKeyToBothDirInfo(_In_    PBTreeKey Key,
     if (EntryLength)
         *EntryLength = EntrySize;
 
-    DPRINT1("Buffer Length: %ld\n", *BufferLength);
+    DPRINT1("Added Entry!\n");
+    PrintFileBothDirEntry(Buffer);
 
     return STATUS_SUCCESS;
 }
@@ -125,11 +133,11 @@ AddFirstNodeEntry(_In_    PBTreeFilenameNode Node,
     return AddKeyToBothDirInfo(CurrentKey, TRUE, Buffer, BufferLength, NULL);
 }
 
-// TODO: Ensure we don't overrun buffer.
+// TODO: Handle buffer overruns better.
 static
 NTSTATUS
 AddNodeEntry(_In_    PBTreeFilenameNode Node,
-             _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
+             _Inout_ PFILE_BOTH_DIR_INFORMATION *Buffer,
              _Inout_ PULONG BufferLength)
 {
     NTSTATUS Status;
@@ -144,10 +152,10 @@ AddNodeEntry(_In_    PBTreeFilenameNode Node,
     {
         if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
         {
-            DPRINT1("Buffer Length (1): 0x%X\n", *BufferLength);
             // Add the contents of the index node.
-            Status = AddNodeEntry(CurrentKey->LesserChild, Buffer, BufferLength);
-            DPRINT1("Buffer Length (2): 0x%X\n", *BufferLength);
+            Status = AddNodeEntry(CurrentKey->LesserChild,
+                                  Buffer,
+                                  BufferLength);
         }
 
         if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_END)
@@ -158,17 +166,49 @@ AddNodeEntry(_In_    PBTreeFilenameNode Node,
         }
 
         // Add this key to the buffer
-        Status = AddKeyToBothDirInfo(CurrentKey, IsLastEntry(CurrentKey), Buffer, BufferLength, &EntrySize);
-        ASSERT(EntrySize);
+        Status = AddKeyToBothDirInfo(CurrentKey,
+                                     FALSE,
+                                     *Buffer,
+                                     BufferLength,
+                                     &EntrySize);
+
+        if (Status == STATUS_BUFFER_TOO_SMALL)
+        {
+            DPRINT1("Buffer is now full!\n");
+            return STATUS_SUCCESS;
+        }
 
         // Increment the buffer
-        Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Buffer + EntrySize);
+        *Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)*Buffer + EntrySize);
 
         // Go to the next key
         CurrentKey = CurrentKey->NextKey;
     }
 
     return Status;
+}
+
+static
+NTSTATUS
+TerminateFileBothDirectory(PFILE_BOTH_DIR_INFORMATION Info)
+{
+    PFILE_BOTH_DIR_INFORMATION Current, LastEntry;
+
+    Current = Info;
+    while(Current->NextEntryOffset)
+    {
+        // Back up the last entry
+        LastEntry = Current;
+
+        // Go to next entry
+        Current = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Current +
+                                               Current->NextEntryOffset);
+    }
+
+    // Set the last entry to a 0 offset.
+    LastEntry->NextEntryOffset = 0;
+
+    return STATUS_SUCCESS;
 }
 
 // TODO: How do we figure out where to start?
@@ -182,7 +222,7 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
 {
     NTSTATUS Status;
     PBTree NewTree;
-    PFILE_BOTH_DIR_INFORMATION BufferStart;
+    PFILE_BOTH_DIR_INFORMATION BufferHead;
 
     DPRINT1("Length: %ld\n", *Length);
 
@@ -206,6 +246,9 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
     DPRINT1("SuperMega Hack is ON!\n");
     ASSERT(Buffer);
 
+    // Clear buffer
+    RtlZeroMemory(Buffer, *Length);
+
     // Let's get the btree for this file
     NewTree = NULL;
     Status = CreateBTreeFromFile(FileCB->FileRec, &NewTree);
@@ -219,22 +262,19 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
 
     /* Populate the buffer.
      * Note: Because some keys can be index nodes, this must be done recursively.
-     * These recursive functions modify the buffer pointer, so we have to restore it.
      */
-    BufferStart = Buffer;
+    BufferHead = Buffer;
+
     if (ReturnSingleEntry)
+    {
         Status = AddFirstNodeEntry(NewTree->RootNode, Buffer, Length);
+    }
+
     else
-        Status = AddNodeEntry(NewTree->RootNode, Buffer, Length);
-
-    if (!ReturnSingleEntry && NewTree->RootNode->KeyCount > 1)
-        __debugbreak();
-
-    // Set last buffer entry to have a zero next index
-    // Buffer->NextEntryOffset = 0;
-
-    // Reset the buffer to the beginning.
-    Buffer = BufferStart;
+    {
+        Status = AddNodeEntry(NewTree->RootNode, &Buffer, Length);
+        Status = TerminateFileBothDirectory(BufferHead);
+    }
 
     return Status;
 }
