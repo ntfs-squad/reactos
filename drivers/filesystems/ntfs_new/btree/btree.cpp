@@ -18,7 +18,9 @@
 
 // Calculates start of Index Buffer relative to the index allocation, given the node's VCN
 #define GetAllocationOffsetFromVCN(Volume, IndexBufferSize, VCN) \
-(IndexBufferSize < BytesPerCluster(Volume)) ? VCN * Volume->BytesPerSector : VCN * BytesPerCluster(Volume)
+(IndexBufferSize < BytesPerCluster(Volume)) ? \
+(VCN * Volume->BytesPerSector) : \
+(VCN * BytesPerCluster(Volume))
 
 #define GetIndexEntryVCN(IndexEntry) \
 *((PULONGLONG)((ULONG_PTR)IndexEntry + IndexEntry->EntryLength - sizeof(ULONGLONG)))
@@ -612,6 +614,7 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
             // See if the current key has a sub-node
             if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
             {
+                DPRINT1("Adding new node (1)...\n");
                 CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(File,
                                                                        IndexRootAttribute,
                                                                        IndexAllocationAttribute,
@@ -629,6 +632,7 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
             // See if the current key has a sub-node
             if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
             {
+                DPRINT1("Adding new node (2)...\n");
                 CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(File,
                                                                        IndexRootAttribute,
                                                                        IndexAllocationAttribute,
@@ -831,6 +835,7 @@ CreateBTreeFromFile(PFileRecord File,
     return Status;
 }
 
+// Complete
 PBTreeKey
 CreateBTreeKeyFromFilename(ULONGLONG FileReference, PFileNameEx FileNameAttribute)
 {
@@ -914,17 +919,4 @@ FindKeyInNode(PBTreeFilenameNode Node, PWCHAR FileName, UINT Length)
 
     // We didn't find the key
     return NULL;
-}
-
-PBTreeKey
-FindKeyFromFileName(PBTree Tree, PWCHAR FileName)
-{
-    UINT Length;
-
-    if (wcschr(FileName, L'\\'))
-        Length = (wcschr(FileName, L'\\') - FileName);
-    else
-        Length = wcslen(FileName);
-
-    return FindKeyInNode(Tree->RootNode, FileName, Length);
 }

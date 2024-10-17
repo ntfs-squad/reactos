@@ -22,6 +22,10 @@
 #define BytesPerCluster(x) x->BytesPerSector * x->SectorsPerCluster
 #define BytesPerIndexRecord(x) BytesPerCluster(x) * x->ClustersPerIndexRecord
 #define AttributeDataLength(x) x->IsNonResident ? x->NonResident.DataSize : x->Resident.DataLength
+#define FindKeyFromFileName(Tree, FileName)\
+wcschr(FileName, L'\\') ? \
+FindKeyInNode(Tree->RootNode, FileName, (wcschr(FileName, L'\\') - FileName)) :\
+FindKeyInNode(Tree->RootNode, FileName, wcslen(FileName))
 
 typedef struct
 {
@@ -129,4 +133,4 @@ PBTreeKey
 CreateBTreeKeyFromFilename(ULONGLONG FileReference, PFileNameEx FileNameAttribute);
 
 PBTreeKey
-FindKeyFromFileName(PBTree Tree, PWCHAR FileName);
+FindKeyInNode(PBTreeFilenameNode Node, PWCHAR FileName, UINT Length);
