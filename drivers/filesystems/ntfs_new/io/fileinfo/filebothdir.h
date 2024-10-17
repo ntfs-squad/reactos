@@ -91,6 +91,8 @@ AddKeyToBothDirInfo(_In_    PBTreeKey Key,
     if (EntryLength)
         *EntryLength = EntrySize;
 
+    DPRINT1("Buffer Length: %ld\n", *BufferLength);
+
     return STATUS_SUCCESS;
 }
 
@@ -142,8 +144,10 @@ AddNodeEntry(_In_    PBTreeFilenameNode Node,
     {
         if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
         {
+            DPRINT1("Buffer Length (1): 0x%X\n", *BufferLength);
             // Add the contents of the index node.
             Status = AddNodeEntry(CurrentKey->LesserChild, Buffer, BufferLength);
+            DPRINT1("Buffer Length (2): 0x%X\n", *BufferLength);
         }
 
         if (CurrentKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_END)
@@ -180,6 +184,8 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
     PBTree NewTree;
     PFILE_BOTH_DIR_INFORMATION BufferStart;
 
+    DPRINT1("Length: %ld\n", *Length);
+
     ASSERT(FileCB);
 
     if (ReturnSingleEntry)
@@ -210,8 +216,6 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
     }
 
     DumpBTree(NewTree);
-    if (!ReturnSingleEntry)
-        __debugbreak();
 
     /* Populate the buffer.
      * Note: Because some keys can be index nodes, this must be done recursively.
@@ -222,6 +226,9 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
         Status = AddFirstNodeEntry(NewTree->RootNode, Buffer, Length);
     else
         Status = AddNodeEntry(NewTree->RootNode, Buffer, Length);
+
+    if (!ReturnSingleEntry && NewTree->RootNode->KeyCount > 1)
+        __debugbreak();
 
     // Set last buffer entry to have a zero next index
     // Buffer->NextEntryOffset = 0;

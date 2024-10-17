@@ -36,7 +36,7 @@ FixupUpdateSequenceArray(PNTFSVolume Volume,
 
     USA = (USHORT*)((PCHAR)Record + Record->UpdateSequenceOffset);
     USANumber = *(USA++);
-    USACount = Record->SizeOfUpdateSequence - 1; /* Exclude the USA Number. */
+    USACount = Record->SizeOfUpdateSequence - 1; // Exclude the USA Number.
     Block = (USHORT*)((PCHAR)Record + Volume->BytesPerSector - 2);
 
     while (USACount)
@@ -552,13 +552,11 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
     IndexNodeOffset = GetAllocationOffsetFromVCN(Volume, IndexBufferSize, *VCN);
 
     // TODO: Confirm index bitmap has this node marked as in-use
-    File->CopyData(IndexAllocationAttribute, (PUCHAR)NodeBuffer, &IndexBufferSize);
+    File->CopyData(IndexAllocationAttribute, (PUCHAR)NodeBuffer, &IndexBufferSize, IndexNodeOffset);
 
     ASSERT(IndexBufferSize == 0);
     ASSERT(RtlCompareMemory(NodeBuffer->RecordHeader.TypeID, "INDX", 4) == 4);
-    // TODO: Change to assert when fixed
-    if (NodeBuffer->VCN != *VCN)
-        DPRINT1("NodeBuffer->VCN != *VCN\n");
+    ASSERT(NodeBuffer->VCN == *VCN);
 
     // Apply the fixup array to the node buffer
     Status = FixupUpdateSequenceArray(Volume, &NodeBuffer->RecordHeader);
