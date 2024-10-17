@@ -9,11 +9,11 @@
 #define NDEBUG
 #include <debug.h>
 
-#define IsLastEntry(Key, RootNode) RootNode && !!(Key->NextKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_END) && !(Key->NextKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
+#define IsLastEntry(Key) !!(Key->NextKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_END) && !(Key->NextKey->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
 
 static
 NTSTATUS
-AddKeyToBothDirInfo(_In_    PBTreeKey Key,
+AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
                     _In_    BOOLEAN IsLastEntry,
                     _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
                     _Inout_ PULONG BufferLength,
@@ -23,12 +23,13 @@ AddKeyToBothDirInfo(_In_    PBTreeKey Key,
     ULONG EntrySize;
 
     // Set the file name data pointer
-    FileNameData = &(Key->IndexEntry->FileName);
+    FileNameData = &((*Key)->IndexEntry->FileName);
 
     if (*BufferLength < ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) + GetWStrLength(FileNameData->NameLength)))
     {
         // We will overrun the buffer if we continue
         DPRINT1("Unable to add key to buffer: too small!\n");
+        __debugbreak();
         return STATUS_BUFFER_TOO_SMALL;
     }
 
@@ -59,16 +60,16 @@ AddKeyToBothDirInfo(_In_    PBTreeKey Key,
         Buffer->ShortNameLength = 0;
     }
 
-    else if (GetFRNFromFileRef(FileRef(Key)) == GetFRNFromFileRef(FileRef(Key->NextKey)))
+    else if (GetFRNFromFileRef(FileRef((*Key))) == GetFRNFromFileRef(FileRef((*Key)->NextKey)))
     {
         DPRINT1("We need a short name!\n");
 
         // Both keys point to the same file. Assert that it is a valid short name.
-        ASSERT(Key->NextKey->IndexEntry->FileName.NameLength <= MAX_SHORTNAME_LENGTH);
+        ASSERT((*Key)->NextKey->IndexEntry->FileName.NameLength <= MAX_SHORTNAME_LENGTH);
 
         // Move to next key
-        Key = Key->NextKey;
-        FileNameData = &(Key->IndexEntry->FileName);
+        *Key = (*Key)->NextKey;
+        FileNameData = &((*Key)->IndexEntry->FileName);
 
         // Copy short name data into the buffer
         Buffer->ShortNameLength = GetWStrLength(FileNameData->NameLength);
@@ -132,7 +133,7 @@ AddFirstNodeEntry(_In_    PBTreeFilenameNode Node,
         }
     }
 
-    return AddKeyToBothDirInfo(CurrentKey, TRUE, Buffer, BufferLength, NULL);
+    return AddKeyToBothDirInfo(&CurrentKey, TRUE, Buffer, BufferLength, NULL);
 }
 
 // TODO: Handle buffer overruns better.
@@ -168,7 +169,7 @@ AddNodeEntry(_In_    PBTreeFilenameNode Node,
         }
 
         // Add this key to the buffer
-        Status = AddKeyToBothDirInfo(CurrentKey,
+        Status = AddKeyToBothDirInfo(&CurrentKey,
                                      FALSE,
                                      *Buffer,
                                      BufferLength,
@@ -180,8 +181,23 @@ AddNodeEntry(_In_    PBTreeFilenameNode Node,
             return STATUS_SUCCESS;
         }
 
-        // Increment the buffer
-        *Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)*Buffer + EntrySize);
+        if (IsLastEntry(CurrentKey))
+        {
+            // Terminate the buffer.
+            (*Buffer)->NextEntryOffset = 0;
+        }
+
+        else
+        {
+            if (!(*Buffer)->NextEntryOffset)
+            {
+                // Fix the next entry offset.
+                (*Buffer)->NextEntryOffset = sizeof(FILE_BOTH_DIR_INFORMATION) + EntrySize;
+            }
+
+            // Increment the buffer
+            *Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)*Buffer + EntrySize);
+        }
 
         // Go to the next key
         CurrentKey = CurrentKey->NextKey;
@@ -197,7 +213,8 @@ TerminateFileBothDirectory(PFILE_BOTH_DIR_INFORMATION Info)
     PFILE_BOTH_DIR_INFORMATION Current, LastEntry;
 
     Current = Info;
-    while(Current->NextEntryOffset)
+    while(Current &&
+          Current->NextEntryOffset)
     {
         // Back up the last entry
         LastEntry = Current;
@@ -268,15 +285,10 @@ GetFileBothDirectoryInformation(_In_ PFileContextBlock FileCB,
     BufferHead = Buffer;
 
     if (ReturnSingleEntry)
-    {
         Status = AddFirstNodeEntry(NewTree->RootNode, Buffer, Length);
-    }
 
     else
-    {
         Status = AddNodeEntry(NewTree->RootNode, &Buffer, Length);
-        Status = TerminateFileBothDirectory(BufferHead);
-    }
 
     return Status;
 }

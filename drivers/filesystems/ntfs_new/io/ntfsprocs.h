@@ -288,7 +288,7 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 #ifdef NTFS_DEBUG
 
 #define PrintFlag(Item, Flag, FlagName) if(Item & Flag) \
-DPRINT1("    %s\n", FlagName); \
+DbgPrint("    %s\n", FlagName); \
 /* Debug print functions. REMOVE WHEN DONE. */
 static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 {
@@ -297,36 +297,36 @@ static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
     RtlZeroMemory(Signature, 5);
     RtlCopyMemory(Signature, FRH->TypeID, 4);
 
-    DPRINT1("Signature: %s\n", Signature);
-    DPRINT1("MFT Record Number: %ld\n", FRH->MFTRecordNumber);
+    DbgPrint("Signature: %s\n", Signature);
+    DbgPrint("MFT Record Number: %ld\n", FRH->MFTRecordNumber);
 }
 
 static inline void PrintAttributeHeader(PAttribute Attr)
 {
-    DPRINT1("Attribute Type:        0x%X\n", Attr->AttributeType);
-    DPRINT1("Length:                %ld\n", Attr->Length);
-    DPRINT1("Nonresident Flag:      %ld\n", Attr->IsNonResident);
-    DPRINT1("Name Length:           %ld\n", Attr->NameLength);
-    DPRINT1("Name Offset:           %ld\n", Attr->NameOffset);
-    DPRINT1("Flags:                 0x%X\n", Attr->Flags);
-    DPRINT1("Attribute ID:          %ld\n", Attr->AttributeID);
+    DbgPrint("Attribute Type:        0x%X\n", Attr->AttributeType);
+    DbgPrint("Length:                %ld\n", Attr->Length);
+    DbgPrint("Nonresident Flag:      %ld\n", Attr->IsNonResident);
+    DbgPrint("Name Length:           %ld\n", Attr->NameLength);
+    DbgPrint("Name Offset:           %ld\n", Attr->NameOffset);
+    DbgPrint("Flags:                 0x%X\n", Attr->Flags);
+    DbgPrint("Attribute ID:          %ld\n", Attr->AttributeID);
 
     if (!(Attr->IsNonResident))
     {
-        DPRINT1("Data Length:           %ld\n", Attr->Resident.DataLength);
-        DPRINT1("Data Offset:           0x%X\n", Attr->Resident.DataLength);
-        DPRINT1("Indexed Flag:          %ld\n", Attr->Resident.IndexedFlag);
+        DbgPrint("Data Length:           %ld\n", Attr->Resident.DataLength);
+        DbgPrint("Data Offset:           0x%X\n", Attr->Resident.DataLength);
+        DbgPrint("Indexed Flag:          %ld\n", Attr->Resident.IndexedFlag);
     }
 
     else
     {
-        DPRINT1("First VCN:             %ld\n", Attr->NonResident.FirstVCN);
-        DPRINT1("Last VCN:              %ld\n", Attr->NonResident.LastVCN);
-        DPRINT1("Data Run Offset:       %ld\n", Attr->NonResident.DataRunsOffset);
-        DPRINT1("Compression Unit Size: %ld\n", Attr->NonResident.CompressionUnitSize);
-        DPRINT1("Allocated Size:        %ld\n", Attr->NonResident.AllocatedSize);
-        DPRINT1("Data Size:             %ld\n", Attr->NonResident.DataSize);
-        DPRINT1("Initialized Data Size: %ld\n", Attr->NonResident.InitalizedDataSize);
+        DbgPrint("First VCN:             %ld\n", Attr->NonResident.FirstVCN);
+        DbgPrint("Last VCN:              %ld\n", Attr->NonResident.LastVCN);
+        DbgPrint("Data Run Offset:       %ld\n", Attr->NonResident.DataRunsOffset);
+        DbgPrint("Compression Unit Size: %ld\n", Attr->NonResident.CompressionUnitSize);
+        DbgPrint("Allocated Size:        %ld\n", Attr->NonResident.AllocatedSize);
+        DbgPrint("Data Size:             %ld\n", Attr->NonResident.DataSize);
+        DbgPrint("Initialized Data Size: %ld\n", Attr->NonResident.InitalizedDataSize);
     }
 }
 
@@ -335,70 +335,72 @@ static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
     UINT64 FRN = GetFRNFromFileRef(Attr->ParentFileReference);
     UINT16 SQN = GetSQNFromFileRef(Attr->ParentFileReference);
 
-    DPRINT1("Parent Dir FRN:   %ld\n", FRN);
-    DPRINT1("Parent Dir SQN:   %ld\n", SQN);
-    DPRINT1("Creation Time:    %ld\n", Attr->CreationTime);
-    DPRINT1("Last Write Time:  %ld\n", Attr->LastWriteTime);
-    DPRINT1("Change Time:      %ld\n", Attr->ChangeTime);
-    DPRINT1("Last Access Time: %ld\n", Attr->LastAccessTime);
-    DPRINT1("Allocated Size:   %ld\n", Attr->AllocatedSize);
-    DPRINT1("Data Size:        %ld\n", Attr->DataSize);
-    DPRINT1("Flags:            0x%X\n", Attr->Flags);
-    DPRINT1("Filename:        \"%S\"\n", Attr->Name);
+    DbgPrint("Parent Dir FRN:   %ld\n", FRN);
+    DbgPrint("Parent Dir SQN:   %ld\n", SQN);
+    DbgPrint("Creation Time:    %ld\n", Attr->CreationTime);
+    DbgPrint("Last Write Time:  %ld\n", Attr->LastWriteTime);
+    DbgPrint("Change Time:      %ld\n", Attr->ChangeTime);
+    DbgPrint("Last Access Time: %ld\n", Attr->LastAccessTime);
+    DbgPrint("Allocated Size:   %ld\n", Attr->AllocatedSize);
+    DbgPrint("Data Size:        %ld\n", Attr->DataSize);
+    DbgPrint("Flags:            0x%X\n", Attr->Flags);
+    DbgPrint("Filename:        \"%S\"\n", Attr->Name);
 }
 
 static inline void PrintNTFSBootSector(BootSector* PartBootSector)
 {
-    DPRINT1("OEM ID            %s\n", PartBootSector->OEM_ID);
-    DPRINT1("Bytes per sector  %ld\n", PartBootSector->BytesPerSector);
-    DPRINT1("Sectors/cluster   %ld\n", PartBootSector->SectorsPerCluster);
-    DPRINT1("Sectors per track %ld\n", PartBootSector->SectorsPerTrack);
-    DPRINT1("Number of heads   %ld\n", PartBootSector->NumberOfHeads);
-    DPRINT1("Sectors in volume %ld\n", PartBootSector->SectorsInVolume);
-    DPRINT1("LCN for $MFT      %ld\n", PartBootSector->MFTLCN);
-    DPRINT1("LCN for $MFT_MIRR %ld\n", PartBootSector->MFTMirrLCN);
-    DPRINT1("Clusters/MFT Rec  %d\n", PartBootSector->ClustersPerFileRecord);
-    DPRINT1("Clusters/IndexRec %d\n", PartBootSector->ClustersPerIndexRecord);
-    DPRINT1("Serial number     0x%X\n", PartBootSector->SerialNumber);
+    DbgPrint("OEM ID            %s\n", PartBootSector->OEM_ID);
+    DbgPrint("Bytes per sector  %ld\n", PartBootSector->BytesPerSector);
+    DbgPrint("Sectors/cluster   %ld\n", PartBootSector->SectorsPerCluster);
+    DbgPrint("Sectors per track %ld\n", PartBootSector->SectorsPerTrack);
+    DbgPrint("Number of heads   %ld\n", PartBootSector->NumberOfHeads);
+    DbgPrint("Sectors in volume %ld\n", PartBootSector->SectorsInVolume);
+    DbgPrint("LCN for $MFT      %ld\n", PartBootSector->MFTLCN);
+    DbgPrint("LCN for $MFT_MIRR %ld\n", PartBootSector->MFTMirrLCN);
+    DbgPrint("Clusters/MFT Rec  %d\n", PartBootSector->ClustersPerFileRecord);
+    DbgPrint("Clusters/IndexRec %d\n", PartBootSector->ClustersPerIndexRecord);
+    DbgPrint("Serial number     0x%X\n", PartBootSector->SerialNumber);
 };
 
 static inline void PrintFileContextBlock(PFileContextBlock FileCB)
 {
-    DPRINT1("File Record Number: %lu\n", FileCB->FileRecordNumber);
-    DPRINT1("File name:          \"%S\"\n", FileCB->FileName);
+    DbgPrint("File Record Number: %lu\n", FileCB->FileRecordNumber);
+    DbgPrint("File name:          \"%S\"\n", FileCB->FileName);
 
     if (FileCB->IsDirectory)
-        DPRINT1("Directory:          TRUE\n");
+        DbgPrint("Directory:          TRUE\n");
     else
-        DPRINT1("Directory:          FALSE\n");
+        DbgPrint("Directory:          FALSE\n");
 
-    DPRINT1("Number of Links:    %lu\n", FileCB->NumberOfLinks);
-    DPRINT1("Change Time:        %lu\n", FileCB->ChangeTime);
-    DPRINT1("Last Access Time:   %lu\n", FileCB->LastAccessTime);
-    DPRINT1("Last Write Time:    %lu\n", FileCB->LastWriteTime);
-    DPRINT1("Creation Time:      %lu\n", FileCB->CreationTime);
+    DbgPrint("Number of Links:    %lu\n", FileCB->NumberOfLinks);
+    DbgPrint("Change Time:        %lu\n", FileCB->ChangeTime);
+    DbgPrint("Last Access Time:   %lu\n", FileCB->LastAccessTime);
+    DbgPrint("Last Write Time:    %lu\n", FileCB->LastWriteTime);
+    DbgPrint("Creation Time:      %lu\n", FileCB->CreationTime);
 };
 
 static inline void PrintStdInfoEx(StandardInformationEx* StdInfo)
 {
-    DPRINT1("Change Time:      %lu\n", StdInfo->ChangeTime);
-    DPRINT1("Last Access Time: %lu\n", StdInfo->LastAccessTime);
-    DPRINT1("Last Write Time:  %lu\n", StdInfo->LastWriteTime);
-    DPRINT1("Creation Time:    %lu\n", StdInfo->CreationTime);
+    DbgPrint("Change Time:      %lu\n", StdInfo->ChangeTime);
+    DbgPrint("Last Access Time: %lu\n", StdInfo->LastAccessTime);
+    DbgPrint("Last Write Time:  %lu\n", StdInfo->LastWriteTime);
+    DbgPrint("Creation Time:    %lu\n", StdInfo->CreationTime);
 }
 
 static inline void PrintIndexRootEx(PIndexRootEx IndexRootData)
 {
-    DPRINT1("Attribute Type:            0x%X\n", IndexRootData->AttributeType);
-    DPRINT1("Collation Rule:            0x%X\n", IndexRootData->CollationRule);
-    DPRINT1("Bytes per Index Record:    %ld\n", IndexRootData->BytesPerIndexRec);
-    DPRINT1("Clusters per Index Record: %ld\n", IndexRootData->ClusPerIndexRec);
+    DbgPrint("Attribute Type:            0x%X\n", IndexRootData->AttributeType);
+    DbgPrint("Collation Rule:            0x%X\n", IndexRootData->CollationRule);
+    DbgPrint("Bytes per Index Record:    %ld\n", IndexRootData->BytesPerIndexRec);
+    DbgPrint("Clusters per Index Record: %ld\n", IndexRootData->ClusPerIndexRec);
 }
 
 static inline void PrintFileBothDirEntry(PFILE_BOTH_DIR_INFORMATION Data)
 {
-    DPRINT1("Short File Name: \"%S\"\n", Data->ShortName);
-    DPRINT1("File Name:       \"%S\"\n", Data->FileName);
+    DbgPrint("Short Name:        \"%S\"\n", Data->ShortName);
+    DbgPrint("Short Name Length: %ld\n", Data->ShortNameLength);
+    DbgPrint("File Name:         \"%S\"\n", Data->FileName);
+    DbgPrint("File Name Length:  %ld\n", Data->FileNameLength);
 }
 
 static inline void PrintFileBothDirInfo(PFILE_BOTH_DIR_INFORMATION Info, UINT Depth)
@@ -423,29 +425,29 @@ static inline void PrintFileCreateOptions(UINT8 Disposition, ULONG CreateOptions
     switch (Disposition)
     {
         case FILE_SUPERSEDE:
-            DPRINT1("Disposition: FILE_SUPERSEDE\n");
+            DbgPrint("Disposition: FILE_SUPERSEDE\n");
             break;
         case FILE_CREATE:
-            DPRINT1("Disposition: FILE_CREATE\n");
+            DbgPrint("Disposition: FILE_CREATE\n");
             break;
         case FILE_OPEN:
-            DPRINT1("Disposition: FILE_OPEN\n");
+            DbgPrint("Disposition: FILE_OPEN\n");
             break;
         case FILE_OPEN_IF:
-            DPRINT1("Disposition: FILE_OPEN_IF\n");
+            DbgPrint("Disposition: FILE_OPEN_IF\n");
             break;
         case FILE_OVERWRITE:
-            DPRINT1("Disposition: FILE_OVERWRITE\n");
+            DbgPrint("Disposition: FILE_OVERWRITE\n");
             break;
         case FILE_OVERWRITE_IF:
-            DPRINT1("Disposition: FILE_OVERWRITE_IF\n");
+            DbgPrint("Disposition: FILE_OVERWRITE_IF\n");
             break;
         default:
-            DPRINT1("Disposition: UNKNOWN\n");
+            DbgPrint("Disposition: UNKNOWN\n");
             break;
     }
 
-    DPRINT1("Create Options Flags:\n");
+    DbgPrint("Create Options Flags:\n");
     PrintFlag(CreateOptions, FILE_DIRECTORY_FILE, "FILE_DIRECTORY_FILE");
     PrintFlag(CreateOptions, FILE_NON_DIRECTORY_FILE, "FILE_NON_DIRECTORY_FILE");
     PrintFlag(CreateOptions, FILE_WRITE_THROUGH, "FILE_WRITE_THROUGH");
