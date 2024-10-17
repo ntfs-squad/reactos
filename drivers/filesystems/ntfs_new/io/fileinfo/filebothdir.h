@@ -61,6 +61,8 @@ AddKeyToBothDirInfo(_In_    PBTreeKey Key,
 
     else if (GetFRNFromFileRef(FileRef(Key)) == GetFRNFromFileRef(FileRef(Key->NextKey)))
     {
+        DPRINT1("We need a short name!\n");
+
         // Both keys point to the same file. Assert that it is a valid short name.
         ASSERT(Key->NextKey->IndexEntry->FileName.NameLength <= MAX_SHORTNAME_LENGTH);
 

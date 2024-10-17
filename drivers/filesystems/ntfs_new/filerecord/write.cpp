@@ -5,10 +5,11 @@ FileRecord::UpdateResidentAttribute(_In_ PAttribute Attr)
 {
     /* TODO:
      * Implement support for named attributes.
+     * Probably needs to be fixed now with the changes.
      * Note: This function will break attribute pointers.
      * Note: Resident attribute pointer must not point to file record buffer.
      */
-    UCHAR OldData[FILE_RECORD_BUFFER_SIZE];
+    PUCHAR OldData;
     ULONG DataPtr, OldDataPtr, OldDataLen, AttrType;
     PAttribute TestAttr;
     BOOLEAN NewAttrWritten = FALSE;
@@ -28,8 +29,9 @@ FileRecord::UpdateResidentAttribute(_In_ PAttribute Attr)
 
     // Back up old data.
     OldDataLen = Header->ActualSize;
-    RtlCopyMemory(&OldData,
-                  &Data,
+    OldData = new(PagedPool) UCHAR[OldDataLen];
+    RtlCopyMemory(OldData,
+                  Data,
                   OldDataLen);
 
     DPRINT1("Old data copied...\n");
@@ -39,7 +41,7 @@ FileRecord::UpdateResidentAttribute(_In_ PAttribute Attr)
     while (OldDataPtr < OldDataLen)
     {
         // Test current attribute.
-        TestAttr = (PAttribute)(&OldData[OldDataPtr]);
+        TestAttr = (PAttribute)(OldData[OldDataPtr]);
         // PrintAttributeHeader(TestAttr);
 
         // If the test attribute is 0 length, we are done.
@@ -65,7 +67,7 @@ FileRecord::UpdateResidentAttribute(_In_ PAttribute Attr)
 
                 // Zero out what's left in attribute data.
                 RtlZeroMemory(&Data[DataPtr],
-                              FILE_RECORD_BUFFER_SIZE - DataPtr);
+                              OldDataLen - DataPtr);
 
                 DPRINT1("Let's see what the new attribute looks like:\n");
                 PrintAttributeHeader(Attr);
