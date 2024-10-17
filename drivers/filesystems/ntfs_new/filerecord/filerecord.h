@@ -44,8 +44,6 @@ enum FileRecordNumbers
 #define FILE_PERM_NOT_INDXED 0x2000
 #define FILE_PERM_ENCRYPTED  0x4000
 
-#define FILE_RECORD_BUFFER_SIZE 0x900 // TODO: Figure out proper size
-
 // Forward declarations for DataRun struct because it's a linked list.
 struct DataRun;
 typedef DataRun* PDataRun;
@@ -86,8 +84,8 @@ typedef struct
 typedef class FileRecord
 {
 public:
-    UCHAR Data[FILE_RECORD_BUFFER_SIZE];
-    FileRecordHeader *Header = (FileRecordHeader*)&Data[0];
+    PUCHAR Data;
+    PFileRecordHeader Header;
     // This is a hack, make private when we've fixed everything else.
     PNTFSVolume Volume;
 
