@@ -123,10 +123,19 @@ NtfsFsdDeviceControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-device-control
      */
 
-    // TODO: Ensure volume is open before blindly completing the IRP.
+    // Shamelessly ripped from the old driver.
+
     DPRINT1("NtfsFsdDeviceControl called which is a STUB!\n");
+
+    PVolumeContextBlock DeviceExt;
+
+    DeviceExt = (PVolumeContextBlock)(VolumeDeviceObject->DeviceExtension);
     IoSkipCurrentIrpStackLocation(Irp);
-    return 0;
+
+    /* Lower driver will complete - we don't have to */
+    // IrpContext->Flags &= ~IRPCONTEXT_COMPLETE;
+
+    return IoCallDriver(DeviceExt->StorageDevice, Irp);
 }
 
 _Function_class_(IRP_MJ_SHUTDOWN)

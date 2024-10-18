@@ -78,7 +78,6 @@ NTAPI
 NtfsFsdDeviceControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                      _Inout_ PIRP Irp);
 
-
 _Function_class_(IRP_MJ_SHUTDOWN)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C

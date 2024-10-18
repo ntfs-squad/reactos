@@ -165,6 +165,9 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
     BufferLength = IrpSp->Parameters.QueryDirectory.Length;
 
+
+    DPRINT1("FileName: %wZ\n", IrpSp->Parameters.QueryDirectory.FileName);
+
     ASSERT(SystemBuffer);
 
     if (IrpSp->MinorFunction == IRP_MN_QUERY_DIRECTORY)
@@ -178,6 +181,7 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                 Status = GetFileBothDirectoryInformation(FileCB,
                                                          VolCB,
                                                          IrpSp->Flags,
+                                                         IrpSp->Parameters.QueryDirectory.FileName,
                                                          (PFILE_BOTH_DIR_INFORMATION)SystemBuffer,
                                                          &BufferLength);
                 break;
