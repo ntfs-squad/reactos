@@ -194,6 +194,12 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
 
     ASSERT(FileCB);
 
+    if (!BTreeCtx->Tree)
+    {
+        DPRINT1("This is not a directory!\n");
+        return STATUS_NOT_FOUND;
+    }
+
     if (RestartScan)
     {
         // Reset file both directory context.
