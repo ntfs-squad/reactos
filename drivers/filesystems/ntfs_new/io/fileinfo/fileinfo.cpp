@@ -156,7 +156,6 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PFileContextBlock FileCB;
     PVOID SystemBuffer;
     ULONG BufferLength;
-    BOOLEAN ReturnSingleEntry;
 
     DPRINT1("NtfsDirectoryControl() called\n");
 
@@ -166,13 +165,11 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
     BufferLength = IrpSp->Parameters.QueryDirectory.Length;
 
-    if (!SystemBuffer)
-        __debugbreak();
+    ASSERT(SystemBuffer);
 
     if (IrpSp->MinorFunction == IRP_MN_QUERY_DIRECTORY)
     {
         FileInformationRequest = IrpSp->Parameters.QueryDirectory.FileInformationClass;
-        ReturnSingleEntry = !!(IrpSp->Flags & SL_RETURN_SINGLE_ENTRY);
 
         switch(FileInformationRequest)
         {
@@ -180,7 +177,7 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                 DPRINT1("FileBothDirectoryInformation request!\n");
                 Status = GetFileBothDirectoryInformation(FileCB,
                                                          VolCB,
-                                                         ReturnSingleEntry,
+                                                         IrpSp->Flags,
                                                          (PFILE_BOTH_DIR_INFORMATION)SystemBuffer,
                                                          &BufferLength);
                 break;

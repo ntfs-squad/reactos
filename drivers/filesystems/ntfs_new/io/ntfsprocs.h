@@ -277,8 +277,8 @@ DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 
-#include "contextblocks.h"
 #include "../filerecord/attributes.h"
+#include "contextblocks.h"
 #include "../ntfsvol.h"
 #include "../filerecord/filerecord.h"
 #include "../btree/btree.h"

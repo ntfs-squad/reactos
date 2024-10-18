@@ -498,7 +498,8 @@ PBTreeFilenameNode
 CreateBTreeNodeFromIndexNode(PFileRecord File,
                              PAttribute IndexRootAttribute,
                              PAttribute IndexAllocationAttribute,
-                             PIndexEntry NodeEntry)
+                             PIndexEntry NodeEntry,
+                             PBTreeKey ParentNodeKey = NULL)
 {
     PNTFSVolume Volume = File->Volume;
 
@@ -587,7 +588,11 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
             return NULL;
         }
 
+        // Increment the key count
         NewNode->KeyCount++;
+
+        // Add the parent node key
+        CurrentKey->ParentKey = ParentNodeKey;
 
         // If this isn't the last entry
         if (!(CurrentNodeEntry->Flags & NTFS_INDEX_ENTRY_END))
@@ -616,7 +621,8 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
                 CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(File,
                                                                        IndexRootAttribute,
                                                                        IndexAllocationAttribute,
-                                                                       CurrentKey->IndexEntry);
+                                                                       CurrentKey->IndexEntry,
+                                                                       CurrentKey);
             }
 
             CurrentKey = NextKey;
@@ -634,7 +640,8 @@ CreateBTreeNodeFromIndexNode(PFileRecord File,
                 CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(File,
                                                                        IndexRootAttribute,
                                                                        IndexAllocationAttribute,
-                                                                       CurrentKey->IndexEntry);
+                                                                       CurrentKey->IndexEntry,
+                                                                       CurrentKey);
             }
 
             break;
@@ -786,7 +793,8 @@ CreateBTreeFromFile(PFileRecord File,
                 CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(File,
                                                                        IndexRootAttribute,
                                                                        IndexAllocationAttribute,
-                                                                       CurrentKey->IndexEntry);
+                                                                       CurrentKey->IndexEntry,
+                                                                       CurrentKey);
                 if (!CurrentKey->LesserChild)
                 {
                     DPRINT1("ERROR: Couldn't create child node!\n");
@@ -814,7 +822,8 @@ CreateBTreeFromFile(PFileRecord File,
                 CurrentKey->LesserChild = CreateBTreeNodeFromIndexNode(File,
                                                                        IndexRootAttribute,
                                                                        IndexAllocationAttribute,
-                                                                       CurrentKey->IndexEntry);
+                                                                       CurrentKey->IndexEntry,
+                                                                       CurrentKey);
                 if (!CurrentKey->LesserChild)
                 {
                     DPRINT1("ERROR: Couldn't create child node!\n");
