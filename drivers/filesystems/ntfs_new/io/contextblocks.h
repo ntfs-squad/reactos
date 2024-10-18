@@ -31,6 +31,88 @@ typedef struct _SCB
     SECTION_OBJECT_POINTERS SectionObjectPointers;
 } StreamContextBlock, *PStreamContextBlock;
 
+// Putting this here is a hack, clean up header files
+// TODO: CLEAN UP HEADER FILES!!!!
+#if 1
+typedef struct
+{
+    union
+    {
+        struct                             // Offset 0x00, Size 8
+        {
+            ULONGLONG IndexedFile;
+        } Directory;
+        struct
+        {
+            USHORT    DataOffset;
+            USHORT    DataLength;
+            ULONG     Reserved;
+        } ViewIndex;
+    } Data;
+    UINT16 EntryLength;                    // Offset 0x08, Size 2
+    UINT16 StreamLength;                   // Offset 0x0A, Size 2
+    UINT8  Flags;                          // Offset 0x0C, Size 1
+    FileNameEx FileName;
+} IndexEntry, *PIndexEntry;
+
+typedef struct
+{
+    union
+    {
+        struct
+        {
+            ULONGLONG    IndexedFile;
+        } Directory;
+        struct
+        {
+            USHORT   DataOffset;
+            USHORT   DataLength;
+            ULONG    Reserved;
+        } ViewIndex;
+    } Data;
+    USHORT            Length;
+    USHORT            KeyLength;
+    USHORT            Flags;
+    USHORT            Reserved;
+    // FileNameEx        FileName;
+} INDEX_ENTRY_ATTRIBUTE, *PINDEX_ENTRY_ATTRIBUTE;
+
+struct _BTreeFilenameNode;
+typedef struct _BTreeFilenameNode BTreeFilenameNode;
+
+// Keys are arranged in nodes as an ordered, linked list
+typedef struct _BTreeKey
+{
+    struct _BTreeKey  *NextKey;
+    struct _BTreeKey  *ParentKey;    // Key of the node whose child is this key
+    BTreeFilenameNode *LesserChild;  // Child-Node. All the keys in this node will be sorted before IndexEntry
+    PIndexEntry       IndexEntry;    // must be last member for FIELD_OFFSET
+}BTreeKey, *PBTreeKey;
+
+// Every Node is just an ordered list of keys.
+// Sub-nodes can be found attached to a key (if they exist).
+// A key's sub-node precedes that key in the ordered list.
+typedef struct _BTreeFilenameNode
+{
+    ULONG KeyCount;
+    BOOLEAN HasValidVCN;
+    BOOLEAN DiskNeedsUpdating;
+    ULONGLONG VCN;
+    PBTreeKey FirstKey;
+} BTreeFilenameNode, *PBTreeFilenameNode;
+
+typedef struct
+{
+    PBTreeFilenameNode RootNode;
+} BTree, *PBTree;
+#endif
+
+typedef struct
+{
+    PBTree    Tree;
+    PBTreeKey CurrentKey;
+} BTreeContext, *PBTreeContext;
+
 typedef struct _FCB
 {
     ULONGLONG FileRecordNumber;
@@ -57,6 +139,9 @@ typedef struct _FCB
     LARGE_INTEGER AllocationSize;
     LARGE_INTEGER EndOfFile;
     ULONG NumberOfLinks;
+
+    // Used for query directory requests
+    BTreeContext QueryDirectoryCtx;
 
     // Consider moving, multiple files can point to the same stream in NTFS.
     PStreamContextBlock StreamCB;

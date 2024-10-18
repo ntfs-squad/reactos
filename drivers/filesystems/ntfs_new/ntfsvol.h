@@ -29,7 +29,6 @@ struct BootSector
 typedef class NTFSVolume
 {
 public:
-    UINT   SuperMegaHack = 0;
     ULONG  BytesPerSector;
     UINT8  SectorsPerCluster;
     UINT32 ClustersInVolume;

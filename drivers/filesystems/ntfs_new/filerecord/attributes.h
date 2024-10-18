@@ -239,24 +239,3 @@ typedef struct
     UINT8  NameLength;                     // Offset 0x05, Size 1
     UINT16 ValueLength;                    // Offset 0x06, Size 2
 } EAEx, *PEAEx;
-
-typedef struct
-{
-    union
-    {
-        struct                             // Offset 0x00, Size 8
-        {
-            ULONGLONG IndexedFile;
-        } Directory;
-        struct
-        {
-            USHORT    DataOffset;
-            USHORT    DataLength;
-            ULONG     Reserved;
-        } ViewIndex;
-    } Data;
-    UINT16 EntryLength;                    // Offset 0x08, Size 2
-    UINT16 StreamLength;                   // Offset 0x0A, Size 2
-    UINT8  Flags;                          // Offset 0x0C, Size 1
-    FileNameEx FileName;
-} IndexEntry, *PIndexEntry;

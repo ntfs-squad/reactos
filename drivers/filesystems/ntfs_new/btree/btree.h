@@ -34,56 +34,6 @@ typedef struct
     IndexNodeHeader IndexHeader;
 } INDEX_BUFFER, *PINDEX_BUFFER;
 
-typedef struct
-{
-    union
-    {
-        struct
-        {
-            ULONGLONG    IndexedFile;
-        } Directory;
-        struct
-        {
-            USHORT   DataOffset;
-            USHORT   DataLength;
-            ULONG    Reserved;
-        } ViewIndex;
-    } Data;
-    USHORT            Length;
-    USHORT            KeyLength;
-    USHORT            Flags;
-    USHORT            Reserved;
-    // FileNameEx        FileName;
-} INDEX_ENTRY_ATTRIBUTE, *PINDEX_ENTRY_ATTRIBUTE;
-
-struct _BTreeFilenameNode;
-typedef struct _BTreeFilenameNode BTreeFilenameNode;
-
-// Keys are arranged in nodes as an ordered, linked list
-typedef struct _BTreeKey
-{
-    struct _BTreeKey  *NextKey;
-    BTreeFilenameNode *LesserChild;  // Child-Node. All the keys in this node will be sorted before IndexEntry
-    PIndexEntry       IndexEntry;  // must be last member for FIELD_OFFSET
-}BTreeKey, *PBTreeKey;
-
-// Every Node is just an ordered list of keys.
-// Sub-nodes can be found attached to a key (if they exist).
-// A key's sub-node precedes that key in the ordered list.
-typedef struct _BTreeFilenameNode
-{
-    ULONG KeyCount;
-    BOOLEAN HasValidVCN;
-    BOOLEAN DiskNeedsUpdating;
-    ULONGLONG VCN;
-    PBTreeKey FirstKey;
-} BTreeFilenameNode, *PBTreeFilenameNode;
-
-typedef struct
-{
-    PBTreeFilenameNode RootNode;
-} BTree, *PBTree;
-
 VOID
 PrintAllVCNs(PNTFSVolume Volume,
              PFileRecord File,

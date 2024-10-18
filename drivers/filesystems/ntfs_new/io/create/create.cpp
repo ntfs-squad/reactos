@@ -226,6 +226,20 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     FileCB->StreamCB = new(NonPagedPool) StreamContextBlock();
     FileCB->StreamCB->SectionObjectPointers = {0};
 
+    if (FileCB->IsDirectory)
+    {
+        // Set up btree for this file
+        Status = CreateBTreeFromFile(FileCB->FileRec, &(FileCB->QueryDirectoryCtx.Tree));
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to get BTree!\n");
+            Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+            return Status;
+        }
+
+        FileCB->QueryDirectoryCtx.CurrentKey = FileCB->QueryDirectoryCtx.Tree->RootNode->FirstKey;
+    }
+
     // Set FsContext to the file context block and open file.
     FileObject->FsContext = FileCB;
     Irp->IoStatus.Information = FILE_OPENED;
