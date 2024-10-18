@@ -117,30 +117,6 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
 
 static
 NTSTATUS
-TerminateFileBothDirectory(PFILE_BOTH_DIR_INFORMATION Info)
-{
-    PFILE_BOTH_DIR_INFORMATION Current, LastEntry;
-
-    Current = Info;
-    while(Current &&
-          Current->NextEntryOffset)
-    {
-        // Back up the last entry
-        LastEntry = Current;
-
-        // Go to next entry
-        Current = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Current +
-                                               Current->NextEntryOffset);
-    }
-
-    // Set the last entry to a 0 offset.
-    LastEntry->NextEntryOffset = 0;
-
-    return STATUS_SUCCESS;
-}
-
-static
-NTSTATUS
 ResumeFileBothDirInfoScan(_In_    BOOLEAN ReturnSingleEntry,
                           _Inout_ PBTreeContext BTreeCtx,
                           _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
@@ -202,6 +178,7 @@ NTSTATUS
 GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
                                 _In_    PVolumeContextBlock VolCB,
                                 _In_    UCHAR IrpFlags,
+                                _In_    PUNICODE_STRING FileName,
                                 _Out_   PFILE_BOTH_DIR_INFORMATION Buffer,
                                 _Inout_ PULONG Length)
 {
@@ -230,13 +207,19 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
     // Clear buffer
     RtlZeroMemory(Buffer, *Length);
 
-    // Let's get the btree for this file
-    DumpBTree(FileCB->QueryDirectoryCtx.Tree);
+    if (FileName)
+    {
+        // Get the key requested
+        BTreeCtx->CurrentKey = FindKeyInNode(BTreeCtx->Tree->RootNode,
+                                             FileName->Buffer,
+                                             FileName->Length);
+    }
 
-    /* Populate the buffer.
-     * Note: Because some keys can be index nodes, this must be done recursively.
-     */
-    Status = ResumeFileBothDirInfoScan(ReturnSingleEntry, BTreeCtx, Buffer, Length);
+    // Populate the buffer
+    Status = ResumeFileBothDirInfoScan(ReturnSingleEntry,
+                                       BTreeCtx,
+                                       Buffer,
+                                       Length);
 
     return Status;
 }

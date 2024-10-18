@@ -892,6 +892,14 @@ FindKeyInNode(PBTreeFilenameNode Node, PWCHAR FileName, UINT Length)
     // Start the search with the first key
     CurrentKey = Node->FirstKey;
 
+    // Strip * and \ characters from end of string
+    if (wcschr(FileName, L'*') || wcschr(FileName, L'\\'))
+    {
+        Length = min((wcschr(FileName, L'*') - FileName),
+                     (wcschr(FileName, L'\\')- FileName));
+    }
+
+
     while(CurrentKey)
     {
         if (RtlCompareMemory(&CurrentKey->IndexEntry->FileName.Name,
