@@ -7,7 +7,9 @@
  *              Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "btree.h"
+#include "../io/ntfsprocs.h"
+
+#define NDEBUG
 
 /**
 * @name CreateIndexRootFromBTree
@@ -97,7 +99,10 @@ CreateIndexRootFromBTree(PNTFSVolume Volume,
     for (i = 0; i < Tree->RootNode->KeyCount; i++)
     {
         // Would adding the current entry to the index increase the index size beyond the limit we've set?
-        ULONG IndexSize = NewIndexRoot->Header.TotalIndexSize - NewIndexRoot->Header.IndexOffset + CurrentKey->IndexEntry->Length;
+        ULONG IndexSize = NewIndexRoot->Header.TotalIndexSize -
+                          NewIndexRoot->Header.IndexOffset +
+                          CurrentKey->IndexEntry->EntryLength;
+
         if (IndexSize > MaxIndexSize)
         {
             DPRINT1("TODO: Adding file would require creating an attribute list!\n");
@@ -108,7 +113,9 @@ CreateIndexRootFromBTree(PNTFSVolume Volume,
         ASSERT(CurrentKey->IndexEntry->Length != 0);
 
         // Copy the index entry
-        RtlCopyMemory(CurrentNodeEntry, CurrentKey->IndexEntry, CurrentKey->IndexEntry->Length);
+        RtlCopyMemory(CurrentNodeEntry,
+                      CurrentKey->IndexEntry,
+                      CurrentKey->IndexEntry->EntryLength);
 
         DPRINT1("Index Node Entry Stream Length: %u\nIndex Node Entry Length: %u\n",
                 CurrentNodeEntry->KeyLength,
@@ -119,7 +126,7 @@ CreateIndexRootFromBTree(PNTFSVolume Volume,
             NewIndexRoot->Header.Flags = INDEX_ROOT_LARGE;
 
         // Add Length of Current Entry to Total Size of Entries
-        NewIndexRoot->Header.TotalIndexSize += CurrentKey->IndexEntry->Length;
+        NewIndexRoot->Header.TotalIndexSize += CurrentKey->IndexEntry->EntryLength;
 
         // Go to the next node entry
         CurrentNodeEntry = (PINDEX_ENTRY_ATTRIBUTE)((ULONG_PTR)CurrentNodeEntry + CurrentNodeEntry->Length);

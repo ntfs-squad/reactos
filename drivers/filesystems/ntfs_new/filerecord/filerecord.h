@@ -65,10 +65,7 @@ typedef struct
 
 typedef struct
 {
-    UCHAR  TypeID[4];              // Offset 0x00, Size 4 ('FILE')
-    UINT16 UpdateSequenceOffset;   // Offset 0x04, Size 2
-    UINT16 SizeOfUpdateSequence;   // Offset 0x06, Size 2
-    UINT64 LogFileSequenceNumber;  // Offset 0x08, Size 8
+    NTFSRecordHeader Header;       // Offset 0x00, Size 16
     UINT16 SequenceNumber;         // Offset 0x10, Size 2
     UINT16 HardLinkCount;          // Offset 0x12, Size 2
     UINT16 AttributeOffset;        // Offset 0x14, Size 2

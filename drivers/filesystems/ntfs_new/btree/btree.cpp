@@ -728,6 +728,15 @@ CreateBTreeFromFile(PFileRecord File,
     RtlZeroMemory(RootNode, sizeof(BTreeFilenameNode));
     RtlZeroMemory(CurrentKey, sizeof(BTreeKey));
 
+    // Make sure we won't try reading past the attribute-end
+    if ((FIELD_OFFSET(IndexRootEx, Header) + IndexRootExData->Header.TotalIndexSize) > IndexRootAttribute->Resident.DataLength)
+    {
+        DPRINT1("Filesystem corruption detected!\n");
+        __debugbreak();
+        DestroyBTree(Tree);
+        return STATUS_FILE_CORRUPT_ERROR;
+    }
+
     // See if the file record has an attribute allocation
     IndexAllocationAttribute = File->GetAttribute(TypeIndexAllocation, L"$I30");
 
@@ -735,16 +744,8 @@ CreateBTreeFromFile(PFileRecord File,
     RootNode->FirstKey = CurrentKey;
     Tree->RootNode = RootNode;
 
-    // Make sure we won't try reading past the attribute-end
-    if (FIELD_OFFSET(IndexRootEx, Header) + IndexRootExData->Header.TotalIndexSize > IndexRootAttribute->Resident.DataLength)
-    {
-        DPRINT1("Filesystem corruption detected!\n");
-        DestroyBTree(Tree);
-        return STATUS_FILE_CORRUPT_ERROR;
-    }
-
     // Start at the first node entry
-    CurrentNodeEntry = (PIndexEntry)(((char*)IndexRootExData) +
+    CurrentNodeEntry = (PIndexEntry)(((ULONG_PTR)IndexRootExData) +
                                      (FIELD_OFFSET(IndexRootEx, Header)) +
                                      (IndexRootExData->Header.IndexOffset));
 
