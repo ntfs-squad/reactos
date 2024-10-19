@@ -291,12 +291,12 @@ DbgPrint("    %s\n", FlagName); \
 /* Debug print functions. REMOVE WHEN DONE. */
 static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 {
-    UCHAR Signature[5];
+    // UCHAR Signature[5];
 
-    RtlZeroMemory(Signature, 5);
-    RtlCopyMemory(Signature, FRH->TypeID, 4);
+    // RtlZeroMemory(Signature, 5);
+    // RtlCopyMemory(Signature, FRH->TypeID, 4);
 
-    DbgPrint("Signature: %s\n", Signature);
+    // DbgPrint("Signature: %s\n", Signature);
     DbgPrint("MFT Record Number: %ld\n", FRH->MFTRecordNumber);
 }
 

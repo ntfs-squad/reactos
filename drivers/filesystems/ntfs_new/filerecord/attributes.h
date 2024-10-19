@@ -50,16 +50,6 @@ enum AttributeType
     TypeLoggedUtilityStream = 0x100,
 };
 
-
-struct IndexNodeHeader
-{
-    UINT32 IndexOffset;                    // Offset 0x00, Size 4
-    UINT32 TotalIndexSize;                 // Offset 0x04, Size 4
-    UINT32 AllocatedSize;                  // Offset 0x08, Size 4
-    UINT8  Flags;                          // Offset 0x0C, Size 1
-    UCHAR  Padding[3];                     // Offset 0x0D, Size 3
-};
-
 typedef struct
 {
     UINT32 AttributeType;                  // Offset 0x00, Size 4
@@ -103,7 +93,9 @@ typedef struct
 } Attribute, *PAttribute;
 
 // Macro to get data pointer from a resident attribute pointer. */
-#define GetResidentDataPointer(x) (((char*)x) + (x->Resident.DataOffset))
+#define GetResidentDataPointer(Attrib) (char*)(((ULONG_PTR)Attrib) + \
+                                               (Attrib->Resident.DataOffset))
+
 #define GetNamePointer(x) (((char*)x) + (x->NameOffset))
 
 // Macro to free memory from data run.
@@ -200,14 +192,24 @@ typedef struct
 } VolumeInformationEx, *PVolumeInformationEx;
 
 // $INDEX_ROOT (0x90)
+#pragma pack(1)
+struct IndexNodeHeader
+{
+    ULONG IndexOffset;                    // Offset 0x00, Size 4
+    ULONG TotalIndexSize;                 // Offset 0x04, Size 4
+    ULONG AllocatedSize;                  // Offset 0x08, Size 4
+    UCHAR Flags;                          // Offset 0x0C, Size 1
+    UCHAR Padding[3];                     // Offset 0x0D, Size 3
+};
+#pragma pack(1)
 typedef struct
 {
-    UINT32 AttributeType;                  // Offset 0x00, Size 4
-    UINT32 CollationRule;                  // Offset 0x04, Size 4
-    UINT32 BytesPerIndexRec;               // Offset 0x08, Size 4
-    UINT8  ClusPerIndexRec;                // Offset 0x0C, Size 1
-    UCHAR  Padding[3];                     // Offset 0x0D, Size 3
-    IndexNodeHeader Header;                // Offset 0x10, Size 16
+    ULONG AttributeType;                  // Offset 0x00, Size 4
+    ULONG CollationRule;                  // Offset 0x04, Size 4
+    ULONG BytesPerIndexRec;               // Offset 0x08, Size 4
+    UCHAR ClusPerIndexRec;                // Offset 0x0C, Size 1
+    UCHAR Padding[3];                     // Offset 0x0D, Size 3
+    IndexNodeHeader Header;               // Offset 0x10, Size 16
 } IndexRootEx, *PIndexRootEx;
 
 // $REPARSE_POINT (0xC0)

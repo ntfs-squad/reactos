@@ -205,6 +205,7 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
         // Reset file both directory context.
         BTreeCtx->CurrentKey = BTreeCtx->Tree->RootNode->FirstKey;
         DPRINT1("Restart scan set!\n");
+        DumpBTree(BTreeCtx->Tree);
     }
 
     // TODO: If not root directory, also return . and .. directories maybe?

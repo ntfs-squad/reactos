@@ -74,7 +74,8 @@ CreateBTreeNodeFromIndexNode(PNTFSVolume Volume,
                              PFileRecord File,
                              IndexRootEx* IndexRoot,
                              PAttribute IndexAllocationAttribute,
-                             PINDEX_ENTRY_ATTRIBUTE NodeEntry);
+                             PIndexEntry NodeEntry,
+                             PBTreeKey ParentNodeKey = NULL);
 
 NTSTATUS
 CreateBTreeFromFile(PFileRecord File,

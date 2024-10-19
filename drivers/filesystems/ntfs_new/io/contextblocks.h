@@ -49,33 +49,16 @@ typedef struct
             ULONG     Reserved;
         } ViewIndex;
     } Data;
-    UINT16 EntryLength;                    // Offset 0x08, Size 2
-    UINT16 StreamLength;                   // Offset 0x0A, Size 2
-    UINT8  Flags;                          // Offset 0x0C, Size 1
+    USHORT     EntryLength;
+    USHORT     StreamLength;
+    USHORT     Flags;
+    USHORT     Reserved;
     FileNameEx FileName;
+    // UINT16 EntryLength;                    // Offset 0x08, Size 2
+    // UINT16 StreamLength;                   // Offset 0x0A, Size 2
+    // UINT8  Flags;                          // Offset 0x0C, Size 1
+    // FileNameEx FileName;
 } IndexEntry, *PIndexEntry;
-
-typedef struct
-{
-    union
-    {
-        struct
-        {
-            ULONGLONG    IndexedFile;
-        } Directory;
-        struct
-        {
-            USHORT   DataOffset;
-            USHORT   DataLength;
-            ULONG    Reserved;
-        } ViewIndex;
-    } Data;
-    USHORT            Length;
-    USHORT            KeyLength;
-    USHORT            Flags;
-    USHORT            Reserved;
-    // FileNameEx        FileName;
-} INDEX_ENTRY_ATTRIBUTE, *PINDEX_ENTRY_ATTRIBUTE;
 
 struct _BTreeFilenameNode;
 typedef struct _BTreeFilenameNode BTreeFilenameNode;
