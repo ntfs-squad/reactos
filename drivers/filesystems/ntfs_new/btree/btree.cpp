@@ -733,7 +733,6 @@ CreateBTreeFromFile(PFileRecord File,
     {
         DPRINT1("Filesystem corruption detected!\n");
         __debugbreak();
-        DestroyBTree(Tree);
         return STATUS_FILE_CORRUPT_ERROR;
     }
 
