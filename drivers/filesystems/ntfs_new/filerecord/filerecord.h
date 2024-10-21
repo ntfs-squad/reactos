@@ -88,7 +88,7 @@ public:
 
     // ./filerecord.cpp
     FileRecord(PNTFSVolume ThisVolume);
-    NTSTATUS LoadData(PUCHAR FileRecordData, UINT Length);
+    NTSTATUS LoadData(_In_ ULONGLONG FileRecordNumber);
 
     // ./find.cpp
     PAttribute GetAttribute(_In_ AttributeType Type,

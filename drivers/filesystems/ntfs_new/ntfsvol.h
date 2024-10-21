@@ -49,11 +49,6 @@ public:
     ~NTFSVolume();
     NTSTATUS LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
     void     CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject);
-    NTSTATUS DumpBlocks(_Inout_ PUCHAR Buffer,
-                        _In_    ULONG Lba,
-                        _In_    ULONG LbaCount);
-    NTSTATUS GetFileRecord(_In_  ULONGLONG FileRecordNumber,
-                           _Out_ FileRecord* File);
     NTSTATUS WriteFileRecord(_In_  ULONGLONG FileRecordNumber,
                              _In_ FileRecord* File);
     NTSTATUS GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,

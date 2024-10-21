@@ -135,47 +135,6 @@ Cleanup:
 }
 
 NTSTATUS
-NTFSVolume::DumpBlocks(_Inout_ PUCHAR Buffer,
-                          _In_    ULONG Lba,
-                          _In_    ULONG LbaCount)
-{
-    return ReadBlock(PartDeviceObj,
-                     Lba,
-                     LbaCount,
-                     BytesPerSector,
-                     (PUCHAR)Buffer);
-}
-
-NTSTATUS
-NTFSVolume::GetFileRecord(_In_  ULONGLONG FileRecordNumber,
-                          _Out_ FileRecord* File)
-{
-    /* TODO: We need to use VCN-to-LCN mapping.
-     * From Windows Internals 7th ed, Part 2:
-     * "Once NTFS finds the file record for the MFT, it obtains the VCN-to-LCN mapping information
-     * in the file record’s data attribute and stores it into memory. Each run (runs are explained
-     * later in this chapter in the section “Resident and nonresident attributes”) has a VCN-to-LCN
-     * mapping and a run length because that’s all the information necessary to locate the LCN for
-     * any VCN. This mapping information tells NTFS where the runs containing the MFT are located
-     * on the disk. NTFS then processes the MFT records for several more metadata files and opens
-     * the files. Next, NTFS performs its file system recovery operation (described in the section
-     * “Recovery” later in this chapter), and finally, it opens its remaining metadata files. The
-     * volume is now ready for user access."
-     */
-    PAGED_CODE();
-
-    ReadDisk(PartDeviceObj,
-             (MFTLCN * SectorsPerCluster * BytesPerSector) + (FileRecordNumber * FileRecordSize),
-             FileRecordSize,
-             DiskBuffer);
-
-    File->LoadData(DiskBuffer,
-                   FileRecordSize);
-
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS
 NTFSVolume::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
                            _Inout_ PUSHORT Length)
 {
@@ -188,7 +147,7 @@ NTFSVolume::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
     VolumeFileRecord = new(NonPagedPool) FileRecord(this);
 
     // Retrieve file record.
-    Status = GetFileRecord(_Volume, VolumeFileRecord);
+    Status = VolumeFileRecord->LoadData(_Volume);
 
     // Clean up if failed.
     if (Status != STATUS_SUCCESS)
@@ -270,7 +229,7 @@ NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
     VolumeFileRecord = new(NonPagedPool) FileRecord(this);
 
     // Retrieve file record.
-    Status = GetFileRecord(_Volume, VolumeFileRecord);
+    Status = VolumeFileRecord->LoadData(_Volume);
 
     // Clean up if failed.
     if (Status != STATUS_SUCCESS)
@@ -322,7 +281,7 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 
     // Get file record for $Bitmap
     BitmapFileRecord = new(NonPagedPool) FileRecord(this);
-    Status = GetFileRecord(_Bitmap, BitmapFileRecord);
+    Status = BitmapFileRecord->LoadData(_Bitmap);
 
     if (Status != STATUS_SUCCESS)
         goto cleanup;
