@@ -51,8 +51,7 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
      */
     CurrentElement = &FileName[1];
     EndOfFileName = FileName + (FileNameLength * sizeof(WCHAR));
-    CurrentFile = new(PagedPool) FileRecord(Volume);
-    CurrentFile->LoadData(_Root);
+    CurrentFile = new(PagedPool) FileRecord(Volume, _Root);
     CreateBTreeFromFile(CurrentFile, &CurrentBTree);
 
     while (CurrentElement)
@@ -79,7 +78,8 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
             {
                 // Destroy the old BTree and make a new one if we're going in another layer.
                 DestroyBTreeNode(CurrentBTree->RootNode);
-                CurrentFile->LoadData(CurrentFRN);
+                delete CurrentFile;
+                CurrentFile = new(PagedPool) FileRecord(Volume, CurrentFRN);
                 if (!NT_SUCCESS(CreateBTreeFromFile(CurrentFile, &CurrentBTree)))
                 {
                     DPRINT1("Unable to get BTree!\n");
@@ -186,8 +186,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                   IrpSp->FileObject->FileName.Length);
 
     FileCB->FileRecordNumber = FileRecordNumber;
-    CurrentFile = new(PagedPool) FileRecord(VolCB->Volume);
-    CurrentFile->LoadData(FileRecordNumber);
+    CurrentFile = new(PagedPool) FileRecord(VolCB->Volume, FileRecordNumber);
 
     // From file record
     FileCB->NumberOfLinks = CurrentFile->Header->HardLinkCount;

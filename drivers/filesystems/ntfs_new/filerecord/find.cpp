@@ -60,8 +60,8 @@ PDataRun
 FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
 {
 
-    /* TODO:
-     * 1. Read Data run. (Attribute: Data)
+    /* Algorithm:
+     * 1. Read Data run. (Stored in $DATA attribute)
      * 2. Parse it.
      *   - First byte describes the length of the offset and length`.
      *   - Next section is the length (in clusters).
@@ -70,10 +70,10 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
      *   - List of data runs is terminated with 0x00.
      * 3. Return head of linked list.
      *
-     * ` First nibble is the length. Second nibble is the offset.
+     * `: First nibble is the length. Second nibble is the offset.
      *
-     * ^ From 0 for the first, from the previous offset for the rest.
-     *   Can be negative.
+     * ^: From 0 for the first, from the previous offset for the rest.
+     *    Can be negative.
      */
 
     char* DataRunPtr;

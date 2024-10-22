@@ -33,32 +33,7 @@ typedef struct _SCB
 
 // Putting this here is a hack, clean up header files
 // TODO: CLEAN UP HEADER FILES!!!!
-#if 1
-typedef struct
-{
-    union
-    {
-        struct                             // Offset 0x00, Size 8
-        {
-            ULONGLONG IndexedFile;
-        } Directory;
-        struct
-        {
-            USHORT    DataOffset;
-            USHORT    DataLength;
-            ULONG     Reserved;
-        } ViewIndex;
-    } Data;
-    USHORT     EntryLength;
-    USHORT     StreamLength;
-    USHORT     Flags;
-    USHORT     Reserved;
-    FileNameEx FileName;
-    // UINT16 EntryLength;                    // Offset 0x08, Size 2
-    // UINT16 StreamLength;                   // Offset 0x0A, Size 2
-    // UINT8  Flags;                          // Offset 0x0C, Size 1
-    // FileNameEx FileName;
-} IndexEntry, *PIndexEntry;
+
 
 struct _BTreeFilenameNode;
 typedef struct _BTreeFilenameNode BTreeFilenameNode;
@@ -88,7 +63,6 @@ typedef struct
 {
     PBTreeFilenameNode RootNode;
 } BTree, *PBTree;
-#endif
 
 typedef struct
 {
