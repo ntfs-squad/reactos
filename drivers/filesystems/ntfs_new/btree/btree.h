@@ -26,6 +26,11 @@
 wcschr(FileName, L'\\') ? \
 FindKeyInNode(Tree->RootNode, FileName, (wcschr(FileName, L'\\') - FileName)) :\
 FindKeyInNode(Tree->RootNode, FileName, wcslen(FileName))
+#define GetIndexEntryVCN(IndexEntry) \
+*((PULONGLONG)((ULONG_PTR)IndexEntry + IndexEntry->EntryLength - sizeof(ULONGLONG)))
+
+#define GetFileName(Key) \
+((PFileNameEx)&((Key)->IndexEntry->IndexStream))
 
 typedef struct
 {
@@ -80,8 +85,6 @@ CreateBTreeNodeFromIndexNode(PNTFSVolume Volume,
 NTSTATUS
 CreateBTreeFromFile(PFileRecord File,
                     PBTree *NewTree);
-PBTreeKey
-CreateBTreeKeyFromFilename(ULONGLONG FileReference, PFileNameEx FileNameAttribute);
 
 PBTreeKey
 FindKeyInNode(PBTreeFilenameNode Node, PWCHAR FileName, UINT Length);

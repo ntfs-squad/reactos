@@ -30,7 +30,6 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
     if (Irp == NULL)
     {
         __debugbreak();
-        //FatRaiseStatus( IrpContext, STATUS_INSUFFICIENT_RESOURCES );
     }
 
     SetFlag(IoGetNextIrpStackLocation(Irp)->Flags, SL_OVERRIDE_VERIFY_VOLUME);

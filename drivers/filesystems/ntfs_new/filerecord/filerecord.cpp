@@ -1,13 +1,8 @@
 #include "io/ntfsprocs.h"
 
 /* *** FILE RECORD IMPLEMENTATIONS *** */
-FileRecord::FileRecord(PNTFSVolume ThisVolume)
-{
-    Volume = ThisVolume;
-}
-
-NTSTATUS
-FileRecord::LoadData(_In_ ULONGLONG FileRecordNumber)
+FileRecord::FileRecord(_In_ PNTFSVolume ThisVolume,
+                       _In_ ULONGLONG FileRecordNumber)
 {
 
     /* TODO: We need to use VCN-to-LCN mapping.
@@ -24,6 +19,9 @@ FileRecord::LoadData(_In_ ULONGLONG FileRecordNumber)
      */
 
     PAGED_CODE();
+
+    Volume = ThisVolume;
+
     Data = new(PagedPool) UCHAR[Volume->FileRecordSize];
 
     ReadDisk(Volume->PartDeviceObj,
@@ -32,5 +30,4 @@ FileRecord::LoadData(_In_ ULONGLONG FileRecordNumber)
              Data);
 
     Header = (PFileRecordHeader)Data;
-    return STATUS_SUCCESS;
 }

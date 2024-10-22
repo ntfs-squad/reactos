@@ -138,23 +138,20 @@ NTSTATUS
 NTFSVolume::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
                            _Inout_ PUSHORT Length)
 {
-    NTSTATUS Status;
+    NTSTATUS Status = STATUS_SUCCESS;
     FileRecord* VolumeFileRecord;
     PAttribute VolumeNameAttr;
     UINT32 AttrLength;
 
-    // Allocate memory for $Volume file record.
-    VolumeFileRecord = new(NonPagedPool) FileRecord(this);
-
-    // Retrieve file record.
-    Status = VolumeFileRecord->LoadData(_Volume);
+    // Allocate memory for $Volume file record and retrieve the file record.
+    VolumeFileRecord = new(NonPagedPool) FileRecord(this, _Volume);
 
     // Clean up if failed.
-    if (Status != STATUS_SUCCESS)
-        goto cleanup;
+    if (!VolumeFileRecord)
+        return STATUS_NOT_FOUND;
 
     // Get pointer for the VolumeName attribute.
-    VolumeNameAttr = (PAttribute)VolumeFileRecord->GetAttribute(TypeVolumeName, NULL);
+    VolumeNameAttr = VolumeFileRecord->GetAttribute(TypeVolumeName, NULL);
 
     if (!VolumeNameAttr)
     {
@@ -178,7 +175,8 @@ NTFSVolume::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
     *Length = AttrLength;
 
 cleanup:
-    delete VolumeFileRecord;
+    if (VolumeFileRecord)
+        delete VolumeFileRecord;
     return Status;
 }
 
@@ -225,25 +223,15 @@ NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
     PAttribute VolumeNameAttr;
     // UCHAR NewVolNameAttr[0x100]; // max size for volume name attribute
 
-    // Allocate memory for $Volume file record.
-    VolumeFileRecord = new(NonPagedPool) FileRecord(this);
-
-    // Retrieve file record.
-    Status = VolumeFileRecord->LoadData(_Volume);
+    // Allocate memory for $Volume file record and retrieve the file record.
+    VolumeFileRecord = new(NonPagedPool) FileRecord(this, _Volume);
 
     // Clean up if failed.
-    if (Status != STATUS_SUCCESS)
+    if (!VolumeFileRecord)
         goto cleanup;
 
     // Get pointer for $VolumeName attribute.
-    VolumeNameAttr = (PAttribute)VolumeFileRecord->GetAttribute(TypeVolumeName, NULL);
-
-    // Copy new volume label into the $VolumeName attribute.
-    // HACK! We don't move around the data structure yet.
-    ASSERT(Length <= VolumeNameAttr->Resident.DataLength);
-    RtlCopyMemory(GetResidentDataPointer(VolumeNameAttr),
-                  VolumeLabel,
-                  Length);
+    VolumeNameAttr = VolumeFileRecord->GetAttribute(TypeVolumeName, NULL);
 
 #if 0
     VolumeFileRecord->Header->ActualSize -= VolumeNameAttr->Length;
@@ -257,6 +245,12 @@ NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
 
     VolumeFileRecord->UpdateResidentAttribute(VolumeNameAttr);
 #else
+    // Copy new volume label into the $VolumeName attribute.
+    // HACK! We don't move around the data structure yet.
+    ASSERT(Length <= VolumeNameAttr->Resident.DataLength);
+    RtlCopyMemory(GetResidentDataPointer(VolumeNameAttr),
+                  VolumeLabel,
+                  Length);
 #endif
 
     // Overwrite the file record.
@@ -280,10 +274,9 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     ULONG BytesPerCluster, ClusterPtr;
 
     // Get file record for $Bitmap
-    BitmapFileRecord = new(NonPagedPool) FileRecord(this);
-    Status = BitmapFileRecord->LoadData(_Bitmap);
+    BitmapFileRecord = new(NonPagedPool) FileRecord(this, _Bitmap);
 
-    if (Status != STATUS_SUCCESS)
+    if (!BitmapFileRecord)
         goto cleanup;
 
     // Calculate bytes per cluster

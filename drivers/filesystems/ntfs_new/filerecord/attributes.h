@@ -6,7 +6,7 @@
 #define ATTR_ENCRYPTED     0x4000
 #define ATTR_SPARSE        0x8000
 
-// Filename flags
+// FileName flags
 #define FN_READONLY        0x0001
 #define FN_HIDDEN          0x0002
 #define FN_SYSTEM          0x0004
@@ -21,6 +21,12 @@
 #define FN_ENCRYPTED       0x4000
 #define FN_DIRECTORY       0x10000000
 #define FN_INDEX_VIEW      0x20000000
+
+// FileName types
+#define NAME_TYPE_POSIX 0             // 0b00
+#define NAME_TYPE_WIN32 1             // 0b01
+#define NAME_TYPE_DOS   2             // 0b10
+#define NAME_TYPE_WIN32_AND_DOS 3     // 0b11
 
 // Volume Information Flags
 #define VOL_DIRTY          0x0001
@@ -192,16 +198,16 @@ typedef struct
 } VolumeInformationEx, *PVolumeInformationEx;
 
 // $INDEX_ROOT (0x90)
-#pragma pack(1)
 struct IndexNodeHeader
 {
-    ULONG IndexOffset;                    // Offset 0x00, Size 4
-    ULONG TotalIndexSize;                 // Offset 0x04, Size 4
-    ULONG AllocatedSize;                  // Offset 0x08, Size 4
-    UCHAR Flags;                          // Offset 0x0C, Size 1
-    UCHAR Padding[3];                     // Offset 0x0D, Size 3
+    ULONG  IndexOffset;                    // Offset 0x00, Size 4
+    UINT16 TotalIndexSize;                 // Offset 0x04, Size 4
+    UINT16 Unknown;
+    ULONG  AllocatedSize;                  // Offset 0x08, Size 4
+    UCHAR  Flags;                          // Offset 0x0C, Size 1
+    UCHAR  Padding[3];                     // Offset 0x0D, Size 3
 };
-#pragma pack(1)
+
 typedef struct
 {
     ULONG AttributeType;                  // Offset 0x00, Size 4
@@ -211,6 +217,30 @@ typedef struct
     UCHAR Padding[3];                     // Offset 0x0D, Size 3
     IndexNodeHeader Header;               // Offset 0x10, Size 16
 } IndexRootEx, *PIndexRootEx;
+
+typedef struct
+{
+    union
+    {
+        struct                             // Offset 0x00, Size 8
+        {
+            ULONGLONG IndexedFile;
+        } Directory;
+        struct
+        {
+            USHORT    DataOffset;
+            USHORT    DataLength;
+            ULONG     Reserved;
+        } ViewIndex;
+    } Data;
+    UINT16     EntryLength;                   // Offset 0x08, Size 2
+    UINT16     StreamLength;                  // Offset 0x0A, Size 2
+    UINT8      Flags;                         // Offset 0x0C, Size 1
+    UINT16     Reserved;
+    UCHAR      IndexStream[1];                // Offset 0x10, Size varies
+} IndexEntry, *PIndexEntry;
+
+#define GetSubnodeVCN(Entry) (PULONGLONG)((ULONG_PTR)Entry + Entry->EntryLength - 8)
 
 // $REPARSE_POINT (0xC0)
 typedef struct

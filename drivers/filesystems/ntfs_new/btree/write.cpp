@@ -11,6 +11,52 @@
 
 #define NDEBUG
 
+// Complete
+PBTreeKey
+CreateBTreeKeyFromFilename(ULONGLONG FileReference, PFileNameEx FileNameAttribute)
+{
+    PBTreeKey NewKey;
+    ULONG AttributeSize = GetFileNameAttributeLength(FileNameAttribute);
+    ULONG EntrySize = ALIGN_UP_BY(AttributeSize + FIELD_OFFSET(IndexEntry, FileName), 8);
+
+    DPRINT1("CreateBTreeKeyFromFilename() called!\n");
+    PrintFilenameAttrHeader(FileNameAttribute);
+
+    // Create a new Index Entry for the file
+    PIndexEntry NewEntry = (PIndexEntry)ExAllocatePoolWithTag(NonPagedPool,
+                                                              EntrySize,
+                                                              TAG_NTFS);
+    if (!NewEntry)
+    {
+        DPRINT1("ERROR: Failed to allocate memory for Index Entry!\n");
+        return NULL;
+    }
+
+    // Setup the Index Entry
+    RtlZeroMemory(NewEntry, EntrySize);
+    NewEntry->Data.Directory.IndexedFile = FileReference;
+    NewEntry->EntryLength = EntrySize;
+    NewEntry->StreamLength = AttributeSize;
+
+    // Copy the FileNameAttribute
+    RtlCopyMemory(&(NewEntry->FileName),
+                  FileNameAttribute,
+                  AttributeSize);
+
+    // Setup the New Key
+    NewKey = new(NonPagedPool) BTreeKey();
+    if (!NewKey)
+    {
+        DPRINT1("ERROR: Failed to allocate memory for new key!\n");
+        delete NewEntry;
+        return NULL;
+    }
+    NewKey->IndexEntry = NewEntry;
+    NewKey->NextKey = NULL;
+
+    return NewKey;
+}
+
 /**
 * @name CreateIndexRootFromBTree
 * @implemented

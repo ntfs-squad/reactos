@@ -31,7 +31,7 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
     ULONG EntrySize;
 
     // Set the file name data pointer
-    FileNameData = &((*Key)->IndexEntry->FileName);
+    FileNameData = GetFileName(*Key);
 
     if (*BufferLength < ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) + GetWStrLength(FileNameData->NameLength)))
     {
@@ -73,11 +73,11 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
         DPRINT1("We need a short name!\n");
 
         // Both keys point to the same file. Assert that it is a valid short name.
-        ASSERT((*Key)->NextKey->IndexEntry->FileName.NameLength <= MAX_SHORTNAME_LENGTH);
+        ASSERT(GetFileName((*Key)->NextKey)->NameLength <= MAX_SHORTNAME_LENGTH);
 
         // Move to next key
         *Key = (*Key)->NextKey;
-        FileNameData = &((*Key)->IndexEntry->FileName);
+        FileNameData = GetFileName(*Key);
 
         // Copy short name data into the buffer
         Buffer->ShortNameLength = GetWStrLength(FileNameData->NameLength);
