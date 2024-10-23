@@ -9,15 +9,15 @@
 #define NDEBUG
 #include <debug.h>
 
-#define IsLastEntry(Key) !!(Key->IndexEntry->Flags & NTFS_INDEX_ENTRY_END)
+#define IsLastEntry(Key) !!(Key->Entry->Flags & INDEX_ENTRY_END)
 
-#define IsIndexNode(Key) !!(Key->IndexEntry->Flags & NTFS_INDEX_ENTRY_NODE)
+#define IsIndexNode(Key) !!(Key->Entry->Flags & INDEX_ENTRY_NODE)
 
 #define IsEndOfNode(Key) IsLastEntry(Key) && !IsIndexNode(Key)
 
 #define GetNextKey(Key) \
-IsIndexNode(Key) ? Key->LesserChild->FirstKey : IsEndOfNode(Key) ? \
-Key->ParentKey ? Key->ParentKey->NextKey : NULL : Key->NextKey
+IsIndexNode(Key) ? Key->ChildNode->FirstKey : IsEndOfNode(Key) ? \
+Key->ParentNodeKey ? Key->ParentNodeKey->NextKey : NULL : Key->NextKey
 
 static
 NTSTATUS
@@ -194,7 +194,7 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
 
     ASSERT(FileCB);
 
-    if (!BTreeCtx->Tree)
+    if (!BTreeCtx->RootNode)
     {
         DPRINT1("This is not a directory!\n");
         return STATUS_NOT_FOUND;
@@ -203,9 +203,9 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
     if (RestartScan)
     {
         // Reset file both directory context.
-        BTreeCtx->CurrentKey = BTreeCtx->Tree->RootNode->FirstKey;
+        BTreeCtx->CurrentKey = BTreeCtx->RootNode->FirstKey;
         DPRINT1("Restart scan set!\n");
-        DumpBTree(BTreeCtx->Tree);
+        DumpBTreeRootNode(BTreeCtx->RootNode);
     }
 
     // TODO: If not root directory, also return . and .. directories maybe?
@@ -214,10 +214,12 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
     // Clear buffer
     RtlZeroMemory(Buffer, *Length);
 
-    if (FileName)
+    // Skip *
+    if (FileName &&
+        RtlCompareMemory(FileName->Buffer, L"*", 2) != 2)
     {
         // Get the key requested
-        BTreeCtx->CurrentKey = FindKeyInNode(BTreeCtx->Tree->RootNode,
+        BTreeCtx->CurrentKey = FindKeyInNode(BTreeCtx->RootNode,
                                              FileName->Buffer,
                                              FileName->Length);
     }

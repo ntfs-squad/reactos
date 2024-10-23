@@ -27,7 +27,7 @@
 #define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
 #define ULONG_ROUND_UP(x)   ROUND_UP((x), (sizeof(ULONG)))
 #define MAX_SHORTNAME_LENGTH 12
-#define FileRef(x) x->IndexEntry->Data.Directory.IndexedFile
+#define FileRef(x) x->Entry->Data.Directory.IndexedFile
 
 typedef enum _TYPE_OF_OPEN {
 
@@ -291,12 +291,6 @@ DbgPrint("    %s\n", FlagName); \
 /* Debug print functions. REMOVE WHEN DONE. */
 static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 {
-    // UCHAR Signature[5];
-
-    // RtlZeroMemory(Signature, 5);
-    // RtlCopyMemory(Signature, FRH->TypeID, 4);
-
-    // DbgPrint("Signature: %s\n", Signature);
     DbgPrint("MFT Record Number: %ld\n", FRH->MFTRecordNumber);
 }
 

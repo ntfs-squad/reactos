@@ -31,43 +31,11 @@ typedef struct _SCB
     SECTION_OBJECT_POINTERS SectionObjectPointers;
 } StreamContextBlock, *PStreamContextBlock;
 
-// Putting this here is a hack, clean up header files
 // TODO: CLEAN UP HEADER FILES!!!!
-
-
-struct _BTreeFilenameNode;
-typedef struct _BTreeFilenameNode BTreeFilenameNode;
-
-// Keys are arranged in nodes as an ordered, linked list
-typedef struct _BTreeKey
-{
-    struct _BTreeKey  *NextKey;
-    struct _BTreeKey  *ParentKey;    // Key of the node whose child is this key
-    BTreeFilenameNode *LesserChild;  // Child-Node. All the keys in this node will be sorted before IndexEntry
-    PIndexEntry       IndexEntry;    // must be last member for FIELD_OFFSET
-}BTreeKey, *PBTreeKey;
-
-// Every Node is just an ordered list of keys.
-// Sub-nodes can be found attached to a key (if they exist).
-// A key's sub-node precedes that key in the ordered list.
-typedef struct _BTreeFilenameNode
-{
-    ULONG KeyCount;
-    BOOLEAN HasValidVCN;
-    BOOLEAN DiskNeedsUpdating;
-    ULONGLONG VCN;
-    PBTreeKey FirstKey;
-} BTreeFilenameNode, *PBTreeFilenameNode;
-
 typedef struct
 {
-    PBTreeFilenameNode RootNode;
-} BTree, *PBTree;
-
-typedef struct
-{
-    PBTree    Tree;
-    PBTreeKey CurrentKey;
+    struct _BTreeNode* RootNode;
+    struct _BTreeKey*  CurrentKey;
 } BTreeContext, *PBTreeContext;
 
 typedef struct _FCB
