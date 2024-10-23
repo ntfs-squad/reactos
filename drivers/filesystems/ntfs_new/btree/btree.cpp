@@ -36,7 +36,6 @@ DestroyBTreeKey(PBTreeKey Key)
         DestroyBTreeNode(Key->ChildNode);
 
     delete Key;
-
     return STATUS_SUCCESS;
 }
 
@@ -48,21 +47,13 @@ DestroyBTreeNode(PBTreeNode Node)
 
     while (CurrentKey)
     {
-        DPRINT1("Deleting key!\n");
         NextKey = CurrentKey->NextKey;
         DestroyBTreeKey(CurrentKey);
         CurrentKey = NextKey;
     }
 
-    DPRINT1("Finished deleting keys!\n");
-
     ASSERT(NextKey == NULL);
-
-    if (Node)
-        delete Node;
-
-    DPRINT1("Deleted node!\n");
-
+    delete Node;
     return STATUS_SUCCESS;
 }
 
@@ -123,13 +114,6 @@ CreateNode(_In_    PFileRecord File,
                                                      TAG_NTFS);
 
     // TODO: Confirm index bitmap has this node marked as in-use
-    DPRINT1("Calculating offset...\n");
-    DPRINT1("IndexBufferSize: %ld\n", IndexBufferSize);
-    DPRINT1("VCN: %ld\n", *VCN);
-    DPRINT1("Offset: %ld\n", GetAllocationOffsetFromVCN(File->Volume,
-                                                        IndexBufferSize,
-                                                        *VCN));
-
     Status = File->CopyData(IndexAllocationAttribute,
                             (PUCHAR)NodeBuffer,
                             &IndexBufferSize,
@@ -255,7 +239,6 @@ CreateRootNode(_In_  PFileRecord File,
 
     while ((ULONG_PTR)CurrentEntry < EndOfIndexRootData)
     {
-        DPRINT1("Getting root node entry!\n");
         ASSERT(CurrentEntry->EntryLength);
 
         // Create current entry
@@ -270,8 +253,6 @@ CreateRootNode(_In_  PFileRecord File,
 
         if (CurrentEntry->Flags & INDEX_ENTRY_NODE)
         {
-            DPRINT1("This root node entry is an entry node!\n");
-
             ASSERT(IndexAllocationAttribute);
 
             // Create child node
@@ -304,12 +285,10 @@ CreateRootNode(_In_  PFileRecord File,
         else
         {
             // We've copied the last entry.
-            DPRINT1("This entry is the last node!\n");
             break;
         }
     }
 
-    DumpBTreeRootNode(RootNode);
     *NewRootNode = RootNode;
     return STATUS_SUCCESS;
 
@@ -322,8 +301,6 @@ FindKeyInNode(PBTreeNode Node,
               UINT Length)
 {
     PBTreeKey CurrentKey, ResumeKey;
-
-    DPRINT1("FindKeyInNode() called!\n");
 
     // Start the search with the first key
     CurrentKey = Node->FirstKey;
@@ -338,9 +315,6 @@ FindKeyInNode(PBTreeNode Node,
 
     while(CurrentKey)
     {
-
-        DPRINT1("Searching current key...");
-
         if (RtlCompareMemory(&(GetFileName(CurrentKey)->Name),
                              FileName,
                              Length) == Length)
@@ -363,7 +337,6 @@ FindKeyInNode(PBTreeNode Node,
         if (CurrentKey->Entry->Flags & INDEX_ENTRY_END)
         {
             // We've reached the end of this node and checked if it was an index node.
-            DPRINT1("Got dummy key!\n");
             return NULL;
         }
 

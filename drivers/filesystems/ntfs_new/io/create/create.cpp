@@ -62,9 +62,6 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
         return STATUS_NOT_FOUND;
     }
 
-    DPRINT1("Grabbed current root node!\n");
-    DumpBTreeRootNode(CurrentRootNode);
-
     while (CurrentElement)
     {
         // Is the element in the current Btree?

@@ -71,8 +71,6 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
 
     else if (GetFRNFromFileRef(FileRef((*Key))) == GetFRNFromFileRef(FileRef((*Key)->NextKey)))
     {
-        DPRINT1("We need a short name!\n");
-
         // Both keys point to the same file. Assert that it is a valid short name.
         ASSERT(GetFileName((*Key)->NextKey)->NameLength <= MAX_SHORTNAME_LENGTH);
 
@@ -108,9 +106,6 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
     if (EntryLength)
         *EntryLength = EntrySize;
 
-    DPRINT1("Added Entry!\n");
-    PrintFileBothDirEntry(Buffer);
-
     return STATUS_SUCCESS;
 }
 
@@ -126,7 +121,8 @@ ResumeFileBothDirInfoScan(_In_    BOOLEAN ReturnSingleEntry,
 
     EntrySize = 0;
 
-    if (!BTreeCtx->CurrentKey)
+    if (!BTreeCtx->CurrentKey ||
+        IsEndOfNode(BTreeCtx->CurrentKey))
     {
         // We reached the end of the directory listing.
         return STATUS_NO_MORE_FILES;
@@ -134,7 +130,6 @@ ResumeFileBothDirInfoScan(_In_    BOOLEAN ReturnSingleEntry,
 
     while (BTreeCtx->CurrentKey)
     {
-        DPRINT1("Adding key to buffer!\n");
         DumpBTreeKey(BTreeCtx->CurrentKey, 0);
 
         if (!IsLastEntry(BTreeCtx->CurrentKey))
@@ -150,9 +145,6 @@ ResumeFileBothDirInfoScan(_In_    BOOLEAN ReturnSingleEntry,
                 DPRINT1("We filled the buffer or something.\n");
                 return STATUS_SUCCESS;
             }
-
-            DPRINT1("Added key to buffer!\n");
-            PrintFileBothDirEntry(Buffer);
 
             if (ReturnSingleEntry)
             {
@@ -213,7 +205,6 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
         // Reset file both directory context.
         BTreeCtx->CurrentKey = BTreeCtx->RootNode->FirstKey;
         DPRINT1("Restart scan set!\n");
-        DumpBTreeRootNode(BTreeCtx->RootNode);
     }
 
     // TODO: If not root directory, also return . and .. directories maybe?
