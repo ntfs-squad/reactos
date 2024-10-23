@@ -214,9 +214,7 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
     // Clear buffer
     RtlZeroMemory(Buffer, *Length);
 
-    // Skip *
-    if (FileName &&
-        RtlCompareMemory(FileName->Buffer, L"*", 2) != 2)
+    if (FileName)
     {
         // Get the key requested
         BTreeCtx->CurrentKey = FindKeyInNode(BTreeCtx->RootNode,
