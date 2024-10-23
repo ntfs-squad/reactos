@@ -198,7 +198,7 @@ typedef struct
 } VolumeInformationEx, *PVolumeInformationEx;
 
 // $INDEX_ROOT (0x90)
-struct IndexNodeHeader
+typedef struct
 {
     ULONG  IndexOffset;                    // Offset 0x00, Size 4
     UINT16 TotalIndexSize;                 // Offset 0x04, Size 4
@@ -206,7 +206,7 @@ struct IndexNodeHeader
     ULONG  AllocatedSize;                  // Offset 0x08, Size 4
     UCHAR  Flags;                          // Offset 0x0C, Size 1
     UCHAR  Padding[3];                     // Offset 0x0D, Size 3
-};
+} IndexNodeHeader, *PIndexNodeHeader;
 
 typedef struct
 {

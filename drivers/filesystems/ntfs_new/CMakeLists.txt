@@ -18,7 +18,8 @@ list(APPEND SOURCE
      filerecord/find.cpp
      filerecord/write.cpp
      ntfsvol.cpp
-     btree/btree.cpp)
+     btree/btree.cpp
+     btree/dbg.cpp)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
 set_module_type(ntfs kernelmodedriver)

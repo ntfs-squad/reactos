@@ -33,7 +33,7 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
 {
     NTSTATUS Status;
     PFileRecord CurrentFile;
-    PBTree CurrentBTree;
+    PBTreeNode CurrentRootNode;
     PBTreeKey CurrentKey;
     PWCHAR CurrentElement, EndOfFileName;
     ULONGLONG CurrentFRN;
@@ -52,12 +52,23 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
     CurrentElement = &FileName[1];
     EndOfFileName = FileName + (FileNameLength * sizeof(WCHAR));
     CurrentFile = new(PagedPool) FileRecord(Volume, _Root);
-    CreateBTreeFromFile(CurrentFile, &CurrentBTree);
+    Status = CreateRootNode(CurrentFile,
+                            &CurrentRootNode);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to get node!\n");
+        __debugbreak();
+        return STATUS_NOT_FOUND;
+    }
+
+    DPRINT1("Grabbed current root node!\n");
+    DumpBTreeRootNode(CurrentRootNode);
 
     while (CurrentElement)
     {
         // Is the element in the current Btree?
-        CurrentKey = FindKeyFromFileName(CurrentBTree, CurrentElement);
+        CurrentKey = FindKeyFromFileName(CurrentRootNode, CurrentElement);
 
         if (!CurrentKey)
         {
@@ -67,7 +78,7 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
         }
 
         // We have the relevant key from BTree. Let's find the FRN.
-        CurrentFRN = GetFRNFromFileRef(CurrentKey->IndexEntry->Data.Directory.IndexedFile);
+        CurrentFRN = GetFRNFromFileRef(CurrentKey->Entry->Data.Directory.IndexedFile);
 
         // Proceed to next element in the string. Sets NextElement to NULL if we are done.
         CurrentElement = wcschr(CurrentElement, L'\\');
@@ -77,15 +88,17 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
             if (CurrentElement[0] != L'\0')
             {
                 // Destroy the old BTree and make a new one if we're going in another layer.
-                DestroyBTreeNode(CurrentBTree->RootNode);
+                // This may cause a bug?
+                DestroyBTreeNode(CurrentRootNode);
+
                 delete CurrentFile;
                 CurrentFile = new(PagedPool) FileRecord(Volume, CurrentFRN);
-                if (!NT_SUCCESS(CreateBTreeFromFile(CurrentFile, &CurrentBTree)))
+
+                if (!NT_SUCCESS(CreateRootNode(CurrentFile, &CurrentRootNode)))
                 {
-                    DPRINT1("Unable to get BTree!\n");
-                    delete CurrentBTree;
-                    delete CurrentFile;
-                    return STATUS_NOT_FOUND;
+                    DPRINT1("Unable to get BTree node!\n");
+                    Status = STATUS_NOT_FOUND;
+                    goto cleanup;
                 }
             }
             else
@@ -99,7 +112,7 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
     Status = STATUS_SUCCESS;
 
 cleanup:
-    DestroyBTree(CurrentBTree);
+    // DestroyBTreeNode(CurrentRootNode);
     delete CurrentFile;
     return Status;
 }
@@ -228,7 +241,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (FileCB->IsDirectory)
     {
         // Set up btree for this file
-        Status = CreateBTreeFromFile(FileCB->FileRec, &(FileCB->QueryDirectoryCtx.Tree));
+        Status = CreateRootNode(FileCB->FileRec, &(FileCB->QueryDirectoryCtx.RootNode));
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("Failed to get BTree!\n");
@@ -236,7 +249,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             return Status;
         }
 
-        FileCB->QueryDirectoryCtx.CurrentKey = FileCB->QueryDirectoryCtx.Tree->RootNode->FirstKey;
+        FileCB->QueryDirectoryCtx.CurrentKey = FileCB->QueryDirectoryCtx.RootNode->FirstKey;
     }
 
     // Set FsContext to the file context block and open file.
