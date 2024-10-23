@@ -32,8 +32,9 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
 
     // Set the file name data pointer
     FileNameData = GetFileName(*Key);
+    EntrySize = ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) + GetWStrLength(FileNameData->NameLength));
 
-    if (*BufferLength < ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) + GetWStrLength(FileNameData->NameLength)))
+    if (*BufferLength < EntrySize)
     {
         // We will overrun the buffer if we continue
         DPRINT1("Unable to add key to buffer: too small!\n");
@@ -41,7 +42,7 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
         return STATUS_BUFFER_TOO_SMALL;
     }
 
-    Buffer->FileIndex = 0;                                            // Undefined for NTFS
+    Buffer->FileIndex = 0; // Undefined for NTFS
     Buffer->CreationTime.QuadPart = FileNameData->CreationTime;
     Buffer->LastAccessTime.QuadPart = FileNameData->LastAccessTime;
     Buffer->LastWriteTime.QuadPart = FileNameData->LastWriteTime;
@@ -96,8 +97,6 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
      * Note: Entries in the buffer must be aligned to 8-byte boundaries
      * See: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/270df317-9ba5-4ccb-ba00-8d22be139bc5
      */
-    EntrySize = ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) +
-                               GetWStrLength(FileNameData->NameLength));
     *BufferLength -= EntrySize;
 
     // Set next entry offset
@@ -125,6 +124,8 @@ ResumeFileBothDirInfoScan(_In_    BOOLEAN ReturnSingleEntry,
     NTSTATUS Status;
     ULONG EntrySize;
 
+    EntrySize = 0;
+
     if (!BTreeCtx->CurrentKey)
     {
         // We reached the end of the directory listing.
@@ -133,6 +134,9 @@ ResumeFileBothDirInfoScan(_In_    BOOLEAN ReturnSingleEntry,
 
     while (BTreeCtx->CurrentKey)
     {
+        DPRINT1("Adding key to buffer!\n");
+        DumpBTreeKey(BTreeCtx->CurrentKey, 0);
+
         if (!IsLastEntry(BTreeCtx->CurrentKey))
         {
             // Add key to buffer
@@ -146,6 +150,9 @@ ResumeFileBothDirInfoScan(_In_    BOOLEAN ReturnSingleEntry,
                 DPRINT1("We filled the buffer or something.\n");
                 return STATUS_SUCCESS;
             }
+
+            DPRINT1("Added key to buffer!\n");
+            PrintFileBothDirEntry(Buffer);
 
             if (ReturnSingleEntry)
             {
@@ -162,6 +169,7 @@ ResumeFileBothDirInfoScan(_In_    BOOLEAN ReturnSingleEntry,
 
         if (!BTreeCtx->CurrentKey)
         {
+            DPRINT1("Terminating last entry!\n");
             // Go back to previous entry and end it
             Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Buffer - EntrySize);
             Buffer->NextEntryOffset = 0;
