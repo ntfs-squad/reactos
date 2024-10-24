@@ -130,8 +130,6 @@ ResumeFileBothDirInfoScan(_In_    BOOLEAN ReturnSingleEntry,
 
     while (BTreeCtx->CurrentKey)
     {
-        DumpBTreeKey(BTreeCtx->CurrentKey, 0);
-
         if (!IsLastEntry(BTreeCtx->CurrentKey))
         {
             // Add key to buffer
@@ -215,10 +213,13 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
 
     if (FileName)
     {
-        // Get the key requested
+        // Try to find the key requested
         BTreeCtx->CurrentKey = FindKeyInNode(BTreeCtx->RootNode,
                                              FileName->Buffer,
                                              FileName->Length);
+
+        if (!BTreeCtx->CurrentKey)
+            DPRINT1("Unable to find filename key for \"%S\"!\n", FileName->Buffer);
     }
 
     // Populate the buffer

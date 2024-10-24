@@ -9,9 +9,6 @@
 /* INCLUDES *****************************************************************/
 #include "../io/ntfsprocs.h"
 
-#define GetFileName(Key) \
-((PFileNameEx)&((Key)->Entry->IndexStream))
-
 #define GetVCN(NodeKey) \
 (PULONGLONG)(NodeKey->Entry + NodeKey->Entry->EntryLength - sizeof(ULONGLONG))
 
@@ -85,7 +82,6 @@ VerifyUpdateSequenceArray(ULONG BytesPerSector,
 
     return STATUS_SUCCESS;
 }
-
 
 NTSTATUS
 CreateNode(_In_    PFileRecord File,
@@ -292,58 +288,4 @@ CreateRootNode(_In_  PFileRecord File,
     *NewRootNode = RootNode;
     return STATUS_SUCCESS;
 
-}
-
-// TODO: Actually leverage btree for fast searching instead of searching linearly
-PBTreeKey
-FindKeyInNode(PBTreeNode Node,
-              PWCHAR FileName,
-              UINT Length)
-{
-    PBTreeKey CurrentKey, ResumeKey;
-
-    // Start the search with the first key
-    CurrentKey = Node->FirstKey;
-
-    // Strip * and \ characters from end of string
-    if (wcschr(FileName, L'*') || wcschr(FileName, L'\\'))
-    {
-        Length = min((wcschr(FileName, L'*') - FileName),
-                     (wcschr(FileName, L'\\')- FileName));
-    }
-
-
-    while(CurrentKey)
-    {
-        if (RtlCompareMemory(&(GetFileName(CurrentKey)->Name),
-                             FileName,
-                             Length) == Length)
-        {
-            // We found the key!
-            return CurrentKey;
-        }
-
-        if (CurrentKey->Entry->Flags & INDEX_ENTRY_NODE)
-        {
-            // Search keys in the lesser child if we're an index node.
-            ResumeKey = CurrentKey;
-            CurrentKey = FindKeyInNode(CurrentKey->ChildNode, FileName, Length);
-            if (CurrentKey)
-                return CurrentKey;
-            else
-                CurrentKey = ResumeKey;
-        }
-
-        if (CurrentKey->Entry->Flags & INDEX_ENTRY_END)
-        {
-            // We've reached the end of this node and checked if it was an index node.
-            return NULL;
-        }
-
-        // Go to the next key
-        CurrentKey = CurrentKey->NextKey;
-    }
-
-    // We didn't find the key
-    return NULL;
 }

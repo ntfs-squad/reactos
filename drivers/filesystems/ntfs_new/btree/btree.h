@@ -2,7 +2,7 @@
 #define INDEX_ENTRY_END  2
 
 #define GetFileName(Key) \
-((PFileNameEx)&((Key)->Entry->IndexStream))
+((PFileNameEx)((Key)->Entry->IndexStream))
 
 #define FindKeyFromFileName(RootNode, FileName)\
 wcschr(FileName, L'\\') ? \
