@@ -1,9 +1,10 @@
 #include "../io/ntfsprocs.h"
 
+static
 void
 DumpBTreeNode(PBTreeNode Node,
               UINT Depth);
-
+static
 void
 DumpBTreeKey(PBTreeKey Key,
              ULONG Depth)
@@ -33,6 +34,7 @@ DumpBTreeKey(PBTreeKey Key,
     }
 }
 
+static
 void
 DumpBTreeNode(PBTreeNode Node,
               UINT Depth)
@@ -47,7 +49,7 @@ DumpBTreeNode(PBTreeNode Node,
 }
 
 void
-DumpBTreeRootNode(PBTreeNode RootNode)
+Directory::DumpFileTree()
 {
     // Print header
     DbgPrint("Index Root\n");

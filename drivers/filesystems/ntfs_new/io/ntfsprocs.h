@@ -281,6 +281,8 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 #include "../ntfsvol.h"
 #include "../filerecord/filerecord.h"
 #include "../btree/btree.h"
+#include "../directory/directory.h"
+#include "../mft/mft.h"
 
 #include <debug.h>
 
