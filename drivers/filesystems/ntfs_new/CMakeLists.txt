@@ -22,7 +22,8 @@ list(APPEND SOURCE
      directory/directory.cpp
      directory/dbg.cpp
      directory/get.cpp
-     directory/find.cpp)
+     directory/find.cpp
+     mft/mft.cpp)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
 set_module_type(ntfs kernelmodedriver)

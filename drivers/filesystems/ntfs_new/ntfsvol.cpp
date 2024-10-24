@@ -1,3 +1,11 @@
+/*
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     NTFS filesystem driver
+ * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
+ *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ */
+
 #include "io/ntfsprocs.h"
 
 // Macros for GetFreeClusters
@@ -101,6 +109,7 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 
     // We are NTFS. Store only the boot sector information we need in memory.
     PrintNTFSBootSector(PartBootSector);
+
     RtlCopyMemory(&BytesPerSector,
                   &PartBootSector->BytesPerSector,
                   sizeof(UINT16));
@@ -108,12 +117,6 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
                   &PartBootSector->SectorsPerCluster,
                   sizeof(UINT8));
     ClustersInVolume = (PartBootSector->SectorsInVolume) / (PartBootSector->SectorsPerCluster);
-    RtlCopyMemory(&MFTLCN,
-                  &PartBootSector->MFTLCN,
-                  sizeof(UINT64));
-    RtlCopyMemory(&MFTMirrLCN,
-                  &PartBootSector->MFTMirrLCN,
-                  sizeof(UINT64));
     RtlCopyMemory(&ClustersPerIndexRecord,
                   &PartBootSector->ClustersPerIndexRecord,
                   sizeof(INT8));
@@ -121,13 +124,11 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
                   &PartBootSector->SerialNumber,
                   sizeof(UINT64));
 
-    /* Get File Record Size (Bytes).
-     * If clusters per file record is less than 0, the file record size is 2^(-ClustersPerFileRecord).
-     * Otherwise, the file record size is ClustersPerFileRecord * SectorsPerCluster * BytesPerSector.
-     */
-    FileRecordSize = PartBootSector->ClustersPerFileRecord < 0 ?
-                     1 << (-(PartBootSector->ClustersPerFileRecord)) :
-                     PartBootSector->ClustersPerFileRecord * SectorsPerCluster * BytesPerSector;
+    // Initialize MFT
+    MasterFileTable = new(PagedPool) MFT(this,
+                                         PartBootSector->MFTLCN,
+                                         PartBootSector->MFTMirrLCN,
+                                         PartBootSector->ClustersPerFileRecord);
 
 Cleanup:
     delete PartBootSector;
@@ -139,16 +140,19 @@ NTFSVolume::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
                            _Inout_ PUSHORT Length)
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    FileRecord* VolumeFileRecord;
+    PFileRecord VolumeFileRecord;
     PAttribute VolumeNameAttr;
     UINT32 AttrLength;
 
     // Allocate memory for $Volume file record and retrieve the file record.
-    VolumeFileRecord = new(NonPagedPool) FileRecord(this, _Volume);
+    Status = MasterFileTable->GetFileRecord(_Volume, &VolumeFileRecord);
 
     // Clean up if failed.
-    if (!VolumeFileRecord)
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to find $Volume file\n");
         return STATUS_NOT_FOUND;
+    }
 
     // Get pointer for the VolumeName attribute.
     VolumeNameAttr = VolumeFileRecord->GetAttribute(TypeVolumeName, NULL);
@@ -157,6 +161,7 @@ NTFSVolume::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
     {
         // We didn't find the attribute. Abort.
         // TODO: Check the backup $Volume file record.
+        DPRINT1("Failed to find $VOLUME_NAME attribute\n");
         Status = STATUS_NOT_FOUND;
         goto cleanup;
     }
@@ -180,39 +185,39 @@ cleanup:
     return Status;
 }
 
-NTSTATUS
-NTFSVolume::WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
-                               _In_ FileRecord* File)
-{
-    PAGED_CODE();
-    INT FileRecordOffset;
+// NTSTATUS
+// NTFSVolume::WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
+//                                _In_ FileRecord* File)
+// {
+//     PAGED_CODE();
+//     INT FileRecordOffset;
 
-    FileRecordOffset = (FileRecordNumber * FileRecordSize) / BytesPerSector;
+//     FileRecordOffset = (FileRecordNumber * FileRecordSize) / BytesPerSector;
 
-    // Warning: insane!
-    WriteBlock(PartDeviceObj,
-               (MFTLCN * SectorsPerCluster) + FileRecordOffset,
-               FileRecordSize / BytesPerSector,
-               BytesPerSector,
-               File->Data);
+//     // Warning: insane!
+//     WriteBlock(PartDeviceObj,
+//                (MFTLCN * SectorsPerCluster) + FileRecordOffset,
+//                FileRecordSize / BytesPerSector,
+//                BytesPerSector,
+//                File->Data);
 
-    if (FileRecordNumber <= 4)
-    {
-        // The first 4 records are always duplicated in MFT Mirror
-        // See: https://flatcap.github.io/linux-ntfs/ntfs/files/mftmirr.html
-        // TODO: Larger disks duplicate more file records.
+//     if (FileRecordNumber <= 4)
+//     {
+//         // The first 4 records are always duplicated in MFT Mirror
+//         // See: https://flatcap.github.io/linux-ntfs/ntfs/files/mftmirr.html
+//         // TODO: Larger disks duplicate more file records.
 
-        DPRINT1("This should also be written to $MftMirr, but isn't so I can compare.\n");
-        // Warning: also insane!
-        // WriteBlock(PartDeviceObj,
-        //            (MFTMirrLCN * SectorsPerCluster) + FileRecordOffset,
-        //            FileRecordSize / BytesPerSector,
-        //            BytesPerSector,
-        //            File->Data);
-    }
+//         DPRINT1("This should also be written to $MftMirr, but isn't so I can compare.\n");
+//         // Warning: also insane!
+//         // WriteBlock(PartDeviceObj,
+//         //            (MFTMirrLCN * SectorsPerCluster) + FileRecordOffset,
+//         //            FileRecordSize / BytesPerSector,
+//         //            BytesPerSector,
+//         //            File->Data);
+//     }
 
-    return STATUS_SUCCESS;
-}
+//     return STATUS_SUCCESS;
+// }
 
 NTSTATUS
 NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
@@ -221,14 +226,16 @@ NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
     NTSTATUS Status;
     FileRecord* VolumeFileRecord;
     PAttribute VolumeNameAttr;
-    // UCHAR NewVolNameAttr[0x100]; // max size for volume name attribute
 
     // Allocate memory for $Volume file record and retrieve the file record.
-    VolumeFileRecord = new(NonPagedPool) FileRecord(this, _Volume);
+    Status = MasterFileTable->GetFileRecord(_Volume, &VolumeFileRecord);
 
     // Clean up if failed.
-    if (!VolumeFileRecord)
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to find $Volume file!\n");
         goto cleanup;
+    }
 
     // Get pointer for $VolumeName attribute.
     VolumeNameAttr = VolumeFileRecord->GetAttribute(TypeVolumeName, NULL);
@@ -254,7 +261,7 @@ NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
 #endif
 
     // Overwrite the file record.
-    Status = WriteFileRecord(_Volume, VolumeFileRecord);
+    // Status = WriteFileRecord(_Volume, VolumeFileRecord);
 
 cleanup:
     delete VolumeFileRecord;
@@ -274,10 +281,13 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     ULONG BytesPerCluster, ClusterPtr;
 
     // Get file record for $Bitmap
-    BitmapFileRecord = new(NonPagedPool) FileRecord(this, _Bitmap);
+    Status = MasterFileTable->GetFileRecord(_Bitmap, &BitmapFileRecord);
 
     if (!BitmapFileRecord)
+    {
+        DPRINT1("Failed to get $Bitmap file!\n");
         goto cleanup;
+    }
 
     // Calculate bytes per cluster
     BytesPerCluster = BytesPerSector * SectorsPerCluster;

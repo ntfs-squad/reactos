@@ -83,12 +83,11 @@ typedef class FileRecord
 public:
     PUCHAR Data;
     PFileRecordHeader Header;
-    // This is a hack, make private when we've fixed everything else.
-    PNTFSVolume Volume;
+    FileRecord(_In_ PNTFSVolume Volume);
 
-    // ./filerecord.cpp
-    FileRecord(_In_ PNTFSVolume ThisVolume,
-               _In_ ULONGLONG FileRecordNumber);
+    // Needed for copy data functions.
+    // Should be private.
+    PNTFSVolume Volume;
 
     // ./find.cpp
     PAttribute GetAttribute(_In_ AttributeType Type,
@@ -110,5 +109,4 @@ public:
     // ./write.cpp
     NTSTATUS UpdateResidentAttribute(_In_ PAttribute Attr);
     NTSTATUS SetAttribute(_In_ PAttribute Attr);
-
 } *PFileRecord;

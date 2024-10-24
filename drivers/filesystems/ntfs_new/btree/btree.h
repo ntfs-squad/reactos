@@ -1,3 +1,11 @@
+/*
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     NTFS filesystem driver
+ * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
+ *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ */
+
 #define INDEX_ENTRY_NODE 1
 #define INDEX_ENTRY_END  2
 
@@ -9,8 +17,6 @@
 (IndexBufferSize < BytesPerCluster(Volume)) ? \
 (VCN * (Volume->BytesPerSector)) : \
 (VCN * BytesPerCluster(Volume))
-
-#define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
 
 #define BytesPerIndexRecord(Volume) \
 (BytesPerCluster(Volume) * Volume->ClustersPerIndexRecord)
