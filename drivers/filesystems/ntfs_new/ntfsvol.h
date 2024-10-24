@@ -1,3 +1,13 @@
+/*
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     NTFS filesystem driver
+ * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
+ *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ */
+
+#define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
+
 #pragma pack(1)
 struct BootSector
 {
@@ -32,9 +42,6 @@ public:
     ULONG  BytesPerSector;
     UINT8  SectorsPerCluster;
     UINT32 ClustersInVolume;
-    UINT64 MFTLCN;
-    UINT64 MFTMirrLCN;
-    UINT   FileRecordSize;
     INT8   ClustersPerIndexRecord;
     UINT64 SerialNumber;
 
@@ -46,11 +53,11 @@ public:
 
     PVPB VolParamBlock;
 
+    class MFT* MasterFileTable;
+
     ~NTFSVolume();
     NTSTATUS LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
     void     CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject);
-    NTSTATUS WriteFileRecord(_In_  ULONGLONG FileRecordNumber,
-                             _In_ FileRecord* File);
     NTSTATUS GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
                             _Inout_ PUSHORT Length);
     NTSTATUS SetVolumeLabel(_In_ PWCHAR VolumeLabel,

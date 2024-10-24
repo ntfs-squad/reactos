@@ -6,7 +6,6 @@
  *              Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
  */
 
-
 /* INCLUDES *****************************************************************/
 
 #include "../ntfsprocs.h"
@@ -50,7 +49,9 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
      */
     CurrentElement = &FileName[1];
     EndOfFileName = FileName + (FileNameLength * sizeof(WCHAR));
-    CurrentFile = new(PagedPool) FileRecord(Volume, _Root);
+
+    Volume->MasterFileTable->GetFileRecord(_Root, &CurrentFile);
+
     CurrentDirectory = new(PagedPool) Directory();
     Status = CurrentDirectory->LoadDirectory(CurrentFile);
 
@@ -87,7 +88,7 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
                 delete CurrentDirectory;
                 delete CurrentFile;
 
-                CurrentFile = new(PagedPool) FileRecord(Volume, CurrentFRN);
+                Volume->MasterFileTable->GetFileRecord(CurrentFRN, &CurrentFile);
                 CurrentDirectory = new(PagedPool) Directory();
 
                 if (!NT_SUCCESS(CurrentDirectory->LoadDirectory(CurrentFile)))
@@ -197,7 +198,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                   IrpSp->FileObject->FileName.Length);
 
     FileCB->FileRecordNumber = FileRecordNumber;
-    CurrentFile = new(PagedPool) FileRecord(VolCB->Volume, FileRecordNumber);
+    VolCB->Volume->MasterFileTable->GetFileRecord(FileRecordNumber, &CurrentFile);
 
     // From file record
     FileCB->NumberOfLinks = CurrentFile->Header->HardLinkCount;

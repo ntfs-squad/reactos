@@ -6,7 +6,6 @@
  *              Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
  */
 
-
 /* INCLUDES *****************************************************************/
 #include "fsctrl.h"
 
