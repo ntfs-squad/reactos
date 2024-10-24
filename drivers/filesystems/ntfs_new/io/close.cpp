@@ -53,9 +53,26 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
 
-    // Free file context block
     if (FileCB)
+    {
+        // Free BTree
+        if (FileCB->FileDir)
+            delete FileCB->FileDir;
+
+        // Free file record
+        if (FileCB->FileRec)
+        {
+            delete FileCB->FileRec->Data;
+            delete FileCB->FileRec;
+        }
+
+        // Free the stream context block
+        if (FileCB->StreamCB)
+            delete FileCB->StreamCB;
+
+        // Free the file context block
         delete FileCB;
+    }
 
     Irp->IoStatus.Information = STATUS_SUCCESS;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);

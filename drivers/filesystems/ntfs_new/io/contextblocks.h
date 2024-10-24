@@ -31,13 +31,6 @@ typedef struct _SCB
     SECTION_OBJECT_POINTERS SectionObjectPointers;
 } StreamContextBlock, *PStreamContextBlock;
 
-// TODO: CLEAN UP HEADER FILES!!!!
-typedef struct
-{
-    struct _BTreeNode* RootNode;
-    struct _BTreeKey*  CurrentKey;
-} BTreeContext, *PBTreeContext;
-
 typedef struct _FCB
 {
     ULONGLONG FileRecordNumber;
@@ -66,7 +59,7 @@ typedef struct _FCB
     ULONG NumberOfLinks;
 
     // Used for query directory requests
-    BTreeContext QueryDirectoryCtx;
+    class Directory* FileDir;
 
     // Consider moving, multiple files can point to the same stream in NTFS.
     PStreamContextBlock StreamCB;

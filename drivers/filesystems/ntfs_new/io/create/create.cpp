@@ -33,8 +33,7 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
 {
     NTSTATUS Status;
     PFileRecord CurrentFile;
-    PBTreeNode CurrentRootNode;
-    PBTreeKey CurrentKey;
+    Directory* CurrentDirectory;
     PWCHAR CurrentElement, EndOfFileName;
     ULONGLONG CurrentFRN;
 
@@ -52,12 +51,12 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
     CurrentElement = &FileName[1];
     EndOfFileName = FileName + (FileNameLength * sizeof(WCHAR));
     CurrentFile = new(PagedPool) FileRecord(Volume, _Root);
-    Status = CreateRootNode(CurrentFile,
-                            &CurrentRootNode);
+    CurrentDirectory = new(PagedPool) Directory();
+    Status = CurrentDirectory->LoadDirectory(CurrentFile);
 
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Failed to get node!\n");
+        DPRINT1("Failed to get directory!\n");
         __debugbreak();
         return STATUS_NOT_FOUND;
     }
@@ -65,17 +64,17 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
     while (CurrentElement)
     {
         // Is the element in the current Btree?
-        CurrentKey = FindKeyFromFileName(CurrentRootNode, CurrentElement);
-
-        if (!CurrentKey)
+        Status = CurrentDirectory->FindNextFile(CurrentElement,
+                                                wcschr(FileName, L'\\') ?
+                                                (wcschr(FileName, L'\\') - FileName) :
+                                                wcslen(FileName),
+                                                &CurrentFRN);
+        if (!NT_SUCCESS(Status))
         {
             DPRINT1("Failed to find: \"%S\"\n", CurrentElement);
             Status = STATUS_NOT_FOUND;
             goto cleanup;
         }
-
-        // We have the relevant key from BTree. Let's find the FRN.
-        CurrentFRN = GetFRNFromFileRef(CurrentKey->Entry->Data.Directory.IndexedFile);
 
         // Proceed to next element in the string. Sets NextElement to NULL if we are done.
         CurrentElement = wcschr(CurrentElement, L'\\');
@@ -85,15 +84,15 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
             if (CurrentElement[0] != L'\0')
             {
                 // Destroy the old BTree and make a new one if we're going in another layer.
-                // This may cause a bug?
-                DestroyBTreeNode(CurrentRootNode);
-
+                delete CurrentDirectory;
                 delete CurrentFile;
-                CurrentFile = new(PagedPool) FileRecord(Volume, CurrentFRN);
 
-                if (!NT_SUCCESS(CreateRootNode(CurrentFile, &CurrentRootNode)))
+                CurrentFile = new(PagedPool) FileRecord(Volume, CurrentFRN);
+                CurrentDirectory = new(PagedPool) Directory();
+
+                if (!NT_SUCCESS(CurrentDirectory->LoadDirectory(CurrentFile)))
                 {
-                    DPRINT1("Unable to get BTree node!\n");
+                    DPRINT1("Unable to get directory!\n");
                     Status = STATUS_NOT_FOUND;
                     goto cleanup;
                 }
@@ -109,8 +108,10 @@ GetFileRecordNumber(_In_  PWCHAR FileName,
     Status = STATUS_SUCCESS;
 
 cleanup:
-    // DestroyBTreeNode(CurrentRootNode);
-    delete CurrentFile;
+    if (CurrentDirectory)
+        delete CurrentDirectory;
+    if (CurrentFile)
+        delete CurrentFile;
     return Status;
 }
 
@@ -238,15 +239,15 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (FileCB->IsDirectory)
     {
         // Set up btree for this file
-        Status = CreateRootNode(FileCB->FileRec, &(FileCB->QueryDirectoryCtx.RootNode));
+        FileCB->FileDir = new(PagedPool) Directory();
+        Status = FileCB->FileDir->LoadDirectory(FileCB->FileRec);
+
         if (!NT_SUCCESS(Status))
         {
-            DPRINT1("Failed to get BTree!\n");
+            DPRINT1("Failed to get directory!\n");
             Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
             return Status;
         }
-
-        FileCB->QueryDirectoryCtx.CurrentKey = FileCB->QueryDirectoryCtx.RootNode->FirstKey;
     }
 
     // Set FsContext to the file context block and open file.

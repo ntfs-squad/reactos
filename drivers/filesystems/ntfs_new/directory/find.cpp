@@ -1,6 +1,6 @@
 /*
  * PROJECT:     ReactOS Kernel
- * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     NTFS filesystem driver
  * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
@@ -27,17 +27,15 @@ WideStringCompare(PWCHAR FirstString,
     return 0;
 }
 
-// TODO: Actually leverage btree for fast searching instead of searching linearly
-
 PBTreeKey
-FindKeyInNode(PBTreeNode Node,
+FindKeyInNode(PBTreeKey Key,
               PWCHAR FileName,
               UINT Length)
 {
-    PBTreeKey CurrentKey, ResumeKey;
+    PBTreeKey CurrentKey;
 
     // Start the search with the first key
-    CurrentKey = Node->FirstKey;
+    CurrentKey = Key;
 
     DPRINT1("FindKeyInNode() called!\n");
 
@@ -64,9 +62,8 @@ FindKeyInNode(PBTreeNode Node,
             CurrentKey->Entry->Flags & INDEX_ENTRY_END))
         {
             // If it's not in this node, it's not in here.
-            ResumeKey = CurrentKey;
             DPRINT1("Searching node...\n");
-            return FindKeyInNode(CurrentKey->ChildNode, FileName, Length);
+            return FindKeyInNode(Key->ChildNode->FirstKey, FileName, Length);
         }
 
         if (CurrentKey->Entry->Flags & INDEX_ENTRY_END)
@@ -81,4 +78,25 @@ FindKeyInNode(PBTreeNode Node,
 
     // We didn't find the key
     return NULL;
+}
+
+NTSTATUS
+Directory::FindNextFile(_In_  PWCHAR FileName,
+                        _In_  ULONG Length,
+                        _Out_ PULONGLONG FileRecordNumber)
+{
+    PBTreeKey FoundKey;
+
+    // For now, start scan at beginning.
+    FoundKey = FindKeyInNode(RootNode->FirstKey, FileName, Length);
+
+    if (!FoundKey)
+    {
+        DPRINT1("Failed to find file!\n");
+        return STATUS_NOT_FOUND;
+    }
+
+    CurrentKey = FoundKey;
+    *FileRecordNumber = GetFRNFromFileRef(FoundKey->Entry->Data.Directory.IndexedFile);
+    return STATUS_SUCCESS;
 }

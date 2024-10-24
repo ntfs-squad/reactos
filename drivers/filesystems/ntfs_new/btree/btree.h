@@ -1,13 +1,19 @@
 #define INDEX_ENTRY_NODE 1
 #define INDEX_ENTRY_END  2
 
-#define GetFileName(Key) \
-((PFileNameEx)((Key)->Entry->IndexStream))
+#define GetVCN(NodeKey) \
+(PULONGLONG)(NodeKey->Entry + NodeKey->Entry->EntryLength - sizeof(ULONGLONG))
 
-#define FindKeyFromFileName(RootNode, FileName)\
-wcschr(FileName, L'\\') ? \
-FindKeyInNode(RootNode, FileName, (wcschr(FileName, L'\\') - FileName)) :\
-FindKeyInNode(RootNode, FileName, wcslen(FileName))
+// Calculates start of Index Buffer relative to the index allocation, given the node's VCN
+#define GetAllocationOffsetFromVCN(Volume, IndexBufferSize, VCN) \
+(IndexBufferSize < BytesPerCluster(Volume)) ? \
+(VCN * (Volume->BytesPerSector)) : \
+(VCN * BytesPerCluster(Volume))
+
+#define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
+
+#define BytesPerIndexRecord(Volume) \
+(BytesPerCluster(Volume) * Volume->ClustersPerIndexRecord)
 
 struct _BTreeNode;
 struct _BTreeKey;
@@ -20,7 +26,7 @@ typedef struct _BTreeNode
 
 typedef struct _BTreeKey
 {
-    _BTreeKey*  ParentNodeKey; // Used to get entry listings linearly.
+    _BTreeKey*  ParentNodeKey; // Used to get entries linearly.
     _BTreeNode* ChildNode;
     _BTreeKey*  NextKey;
     PIndexEntry Entry;
@@ -33,23 +39,12 @@ typedef struct
     IndexNodeHeader IndexHeader;
 } IndexBuffer, *PIndexBuffer;
 
-NTSTATUS
-CreateRootNode(_In_  PFileRecord File,
-               _Out_ PBTreeNode *NewRootNode);
-NTSTATUS
-DestroyBTreeNode(PBTreeNode Node);
-
-NTSTATUS
-DestroyBTreeKey(PBTreeKey Key);
-
-PBTreeKey
-FindKeyInNode(PBTreeNode Node,
-              PWCHAR FileName,
-              UINT Length);
-
-void
-DumpBTreeRootNode(PBTreeNode RootNode);
-
-void
-DumpBTreeKey(PBTreeKey Key,
-             ULONG Depth);
+class BTree
+{
+public:
+    NTSTATUS ResetCurrentKey();
+protected:
+    ~BTree();
+    PBTreeNode RootNode;
+    PBTreeKey CurrentKey;
+};
