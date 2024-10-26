@@ -156,7 +156,11 @@ CreateRootNode(_In_  PFileRecord File,
     ULONG_PTR EndOfIndexRootData;
 
     // This only works on files that are directories.
-    ASSERT(File->Header->Flags & FR_IS_DIRECTORY);
+    if (!(File->Header->Flags & FR_IS_DIRECTORY))
+    {
+        DPRINT1("File is not a directory!\n");
+        return STATUS_NOT_FOUND;
+    }
 
     // Get $INDEX_ROOT attribute.
     IndexRootAttribute = File->GetAttribute(TypeIndexRoot, NULL);

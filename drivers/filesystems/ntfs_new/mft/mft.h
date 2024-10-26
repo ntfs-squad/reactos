@@ -19,6 +19,10 @@ public:
     GetFileRecord(_In_   ULONGLONG FileRecordNumber,
                   _Out_  PFileRecord* File);
 
+    NTSTATUS
+    GetFileRecordFromQuery(_In_ PWCHAR Query,
+                          _Out_ PFileRecord* File);
+
     // NTSTATUS
     // WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
     //                 _In_ PULONG BufferLength,

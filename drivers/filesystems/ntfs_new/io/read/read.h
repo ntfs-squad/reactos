@@ -30,7 +30,6 @@ ReadFile(_In_  PFileContextBlock FileCB,
 
 #ifdef NTFS_DEBUG
     ASSERT(FileCB);
-    ASSERT(FileCB->FileRecordNumber);
     ASSERT(FileCB->FileRec);
     ASSERT(!(FileCB->FileAttributes & FILE_PERM_COMPRESSED));
     ASSERT(!(FileCB->FileAttributes & FILE_PERM_ENCRYPTED));

@@ -20,7 +20,6 @@ public:
     // ./find.cpp
     NTSTATUS
     FindNextFile(_In_  PWCHAR FileName,
-                 _In_  ULONG Length,
                  _Out_ PULONGLONG FileRecordNumber);
 
     // ./get.cpp
