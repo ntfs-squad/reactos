@@ -41,8 +41,6 @@ typedef struct _SCB
 
 typedef struct _FCB
 {
-    ULONGLONG FileRecordNumber;
-
     WCHAR Stream[MAX_PATH];
     WCHAR *ObjectName;		   // Point on filename (250 chars max) in PathName */
     FileRecord* FileRec;
@@ -65,6 +63,9 @@ typedef struct _FCB
     LARGE_INTEGER AllocationSize;
     LARGE_INTEGER EndOfFile;
     ULONG NumberOfLinks;
+
+    // Used for File Internal Information
+    LARGE_INTEGER IndexNumber;
 
     // Used for query directory requests
     class Directory* FileDir;

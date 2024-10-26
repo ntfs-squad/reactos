@@ -359,7 +359,6 @@ static inline void PrintNTFSBootSector(BootSector* PartBootSector)
 
 static inline void PrintFileContextBlock(PFileContextBlock FileCB)
 {
-    DbgPrint("File Record Number: %lu\n", FileCB->FileRecordNumber);
     DbgPrint("File name:          \"%S\"\n", FileCB->FileName);
 
     if (FileCB->IsDirectory)

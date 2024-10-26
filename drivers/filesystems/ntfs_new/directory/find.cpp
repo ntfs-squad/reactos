@@ -29,12 +29,13 @@ WideStringCompare(PWCHAR FirstString,
 
 PBTreeKey
 FindKeyInNode(PBTreeKey Key,
-              PWCHAR FileName,
-              UINT Length)
+              PWCHAR FileName)
 {
+    UINT Length;
     PBTreeKey CurrentKey;
 
     // Start the search with the first key
+    Length = wcslen(FileName);
     CurrentKey = Key;
 
     DPRINT1("FindKeyInNode() called!\n");
@@ -63,7 +64,7 @@ FindKeyInNode(PBTreeKey Key,
         {
             // If it's not in this node, it's not in here.
             DPRINT1("Searching node...\n");
-            return FindKeyInNode(Key->ChildNode->FirstKey, FileName, Length);
+            return FindKeyInNode(Key->ChildNode->FirstKey, FileName);
         }
 
         if (CurrentKey->Entry->Flags & INDEX_ENTRY_END)
@@ -82,13 +83,12 @@ FindKeyInNode(PBTreeKey Key,
 
 NTSTATUS
 Directory::FindNextFile(_In_  PWCHAR FileName,
-                        _In_  ULONG Length,
                         _Out_ PULONGLONG FileRecordNumber)
 {
     PBTreeKey FoundKey;
 
     // For now, start scan at beginning.
-    FoundKey = FindKeyInNode(RootNode->FirstKey, FileName, Length);
+    FoundKey = FindKeyInNode(RootNode->FirstKey, FileName);
 
     if (!FoundKey)
     {

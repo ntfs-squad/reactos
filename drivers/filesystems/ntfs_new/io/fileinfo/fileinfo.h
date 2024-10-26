@@ -101,10 +101,16 @@ GetFileInternalInformation(_In_ PFileContextBlock FileCB,
                            _Out_ PFILE_INTERNAL_INFORMATION Buffer,
                            _Inout_ PULONG Length)
 {
+
+    /* From Microsoft Learn:
+     * The FILE_INTERNAL_INFORMATION structure is used to query for the file
+     * system's 8-byte file reference number for a file.
+     */
+
     if (*Length < sizeof(FILE_INTERNAL_INFORMATION))
         return STATUS_BUFFER_TOO_SMALL;
 
-    Buffer->IndexNumber.QuadPart = FileCB->FileRecordNumber;
+    Buffer->IndexNumber = FileCB->IndexNumber;
 
     *Length -= sizeof(FILE_INTERNAL_INFORMATION);
 

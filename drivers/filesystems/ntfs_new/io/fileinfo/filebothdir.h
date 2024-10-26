@@ -12,13 +12,11 @@
 static
 NTSTATUS
 GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
-                                _In_    PVolumeContextBlock VolCB,
                                 _In_    UCHAR IrpFlags,
                                 _In_    PUNICODE_STRING FileName,
                                 _Out_   PFILE_BOTH_DIR_INFORMATION Buffer,
                                 _Inout_ PULONG Length)
 {
-    NTSTATUS Status;
     Directory* FileDir;
     BOOLEAN ReturnSingleEntry, RestartScan;
 
@@ -33,10 +31,11 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
         return STATUS_NOT_FOUND;
     }
 
-    Status = FileDir->GetFileBothDirInfo(ReturnSingleEntry,
-                                         RestartScan,
-                                         Buffer,
-                                         Length);
+    if (FileName)
+        __debugbreak();
 
-    return Status;
+    return FileCB->FileDir->GetFileBothDirInfo(ReturnSingleEntry,
+                                               RestartScan,
+                                               Buffer,
+                                               Length);
 }

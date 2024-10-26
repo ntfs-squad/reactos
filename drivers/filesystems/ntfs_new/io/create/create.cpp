@@ -24,98 +24,6 @@
 /* FUNCTIONS ****************************************************************/
 extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 
-NTSTATUS
-GetFileRecordNumber(_In_  PWCHAR FileName,
-                    _In_  UINT FileNameLength,
-                    _In_  PNTFSVolume Volume,
-                    _Out_ PULONGLONG FileRecordNumber)
-{
-    NTSTATUS Status;
-    PFileRecord CurrentFile;
-    Directory* CurrentDirectory;
-    PWCHAR CurrentElement, EndOfFileName;
-    ULONGLONG CurrentFRN;
-
-    // Let's start with the root directory, which is hardcoded.
-    if (FileName[0] == L'\0' ||
-        wcscmp(L"\\", FileName) == 0)
-    {
-        *FileRecordNumber = _Root;
-        return STATUS_SUCCESS;
-    }
-
-    /* Every other file will be inside of the root directory.
-     * Parse the file name to find the file record number.
-     */
-    CurrentElement = &FileName[1];
-    EndOfFileName = FileName + (FileNameLength * sizeof(WCHAR));
-
-    Volume->MasterFileTable->GetFileRecord(_Root, &CurrentFile);
-
-    CurrentDirectory = new(PagedPool) Directory();
-    Status = CurrentDirectory->LoadDirectory(CurrentFile);
-
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to get directory!\n");
-        __debugbreak();
-        return STATUS_NOT_FOUND;
-    }
-
-    while (CurrentElement)
-    {
-        // Is the element in the current Btree?
-        Status = CurrentDirectory->FindNextFile(CurrentElement,
-                                                wcschr(FileName, L'\\') ?
-                                                (wcschr(FileName, L'\\') - FileName) :
-                                                wcslen(FileName),
-                                                &CurrentFRN);
-        if (!NT_SUCCESS(Status))
-        {
-            DPRINT1("Failed to find: \"%S\"\n", CurrentElement);
-            Status = STATUS_NOT_FOUND;
-            goto cleanup;
-        }
-
-        // Proceed to next element in the string. Sets NextElement to NULL if we are done.
-        CurrentElement = wcschr(CurrentElement, L'\\');
-        if (CurrentElement)
-        {
-            CurrentElement++;
-            if (CurrentElement[0] != L'\0')
-            {
-                // Destroy the old BTree and make a new one if we're going in another layer.
-                delete CurrentDirectory;
-                delete CurrentFile;
-
-                Volume->MasterFileTable->GetFileRecord(CurrentFRN, &CurrentFile);
-                CurrentDirectory = new(PagedPool) Directory();
-
-                if (!NT_SUCCESS(CurrentDirectory->LoadDirectory(CurrentFile)))
-                {
-                    DPRINT1("Unable to get directory!\n");
-                    Status = STATUS_NOT_FOUND;
-                    goto cleanup;
-                }
-            }
-            else
-            {
-                CurrentElement = NULL;
-            }
-        }
-    }
-
-    *FileRecordNumber = CurrentFRN;
-    Status = STATUS_SUCCESS;
-
-cleanup:
-    if (CurrentDirectory)
-        delete CurrentDirectory;
-    if (CurrentFile)
-        delete CurrentFile;
-    return Status;
-}
-
 _Function_class_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -135,14 +43,13 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     NTSTATUS Status;
     PFILE_OBJECT FileObject;
     BOOLEAN PerformAccessChecks;
-    PWCH FileName;
+    PWCHAR FileNameQuery;
     FileRecord* CurrentFile;
     PAttribute Attr;
     PStandardInformationEx StdInfo;
     UINT8 Disposition;
     ULONG CreateOptions;
-
-    ULONGLONG FileRecordNumber;
+    PNTFSVolume Volume;
 
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
     {
@@ -156,9 +63,10 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     FileObject = IrpSp->FileObject;
     VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
-    FileName = IrpSp->FileObject->FileName.Buffer;
+    FileNameQuery = IrpSp->FileObject->FileName.Buffer;
     Disposition = GetDisposition(IrpSp->Parameters.Create.Options);
     CreateOptions = GetCreateOptions(IrpSp->Parameters.Create.Options);
+    Volume = VolCB->Volume;
 
     // Determine if we should check access rights
     PerformAccessChecks = (Irp->RequestorMode == UserMode) ||
@@ -169,40 +77,38 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         Disposition == FILE_CREATE ||
         Disposition == FILE_OVERWRITE ||
         Disposition == FILE_OVERWRITE_IF ||
-        wcschr(FileName, L':'))
+        wcschr(FileNameQuery, L':'))
     {
         DPRINT1("Rejecting file open!\n");
         Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
         return STATUS_NOT_IMPLEMENTED;
     }
 
-    // Get the file record number
-    Status = GetFileRecordNumber(FileName, IrpSp->FileObject->FileName.Length, VolCB->Volume, &FileRecordNumber);
+    // TODO: Check if we have rights to access file here.
+    Status = Volume->MasterFileTable->GetFileRecordFromQuery(FileNameQuery, &CurrentFile);
     if (!NT_SUCCESS(Status))
     {
         // This isn't always an issue, but it isn't implemented yet.
-        DPRINT1("File not found!\n");
+        DPRINT1("File not found! File: \"%S\"\n", FileNameQuery);
         Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
         return Status;
     }
-
-    // TODO: Check if we have rights to access file here.
 
     // Create file context block.
     FileCB = new(PagedPool) FileContextBlock();
     RtlZeroMemory(FileCB, sizeof(FileContextBlock));
 
-    // Set file name.
+    // Set file name
+    // TODO: Axe or get from $FILE_NAME
     RtlCopyMemory(FileCB->FileName,
                   IrpSp->FileObject->FileName.Buffer,
                   IrpSp->FileObject->FileName.Length);
 
-    FileCB->FileRecordNumber = FileRecordNumber;
-    VolCB->Volume->MasterFileTable->GetFileRecord(FileRecordNumber, &CurrentFile);
-
     // From file record
     FileCB->NumberOfLinks = CurrentFile->Header->HardLinkCount;
     FileCB->IsDirectory = !!(CurrentFile->Header->Flags & FR_IS_DIRECTORY);
+    // This should probably come from the index search reference.
+    FileCB->IndexNumber.QuadPart = CurrentFile->Header->MFTRecordNumber;
 
     // From $STANDARD_INFORMATION
     Attr = CurrentFile->GetAttribute(TypeStandardInformation,

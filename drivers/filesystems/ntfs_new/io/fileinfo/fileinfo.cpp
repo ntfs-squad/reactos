@@ -178,7 +178,6 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             case FileBothDirectoryInformation:
                 DPRINT1("FileBothDirectoryInformation request!\n");
                 Status = GetFileBothDirectoryInformation(FileCB,
-                                                         VolCB,
                                                          IrpSp->Flags,
                                                          IrpSp->Parameters.QueryDirectory.FileName,
                                                          (PFILE_BOTH_DIR_INFORMATION)SystemBuffer,

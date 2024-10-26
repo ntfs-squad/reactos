@@ -16,6 +16,9 @@ ClustersPerFileRecord < 0 ? \
 1 << (-(ClustersPerFileRecord)) : \
 ClustersPerFileRecord * BytesPerCluster
 
+#define IsRootFile(Path) \
+Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
+
 #include "../io/ntfsprocs.h"
 
 MFT::MFT(_In_ PNTFSVolume TargetVolume,
@@ -53,6 +56,7 @@ MFT::GetFileRecord(_In_   ULONGLONG FileRecordNumber,
     *File = new(PagedPool) FileRecord(Volume);
     (*File)->Data = new(PagedPool) UCHAR[FileRecordSize];
 
+    // HACK! Use VCN-to-LCN mapping.
     ReadDisk(Volume->PartDeviceObj,
              (MFTLCN * BytesPerCluster(Volume))
              + (FileRecordNumber * FileRecordSize),
@@ -61,5 +65,98 @@ MFT::GetFileRecord(_In_   ULONGLONG FileRecordNumber,
 
     (*File)->Header = (PFileRecordHeader)((*File)->Data);
 
+    return STATUS_SUCCESS;
+}
+
+// TODO: Handle wildcards and comparators
+NTSTATUS
+MFT::GetFileRecordFromQuery(_In_ PWCHAR Query,
+                            _Out_ PFileRecord* File)
+{
+    NTSTATUS Status;
+    PWCHAR QueryElementPtr;
+    Directory* CurrentDirectory;
+    PFileRecord CurrentFile;
+    ULONGLONG CurrentFRN;
+
+    DPRINT1("Looking for file: \"%S\"\n", Query);
+
+    // Let's start with the root directory, which is hardcoded.
+    if (IsRootFile(Query))
+        return GetFileRecord(_Root, File);
+
+    /* Every other file will be inside of the root directory.
+     * Parse the query to find the file record.
+     */
+    Status = GetFileRecord(_Root, &CurrentFile);
+    if(!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to get root directory file!\n");
+        return STATUS_NOT_FOUND;
+    }
+
+    CurrentDirectory = new(PagedPool) Directory();
+
+    Status = CurrentDirectory->LoadDirectory(CurrentFile);
+    if(!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to get root directory!\n");
+        return STATUS_NOT_FOUND;
+    }
+
+    QueryElementPtr = Query;
+    QueryElementPtr = wcschr(QueryElementPtr, L'\\');
+    QueryElementPtr = &QueryElementPtr[1];
+
+    while(QueryElementPtr)
+    {
+        DPRINT1("Searching for: \"%S\"\n", QueryElementPtr);
+        // Find the directory pointed to by the path
+        Status = CurrentDirectory->FindNextFile(QueryElementPtr,
+                                                &CurrentFRN);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to find \"%S\"!", QueryElementPtr);
+            delete CurrentDirectory;
+            delete CurrentFile;
+            return STATUS_NOT_FOUND;
+        }
+
+        delete CurrentDirectory;
+        delete CurrentFile;
+
+        Status = GetFileRecord(CurrentFRN, &CurrentFile);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to find file at MFT ID %ld!\n", CurrentFRN);
+            delete CurrentDirectory;
+            return STATUS_NOT_FOUND;
+        }
+
+        if (wcschr(QueryElementPtr, L'\\'))
+        {
+            CurrentDirectory = new(PagedPool) Directory();
+            Status = CurrentDirectory->LoadDirectory(CurrentFile);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("Failed to find directory for file at MFT ID %ld!\n", CurrentFRN);
+                delete CurrentDirectory;
+                delete CurrentFile;
+                return STATUS_NOT_FOUND;
+            }
+
+            // Set up next file
+            QueryElementPtr = wcschr(QueryElementPtr, L'\\');
+            QueryElementPtr = &QueryElementPtr[1];
+        }
+
+        else
+        {
+            break;
+        }
+    }
+
+    // Current File should now point to the queried file.
+    *File = CurrentFile;
     return STATUS_SUCCESS;
 }
