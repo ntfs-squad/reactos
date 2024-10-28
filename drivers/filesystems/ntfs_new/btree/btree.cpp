@@ -45,7 +45,13 @@ DestroyBTreeNode(PBTreeNode Node)
 
 BTree::~BTree()
 {
-    DestroyBTreeNode(RootNode);
+    if (RootNode)
+    {
+        if (RootNode->FirstKey)
+            DestroyBTreeNode(RootNode);
+        else
+            delete RootNode;
+    }
     DPRINT1("BTree destroyed!\n");
 }
 

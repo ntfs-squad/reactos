@@ -111,11 +111,12 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
 NTSTATUS
 Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
                               _In_    BOOLEAN RestartScan,
+                              _In_    PUNICODE_STRING FileNameFilter,
                               _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
                               _Inout_ PULONG BufferLength)
 {
     NTSTATUS Status;
-    ULONG EntrySize;
+    ULONG EntrySize, TotalBufferLength;
 
     EntrySize = 0;
 
@@ -130,9 +131,12 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
     if (RestartScan)
         ResetCurrentKey();
 
+    TotalBufferLength = *BufferLength;
+
     while (CurrentKey)
     {
-        if (!IsLastEntry(CurrentKey))
+        if (!IsLastEntry(CurrentKey) &&
+            (!FileNameFilter || DoesFileNameMatch(FileNameFilter, CurrentKey)))
         {
             // Add key to buffer
             Status = AddKeyToBothDirInfo(&CurrentKey,
@@ -161,8 +165,17 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
 
         if (!CurrentKey)
         {
+            // TODO: Is there a better way?
+            if (TotalBufferLength == *BufferLength)
+            {
+                /* We've traversed the entire directory and the
+                 * buffer is empty. There are no files to return.
+                 */
+                return STATUS_NO_MORE_FILES;
+            }
+
+            // Go back to previous entry and end it.
             DPRINT1("Terminating last entry!\n");
-            // Go back to previous entry and end it
             Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Buffer - EntrySize);
             Buffer->NextEntryOffset = 0;
             break;

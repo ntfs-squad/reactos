@@ -116,7 +116,7 @@ MFT::GetFileRecordFromQuery(_In_ PWCHAR Query,
                                                 &CurrentFRN);
         if (!NT_SUCCESS(Status))
         {
-            DPRINT1("Failed to find \"%S\"!", QueryElementPtr);
+            DPRINT1("Failed to find \"%S\"!\n", QueryElementPtr);
             delete CurrentDirectory;
             delete CurrentFile;
             return STATUS_NOT_FOUND;
@@ -133,7 +133,10 @@ MFT::GetFileRecordFromQuery(_In_ PWCHAR Query,
             return STATUS_NOT_FOUND;
         }
 
-        if (wcschr(QueryElementPtr, L'\\'))
+        // Second condition is to check "//folder//target//"
+        // Potential hack? or fix?
+        if (wcschr(QueryElementPtr, L'\\') &&
+            wcschr(QueryElementPtr, L'\\')[1] != L'\0')
         {
             CurrentDirectory = new(PagedPool) Directory();
             Status = CurrentDirectory->LoadDirectory(CurrentFile);

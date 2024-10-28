@@ -10,10 +10,27 @@
 #include <debug.h>
 
 static
+inline
+BOOLEAN
+ContainsWildcard(PUNICODE_STRING String)
+{
+    for (USHORT i = 0; i < String->Length; i++)
+    {
+        if (String->Buffer[i] == L'*'    ||
+            String->Buffer[i] == L'?'    ||
+            String->Buffer[i] == DOS_DOT ||
+            String->Buffer[i] == DOS_QM  ||
+            String->Buffer[i] == DOS_STAR)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static
 NTSTATUS
 GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
                                 _In_    UCHAR IrpFlags,
-                                _In_    PUNICODE_STRING FileName,
+                                _In_    PUNICODE_STRING FileNameFilter,
                                 _Out_   PFILE_BOTH_DIR_INFORMATION Buffer,
                                 _Inout_ PULONG Length)
 {
@@ -22,7 +39,6 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
 
     ASSERT(FileCB);
     FileDir = FileCB->FileDir;
-    ReturnSingleEntry = !!(IrpFlags & SL_RETURN_SINGLE_ENTRY);
     RestartScan = !!(IrpFlags & SL_RESTART_SCAN);
 
     if (!FileDir)
@@ -31,11 +47,18 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
         return STATUS_NOT_FOUND;
     }
 
-    if (FileName)
-        __debugbreak();
+    /* If there's no wild cards and a file name filter
+     * is specified, we will only return one entry.
+     */
+    if (FileNameFilter &&
+        !ContainsWildcard(FileNameFilter))
+        ReturnSingleEntry = TRUE;
+    else
+        ReturnSingleEntry = !!(IrpFlags & SL_RETURN_SINGLE_ENTRY);
 
-    return FileCB->FileDir->GetFileBothDirInfo(ReturnSingleEntry,
-                                               RestartScan,
-                                               Buffer,
-                                               Length);
+    return FileDir->GetFileBothDirInfo(ReturnSingleEntry,
+                                       RestartScan,
+                                       FileNameFilter,
+                                       Buffer,
+                                       Length);
 }
