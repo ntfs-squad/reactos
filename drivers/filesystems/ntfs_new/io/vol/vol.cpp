@@ -62,6 +62,9 @@ NtfsFsdQueryVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         case FileFsDeviceInformation:
         case FileFsDriverPathInformation:
         case FileFsFullSizeInformation:
+            DPRINT1("FileFsFullSizeInformation() request not implemented!\n");
+            Status = STATUS_NOT_IMPLEMENTED;
+            break;
         case FileFsObjectIdInformation:
         /* Used in Windows 7+
          * case FileFsSectorSizeInformation:

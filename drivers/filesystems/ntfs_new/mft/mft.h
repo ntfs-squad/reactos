@@ -21,12 +21,13 @@ public:
 
     NTSTATUS
     GetFileRecordFromQuery(_In_ PWCHAR Query,
-                          _Out_ PFileRecord* File);
+                           _Out_ PFileRecord* File);
 
     // NTSTATUS
     // WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
     //                 _In_ PULONG BufferLength,
     //                 _In_ PUCHAR Buffer);
+
 private:
     PNTFSVolume Volume;
     UINT64 MFTLCN;
