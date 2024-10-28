@@ -66,7 +66,6 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     switch (FileInfoRequest)
     {
         case FileBasicInformation:
-            DPRINT1("File basic information requested!\n");
             Status = GetFileBasicInformation(FileCB,
                                              (PFILE_BASIC_INFORMATION)SystemBuffer,
                                              &BufferLength);
@@ -176,7 +175,6 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         switch(FileInformationRequest)
         {
             case FileBothDirectoryInformation:
-                DPRINT1("FileBothDirectoryInformation request!\n");
                 Status = GetFileBothDirectoryInformation(FileCB,
                                                          IrpSp->Flags,
                                                          IrpSp->Parameters.QueryDirectory.FileName,
