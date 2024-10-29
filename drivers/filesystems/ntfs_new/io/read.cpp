@@ -7,7 +7,10 @@
  */
 
 /* INCLUDES *****************************************************************/
-#include "read.h"
+#include "ntfsprocs.h"
+
+#define NDEBUG
+#include <debug.h>
 
 /* GLOBALS *****************************************************************/
 
@@ -31,16 +34,34 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PUCHAR Buffer;
     LARGE_INTEGER ReadOffset;
     ULONG RequestedLength;
+    PFileContextBlock FileCB;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     Buffer = (PUCHAR)(GetBuffer(Irp));
     ReadOffset = IrpSp->Parameters.Read.ByteOffset;
     RequestedLength = IrpSp->Parameters.Read.Length;
+    FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
 
-    Status = ReadFile((PFileContextBlock)IrpSp->FileObject->FsContext,
-                      ReadOffset.QuadPart,
-                      &RequestedLength,
-                      Buffer);
+    ASSERT(FileCB);
+    ASSERT(FileCB->FileRec);
+    ASSERT(!(FileCB->FileAttributes & FILE_PERM_COMPRESSED));
+    ASSERT(!(FileCB->FileAttributes & FILE_PERM_ENCRYPTED));
+
+    if (RequestedLength)
+    {
+        // Copy data from $DATA into file buffer.
+        Status = FileCB->FileRec->CopyData(TypeData,
+                                           NULL,
+                                           Buffer,
+                                           &RequestedLength,
+                                           ReadOffset.QuadPart);
+    }
+
+    else
+    {
+        // If we aren't reading anything, don't read anything.
+        Status = STATUS_SUCCESS;
+    }
 
     if (NT_SUCCESS(Status))
     {

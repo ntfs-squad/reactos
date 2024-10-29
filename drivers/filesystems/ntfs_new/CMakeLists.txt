@@ -3,7 +3,7 @@ list(APPEND SOURCE
      io/ntfsprocs.h
      io/util.cpp
      io/fastio.cpp
-     io/read/read.cpp
+     io/read.cpp
      io/ea.cpp
      io/write.cpp
      io/vol/vol.cpp

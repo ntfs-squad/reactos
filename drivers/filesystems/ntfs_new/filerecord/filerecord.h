@@ -92,6 +92,7 @@ public:
     // ./find.cpp
     PAttribute GetAttribute(_In_ AttributeType Type,
                             _In_ PCWSTR Name);
+
     PDataRun FindNonResidentData(_In_ PAttribute Attr);
 
     // ./copy.cpp
@@ -107,6 +108,15 @@ public:
                       _In_ ULONGLONG Offset = 0);
 
     // ./write.cpp
+    NTSTATUS WriteData(_In_ AttributeType Type,
+                       _In_ PCWSTR Name,
+                       _In_ PUCHAR Buffer,
+                       _Inout_ PULONG Length,
+                       _In_ ULONGLONG Offset = 0);
+
+    NTSTATUS WriteData(_In_ PAttribute Attr,
+                       _In_ PUCHAR Buffer,
+                       _Inout_ PULONG Length,
+                       _In_ ULONGLONG Offset = 0);
     NTSTATUS UpdateResidentAttribute(_In_ PAttribute Attr);
-    NTSTATUS SetAttribute(_In_ PAttribute Attr);
 } *PFileRecord;

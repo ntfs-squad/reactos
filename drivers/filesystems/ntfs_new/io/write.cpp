@@ -29,6 +29,19 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Handles write requests.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-write
      */
+    UNREFERENCED_PARAMETER(VolumeDeviceObject);
+
+    // NTSTATUS Status;
+    PIO_STACK_LOCATION IrpSp;
+    PUCHAR Buffer;
+    LARGE_INTEGER ByteOffset;
+    ULONG Length;
+
+    IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    Buffer = (PUCHAR)(GetBuffer(Irp));
+    ByteOffset = IrpSp->Parameters.Write.ByteOffset;
+    Length = IrpSp->Parameters.Write.Length;
+
     __debugbreak();
     return 1;
 }
