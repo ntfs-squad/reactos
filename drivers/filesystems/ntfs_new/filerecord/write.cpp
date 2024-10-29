@@ -9,6 +9,35 @@
 #include "io/ntfsprocs.h"
 
 NTSTATUS
+FileRecord::WriteData(_In_ AttributeType Type,
+                      _In_ PCWSTR Name,
+                      _In_ PUCHAR Buffer,
+                      _Inout_ PULONG Length,
+                      _In_ ULONGLONG Offset)
+{
+    PAttribute Attr = GetAttribute(Type, Name);
+
+    if (Attr)
+        return WriteData(Attr, Buffer, Length, Offset);
+
+    return STATUS_NOT_FOUND;
+}
+
+NTSTATUS
+FileRecord::WriteData(_In_ PAttribute Attr,
+                      _In_ PUCHAR Buffer,
+                      _Inout_ PULONG Length,
+                      _In_ ULONGLONG Offset)
+{
+    UNREFERENCED_PARAMETER(Attr);
+    UNREFERENCED_PARAMETER(Buffer);
+    UNREFERENCED_PARAMETER(Length);
+    UNREFERENCED_PARAMETER(Offset);
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS
 FileRecord::UpdateResidentAttribute(_In_ PAttribute Attr)
 {
     /* TODO:
@@ -151,21 +180,4 @@ FileRecord::UpdateResidentAttribute(_In_ PAttribute Attr)
     Header->ActualSize = DataPtr + 4;
 
     return STATUS_SUCCESS;
-}
-
-NTSTATUS
-FileRecord::SetAttribute(_In_ PAttribute Attr)
-{
-    if (!(Attr->IsNonResident))
-    {
-        // Attribute is resident.
-    }
-
-    else
-    {
-        // Attribute is non-resident.
-    }
-
-    __debugbreak();
-    return STATUS_NOT_IMPLEMENTED;
 }
