@@ -38,7 +38,8 @@ public:
 static
 inline
 BOOLEAN DoesFileNameMatch(PUNICODE_STRING NameFilter,
-                          PBTreeKey Key)
+                          PBTreeKey Key,
+                          BOOLEAN IgnoreCase = TRUE)
 {
     UNICODE_STRING FileNameString;
     PFileNameEx FileNameData;
@@ -55,14 +56,23 @@ BOOLEAN DoesFileNameMatch(PUNICODE_STRING NameFilter,
                               ((FileNameData->NameLength) * sizeof(WCHAR)));
     FileNameString.Length = FileNameString.MaximumLength;
 
-    /* Note: if we want to do case-insensitive searching, we must make
-     * NameFilter all uppercase.
-     *
-     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtlisnameinexpression
-     */
+    if (IgnoreCase)
+    {
+        /* Note: if we want to do case-insensitive searching, we must make
+         * NameFilter all uppercase.
+         *
+         * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtlisnameinexpression
+        */
+        NTSTATUS Status = RtlUpcaseUnicodeString(NameFilter, NameFilter, FALSE);
+        if (!NT_SUCCESS(Status))
+        {
+            // DPRINT1("Failed to upcase name filter! Performing case sensitive matching...\n");
+            IgnoreCase = FALSE;
+        }
+    }
 
     return FsRtlIsNameInExpression(NameFilter,
                                    &FileNameString,
-                                   FALSE,
+                                   IgnoreCase,
                                    NULL);
 }
