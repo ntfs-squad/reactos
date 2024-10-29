@@ -108,6 +108,17 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
     return STATUS_SUCCESS;
 }
 
+/* The FileNameFilter ensures only matching files are included in the buffer.
+ * Hidden metadata files consist of MFT file records 0-26, and should be
+ * hidden. "NtfsShowMetadataFiles" will override the hiding of the metadata
+ * files.
+ */
+#define IsEligibleForFileDir(Key, FileNameFilter) \
+!IsLastEntry(Key) && \
+(!FileNameFilter || DoesFileNameMatch(FileNameFilter, Key)) && \
+(GetFRNFromFileRef(Key->Entry->Data.Directory.IndexedFile) > 26 || \
+ QueryBooleanRegistryValue(L"NtfsShowMetadataFiles"))
+
 NTSTATUS
 Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
                               _In_    BOOLEAN RestartScan,
@@ -135,8 +146,7 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
 
     while (CurrentKey)
     {
-        if (!IsLastEntry(CurrentKey) &&
-            (!FileNameFilter || DoesFileNameMatch(FileNameFilter, CurrentKey)))
+        if (IsEligibleForFileDir(CurrentKey, FileNameFilter))
         {
             // Add key to buffer
             Status = AddKeyToBothDirInfo(&CurrentKey,
