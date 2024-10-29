@@ -273,6 +273,9 @@ DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
                 _Inout_ PULONG OutputBufferSize,
                 _In_    BOOLEAN Override);
 
+BOOLEAN
+QueryBooleanRegistryValue(_In_ PWCHAR Name);
+
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 

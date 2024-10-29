@@ -257,7 +257,6 @@ Directory::LoadDirectory(_In_ PFileRecord File)
     NTSTATUS Status;
 
     Status = CreateRootNode(File, &RootNode);
-
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to load directory!\n");
