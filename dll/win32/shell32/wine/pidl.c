@@ -557,7 +557,13 @@ BOOL WINAPI ILIsEqual(LPCITEMIDLIST pidl1, LPCITEMIDLIST pidl2)
      * so we can only check here
      */
     if (!pcheck(pidl1) || !pcheck (pidl2))
+#ifdef __REACTOS__
+    {
+        /* We don't understand the PIDL content but that does not mean it's invalid */
+    }
+#else
         return FALSE;
+#endif
 
     pdump (pidl1);
     pdump (pidl2);
@@ -1761,7 +1767,6 @@ LPITEMIDLIST _ILCreateGuidFromStrA(LPCSTR szGUID)
     }
     return _ILCreateGuid(PT_GUID, &iid);
 }
-#endif
 
 LPITEMIDLIST _ILCreateGuidFromStrW(LPCWSTR szGUID)
 {
@@ -1778,6 +1783,7 @@ LPITEMIDLIST _ILCreateGuidFromStrW(LPCWSTR szGUID)
     }
     return _ILCreateGuid(PT_GUID, &iid);
 }
+#endif /* __REACTOS__ */
 
 LPITEMIDLIST _ILCreateFromFindDataW( const WIN32_FIND_DATAW *wfd )
 {

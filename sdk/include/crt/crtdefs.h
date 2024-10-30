@@ -33,11 +33,20 @@
 #pragma pack(push,_CRT_PACKING)
 
 /* Disable non-ANSI C definitions if compiling with __STDC__ */
-//HACK: Disabled
-//#if __STDC__
-//#define NO_OLDNAMES
-//#endif
+#if (!defined _CRT_DECLARE_NONSTDC_NAMES || !_CRT_DECLARE_NONSTDC_NAMES) && (defined _CRT_DECLARE_NONSTDC_NAMES || __STDC__)
+#define NO_OLDNAMES
+#endif
 
+#if defined(__GNUC__) && !defined(__clang__)
+  #define _CRT_DISABLE_GCC_WARNINGS \
+            _Pragma("GCC diagnostic push") \
+            _Pragma("GCC diagnostic ignored \"-Wbuiltin-declaration-mismatch\"") \
+            _Pragma("GCC diagnostic ignored \"-Wunknown-pragmas\"")
+  #define _CRT_RESTORE_GCC_WARNINGS _Pragma("GCC diagnostic pop")
+#else // __GNUC__
+  #define _CRT_DISABLE_GCC_WARNINGS
+  #define _CRT_RESTORE_GCC_WARNINGS
+#endif // __GNUC__
 
 /** Properties ***************************************************************/
 
@@ -133,10 +142,6 @@
  #define _AGLOBAL
 #endif
 
-#ifndef _CONST_RETURN
- #define _CONST_RETURN
-#endif
-
 #ifndef UNALIGNED
 #if defined(__ia64__) || defined(__x86_64) || defined(__arm__) || defined(__arm64__)
 #define UNALIGNED __unaligned
@@ -157,10 +162,6 @@
 
 #ifndef _CRTNOALIAS
 #define _CRTNOALIAS
-#endif
-
-#ifndef _CRTRESTRICT
-#define _CRTRESTRICT
 #endif
 
 #ifndef __CRTDECL
@@ -437,14 +438,6 @@ typedef struct threadmbcinfostruct *pthreadmbcinfo;
 #endif
 
 struct __lc_time_data;
-
-#ifndef DEFINED_localeinfo_struct
-typedef struct localeinfo_struct {
-    pthreadlocinfo locinfo;
-    pthreadmbcinfo mbcinfo;
-}_locale_tstruct,*_locale_t;
-#define DEFINED_localeinfo_struct 1
-#endif
 
 #ifdef __cplusplus
 }

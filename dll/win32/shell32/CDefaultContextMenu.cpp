@@ -23,11 +23,6 @@ SHELL_GetRegCLSID(HKEY hKey, LPCWSTR SubKey, LPCWSTR Value, CLSID &clsid)
     return !err ? CLSIDFromString(buf, &clsid) : HRESULT_FROM_WIN32(err);
 }
 
-static inline bool RegValueExists(HKEY hKey, LPCWSTR Name)
-{
-    return RegQueryValueExW(hKey, Name, NULL, NULL, NULL, NULL) == ERROR_SUCCESS;
-}
-
 static BOOL InsertMenuItemAt(HMENU hMenu, UINT Pos, UINT Flags)
 {
     MENUITEMINFOW mii;
@@ -157,6 +152,7 @@ class CDefaultContextMenu :
         WCHAR m_DefVerbs[MAX_PATH];
 
         HRESULT _DoCallback(UINT uMsg, WPARAM wParam, LPVOID lParam);
+        HRESULT _DoInvokeCommandCallback(LPCMINVOKECOMMANDINFOEX lpcmi, WPARAM CmdId);
         void AddStaticEntry(const HKEY hkeyClass, const WCHAR *szVerb, UINT uFlags);
         void AddStaticEntriesForKey(HKEY hKey, UINT uFlags);
         void TryPickDefault(HMENU hMenu, UINT idCmdFirst, UINT DfltOffset, UINT uFlags);
@@ -338,7 +334,7 @@ void CDefaultContextMenu::AddStaticEntry(const HKEY hkeyClass, const WCHAR *szVe
 
     TRACE("adding verb %s\n", debugstr_w(szVerb));
 
-    if (!wcsicmp(szVerb, L"open") && !(uFlags & CMF_NODEFAULT))
+    if (!_wcsicmp(szVerb, L"open") && !(uFlags & CMF_NODEFAULT))
     {
         /* open verb is always inserted in front */
         m_StaticEntries.AddHead({ szVerb, hkeyClass });
@@ -876,7 +872,7 @@ CDefaultContextMenu::QueryContextMenu(
             return MAKE_HRESULT(SEVERITY_SUCCESS, 0, cIds);
 
         /* Add the default part of the menu */
-        HMENU hmenuDefault = LoadMenu(_AtlBaseModule.GetResourceInstance(), L"MENU_SHV_FILE");
+        HMENU hmenuDefault = LoadMenuW(_AtlBaseModule.GetResourceInstance(), L"MENU_SHV_FILE");
 
         /* Remove uneeded entries */
         if (!(rfg & SFGAO_CANMOVE))
@@ -1053,7 +1049,7 @@ HRESULT
 CDefaultContextMenu::DoProperties(
     LPCMINVOKECOMMANDINFOEX lpcmi)
 {
-    HRESULT hr = _DoCallback(DFM_INVOKECOMMAND, DFM_CMD_PROPERTIES, NULL);
+    HRESULT hr = _DoInvokeCommandCallback(lpcmi, DFM_CMD_PROPERTIES);
 
     // We are asked to run the default property sheet
     if (hr == S_FALSE)
@@ -1260,6 +1256,13 @@ CDefaultContextMenu::BrowserFlagsFromVerb(LPCMINVOKECOMMANDINFOEX lpcmi, PStatic
     else
         FlagsName = L"BrowserFlags";
 
+    CComPtr<ICommDlgBrowser> pcdb;
+    if (SUCCEEDED(psb->QueryInterface(IID_PPV_ARG(ICommDlgBrowser, &pcdb))))
+    {
+        if (LOBYTE(GetVersion()) < 6 || FlagsName[0] == 'E')
+            return 0; // Don't browse in-place
+    }
+
     /* Try to get the flag from the verb */
     hr = StringCbPrintfW(wszKey, sizeof(wszKey), L"shell\\%s", pEntry->Verb.GetString());
     if (FAILED_UNEXPECTEDLY(hr))
@@ -1302,8 +1305,7 @@ CDefaultContextMenu::TryToBrowse(
 HRESULT
 CDefaultContextMenu::InvokePidl(LPCMINVOKECOMMANDINFOEX lpcmi, LPCITEMIDLIST pidl, PStaticShellEntry pEntry)
 {
-    BOOL unicode = lpcmi->cbSize >= FIELD_OFFSET(CMINVOKECOMMANDINFOEX, ptInvoke) &&
-                   (lpcmi->fMask & CMIC_MASK_UNICODE);
+    const BOOL unicode = IsUnicode(*lpcmi);
 
     LPITEMIDLIST pidlFull = ILCombine(m_pidlFolder, pidl);
     if (pidlFull == NULL)
@@ -1315,7 +1317,23 @@ CDefaultContextMenu::InvokePidl(LPCMINVOKECOMMANDINFOEX lpcmi, LPCITEMIDLIST pid
     BOOL bHasPath = SHGetPathFromIDListW(pidlFull, wszPath);
 
     WCHAR wszDir[MAX_PATH];
-    if (bHasPath)
+
+    SHELLEXECUTEINFOW sei = { sizeof(sei) };
+    sei.fMask = SEE_MASK_CLASSKEY | SEE_MASK_IDLIST | (CmicFlagsToSeeFlags(lpcmi->fMask) & ~SEE_MASK_INVOKEIDLIST);
+    sei.hwnd = lpcmi->hwnd;
+    sei.nShow = lpcmi->nShow;
+    sei.lpVerb = pEntry->Verb;
+    sei.lpIDList = pidlFull;
+    sei.hkeyClass = pEntry->hkClass;
+    sei.dwHotKey = lpcmi->dwHotKey;
+    sei.hIcon = lpcmi->hIcon;
+    sei.lpDirectory = wszDir;
+
+    if (unicode && !StrIsNullOrEmpty(lpcmi->lpDirectoryW))
+    {
+        sei.lpDirectory = lpcmi->lpDirectoryW;
+    }
+    else if (bHasPath)
     {
         wcscpy(wszDir, wszPath);
         PathRemoveFileSpec(wszDir);
@@ -1326,25 +1344,19 @@ CDefaultContextMenu::InvokePidl(LPCMINVOKECOMMANDINFOEX lpcmi, LPCITEMIDLIST pid
             *wszDir = UNICODE_NULL;
     }
 
-    CComHeapPtr<WCHAR> pszParamsW;
-    SHELLEXECUTEINFOW sei = { sizeof(sei) };
-    sei.hwnd = lpcmi->hwnd;
-    sei.nShow = SW_SHOWNORMAL;
-    sei.lpVerb = pEntry->Verb;
-    sei.lpDirectory = wszDir;
-    sei.lpIDList = pidlFull;
-    sei.hkeyClass = pEntry->hkClass;
-    sei.fMask = SEE_MASK_CLASSKEY | SEE_MASK_IDLIST;
     if (bHasPath)
         sei.lpFile = wszPath;
 
+    CComHeapPtr<WCHAR> pszParamsW;
     if (unicode && !StrIsNullOrEmpty(lpcmi->lpParametersW))
         sei.lpParameters = lpcmi->lpParametersW;
     else if (!StrIsNullOrEmpty(lpcmi->lpParameters) && __SHCloneStrAtoW(&pszParamsW, lpcmi->lpParameters))
         sei.lpParameters = pszParamsW;
 
-    ShellExecuteExW(&sei);
+    if (!sei.lpClass && (lpcmi->fMask & (CMIC_MASK_HASLINKNAME | CMIC_MASK_HASTITLE)) && unicode)
+        sei.lpClass = lpcmi->lpTitleW; // Forward .lnk path from CShellLink::DoOpen (for consrv STARTF_TITLEISLINKNAME)
 
+    ShellExecuteExW(&sei);
     ILFree(pidlFull);
 
     return S_OK;
@@ -1443,6 +1455,29 @@ CDefaultContextMenu::InvokeRegVerb(
 }
 
 HRESULT
+CDefaultContextMenu::_DoInvokeCommandCallback(
+    LPCMINVOKECOMMANDINFOEX lpcmi, WPARAM CmdId)
+{
+    BOOL Unicode = IsUnicode(*lpcmi);
+    WCHAR lParamBuf[MAX_PATH];
+    LPARAM lParam = 0;
+
+    if (Unicode && lpcmi->lpParametersW)
+        lParam = (LPARAM)lpcmi->lpParametersW;
+    else if (lpcmi->lpParameters)
+        lParam = SHAnsiToUnicode(lpcmi->lpParameters, lParamBuf, _countof(lParamBuf)) ? (LPARAM)lParamBuf : 0;
+
+    HRESULT hr;
+#if 0 // TODO: Try DFM_INVOKECOMMANDEX first.
+    DFMICS dfmics = { sizeof(DFMICS), lpcmi->fMask, lParam, m_iIdSCMFirst?, m_iIdDfltLast?, (LPCMINVOKECOMMANDINFO)lpcmi, m_site };
+    hr = _DoCallback(DFM_INVOKECOMMANDEX, CmdId, &dfmics);
+    if (hr == E_NOTIMPL)
+#endif
+        hr = _DoCallback(DFM_INVOKECOMMAND, CmdId, (void*)lParam);
+    return hr;
+}
+
+HRESULT
 WINAPI
 CDefaultContextMenu::InvokeCommand(
     LPCMINVOKECOMMANDINFO lpcmi)
@@ -1482,7 +1517,7 @@ CDefaultContextMenu::InvokeCommand(
 
     if (m_iIdCBFirst != m_iIdCBLast && CmdId >= m_iIdCBFirst && CmdId < m_iIdCBLast)
     {
-        Result = _DoCallback(DFM_INVOKECOMMAND, CmdId - m_iIdCBFirst, NULL);
+        Result = _DoInvokeCommandCallback(&LocalInvokeInfo, CmdId - m_iIdCBFirst);
         return Result;
     }
 

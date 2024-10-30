@@ -95,6 +95,14 @@ BEGIN
     END
 END
 
+IDM_DVSELECT MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "Se&lect", 0
+    END
+END
+
 IDD_BROWSE_FOR_FOLDER DIALOGEX 15, 40, 188, 192
 STYLE DS_SHELLFONT | DS_MODALFRAME | WS_CAPTION | WS_SYSMENU
 CAPTION "בחירת תיקיה"
@@ -988,10 +996,6 @@ BEGIN
     IDS_FILE_DETAILSADV "Files with extension '%s' are of type '%s'. To change settings that affect all '%s' files, click Advanced."
     IDS_FILE_TYPES "סוגי קבצים"
     IDS_COLUMN_EXTENSION "סיומות"
-
-    /* As in 'INI File' or 'WAV File', fallback string for no-name extensions
-       used in the _File type_ tab of the _Folder Options_ dialog */
-    IDS_FILE_EXT_TYPE "קובץ %s"
 
     IDS_BYTES_FORMAT "בתים"
     IDS_UNKNOWN_APP "יישום לא ידוע"

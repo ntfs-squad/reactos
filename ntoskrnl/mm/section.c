@@ -1509,7 +1509,12 @@ MmAlterViewAttributes(PMMSUPPORT AddressSpace,
                  */
                 Page = MmGetPfnForProcess(Process, Address);
 
-                Protect = PAGE_READONLY;
+                /* Choose protection based on what was requested */
+                if (NewProtect == PAGE_EXECUTE_READWRITE)
+                    Protect = PAGE_EXECUTE_READ;
+                else
+                    Protect = PAGE_READONLY;
+
                 if (IS_SWAP_FROM_SSE(Entry) || PFN_FROM_SSE(Entry) != Page)
                 {
                     Protect = NewProtect;
@@ -4256,8 +4261,8 @@ MmCanFileBeTruncated(
     _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
     _In_opt_ PLARGE_INTEGER NewFileSize)
 {
-    BOOLEAN Ret;
     PMM_SECTION_SEGMENT Segment;
+    BOOLEAN Ret = FALSE;
 
     /* Check whether an ImageSectionObject exists */
     if (SectionObjectPointer->ImageSectionObject != NULL)
@@ -4282,14 +4287,17 @@ MmCanFileBeTruncated(
     }
     else if (NewFileSize != NULL)
     {
-        /* We can't shrink, but we can extend */
-        Ret = NewFileSize->QuadPart >= Segment->RawLength.QuadPart;
-#if DBG
-        if (!Ret)
+        if (NewFileSize != NULL)
         {
-            DPRINT1("Cannot truncate data: New Size %I64d, Segment Size %I64d\n", NewFileSize->QuadPart, Segment->RawLength.QuadPart);
-        }
+            /* We can't shrink, but we can extend */
+            Ret = NewFileSize->QuadPart >= Segment->RawLength.QuadPart;
+#if DBG
+            if (!Ret)
+            {
+                DPRINT1("Cannot truncate data: New Size %I64d, Segment Size %I64d\n", NewFileSize->QuadPart, Segment->RawLength.QuadPart);
+            }
 #endif
+        }
     }
     else
     {
@@ -4961,9 +4969,7 @@ MmFlushSegment(
     if (!Segment)
     {
         /* Nothing to flush */
-        if (Iosb)
-            Iosb->Status = STATUS_SUCCESS;
-        return STATUS_SUCCESS;
+        goto Quit;
     }
 
     ASSERT(*Segment->Flags & MM_DATAFILE_SEGMENT);
@@ -4976,17 +4982,12 @@ MmFlushSegment(
 
         /* FIXME: All of this is suboptimal */
         ULONG ElemCount = RtlNumberGenericTableElements(&Segment->PageTable);
-        /* No page. Nothing to flush */
         if (!ElemCount)
         {
+            /* No page. Nothing to flush */
             MmUnlockSectionSegment(Segment);
             MmDereferenceSegment(Segment);
-            if (Iosb)
-            {
-                Iosb->Status = STATUS_SUCCESS;
-                Iosb->Information = 0;
-            }
-            return STATUS_SUCCESS;
+            goto Quit;
         }
 
         PCACHE_SECTION_PAGE_TABLE PageTable = RtlGetElementGenericTable(&Segment->PageTable, ElemCount - 1);
@@ -5014,6 +5015,8 @@ MmFlushSegment(
     MmUnlockSectionSegment(Segment);
     MmDereferenceSegment(Segment);
 
+Quit:
+    /* FIXME: Handle failures */
     if (Iosb)
         Iosb->Status = STATUS_SUCCESS;
 

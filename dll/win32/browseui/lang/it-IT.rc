@@ -293,11 +293,6 @@ END
 
 STRINGTABLE
 BEGIN
-    IDS_FOLDERSLABEL "Cartelle"
-END
-
-STRINGTABLE
-BEGIN
     IDS_ADDRESSMENUTEXT "&Indirizzo"
     IDS_HISTORYTEXT "&Recenti\tCtrl+H"
 END
@@ -341,5 +336,5 @@ END
 STRINGTABLE
 BEGIN
     IDS_PARSE_ADDR_ERR_TITLE "ReactOS Explorer"
-    IDS_PARSE_ADDR_ERR_TEXT "ReactOS Explorer non può trovare '%1'. Controlla la digitazione e riprova."
+    IDS_PARSE_ADDR_ERR_TEXT "ReactOS Explorer non è in grado di trovare '%1'. Controlla la digitazione e riprova."
 END

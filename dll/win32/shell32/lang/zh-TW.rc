@@ -97,6 +97,14 @@ BEGIN
     END
 END
 
+IDM_DVSELECT MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "Se&lect", 0
+    END
+END
+
 IDD_BROWSE_FOR_FOLDER DIALOGEX 15, 40, 188, 192
 STYLE DS_SHELLFONT | DS_MODALFRAME | WS_CAPTION | WS_SYSMENU
 CAPTION "瀏覽資料夾"
@@ -990,10 +998,6 @@ BEGIN
     IDS_FILE_DETAILSADV "副檔名為「%s」的檔案屬於類型「%s」。如果要變更影響所有「%s」檔案的設定值，請按一下［進階］。"
     IDS_FILE_TYPES "檔案類型"
     IDS_COLUMN_EXTENSION "副檔名"
-
-    /* As in 'INI File' or 'WAV File', fallback string for no-name extensions
-       used in the _File type_ tab of the _Folder Options_ dialog */
-    IDS_FILE_EXT_TYPE "%s 檔案"
 
     IDS_BYTES_FORMAT "位元組"
     IDS_UNKNOWN_APP "未知應用程式"

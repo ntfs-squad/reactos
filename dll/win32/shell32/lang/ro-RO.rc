@@ -96,6 +96,14 @@ BEGIN
     END
 END
 
+IDM_DVSELECT MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "Se&lect", 0
+    END
+END
+
 IDD_BROWSE_FOR_FOLDER DIALOGEX 15, 40, 188, 192
 STYLE DS_SHELLFONT | DS_MODALFRAME | WS_CAPTION | WS_SYSMENU
 CAPTION "Specificare folder"
@@ -989,10 +997,6 @@ BEGIN
     IDS_FILE_DETAILSADV "Fişierele cu extensia '%s' sunt de tipul '%s'. Pentru a modifica opţiunile care vor afecta toate fişierele '%s', apăsaţi Complex."
     IDS_FILE_TYPES "Tipuri"
     IDS_COLUMN_EXTENSION "Extensii"
-
-    /* As in 'INI File' or 'WAV File', fallback string for no-name extensions
-       used in the _File type_ tab of the _Folder Options_ dialog */
-    IDS_FILE_EXT_TYPE "Fişier %s"
 
     IDS_BYTES_FORMAT "octeţi"
     IDS_UNKNOWN_APP "Aplicaţie nespecificată"

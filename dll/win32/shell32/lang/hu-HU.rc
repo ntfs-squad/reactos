@@ -88,6 +88,14 @@ BEGIN
     END
 END
 
+IDM_DVSELECT MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "Se&lect", 0
+    END
+END
+
 IDD_BROWSE_FOR_FOLDER DIALOGEX 15, 40, 188, 192
 STYLE DS_SHELLFONT | DS_MODALFRAME | WS_CAPTION | WS_SYSMENU
 CAPTION "Mappák böngészése"
@@ -980,10 +988,6 @@ BEGIN
     IDS_FILE_DETAILSADV "A(z) '%s' kiterjesztésű fájlok típusa '%s'. Az összes '%s' típusú fájlt érintő beállítás megváltoztatásához kattintson a Haladó gombra."
     IDS_FILE_TYPES "Fájltípusok"
     IDS_COLUMN_EXTENSION "Kiterjesztések"
-
-    /* As in 'INI File' or 'WAV File', fallback string for no-name extensions
-       used in the _File type_ tab of the _Folder Options_ dialog */
-    IDS_FILE_EXT_TYPE "%s fájl"
 
     IDS_BYTES_FORMAT "bájt"
     IDS_UNKNOWN_APP "Ismeretlen alkalmazás"
