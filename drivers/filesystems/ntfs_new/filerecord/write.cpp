@@ -8,17 +8,21 @@
 
 #include "io/ntfsprocs.h"
 
+#define CalculateNewRecordSize(OldRecordSize, OldAttribute, NewDataLength) \
+((OldRecordSize) - (OldAttribute->Resident.DataLength) + (NewDataLength))
+
 NTSTATUS
 FileRecord::WriteData(_In_ AttributeType Type,
                       _In_ PCWSTR Name,
                       _In_ PUCHAR Buffer,
                       _Inout_ PULONG Length,
+                      _In_ BOOLEAN WriteToEndOfFile,
                       _In_ ULONGLONG Offset)
 {
     PAttribute Attr = GetAttribute(Type, Name);
 
     if (Attr)
-        return WriteData(Attr, Buffer, Length, Offset);
+        return WriteData(Attr, Buffer, Length, WriteToEndOfFile, Offset);
 
     return STATUS_NOT_FOUND;
 }
@@ -27,14 +31,36 @@ NTSTATUS
 FileRecord::WriteData(_In_ PAttribute Attr,
                       _In_ PUCHAR Buffer,
                       _Inout_ PULONG Length,
+                      _In_ BOOLEAN WriteToEndOfFile,
                       _In_ ULONGLONG Offset)
 {
-    UNREFERENCED_PARAMETER(Attr);
     UNREFERENCED_PARAMETER(Buffer);
     UNREFERENCED_PARAMETER(Length);
     UNREFERENCED_PARAMETER(Offset);
 
-    return STATUS_NOT_IMPLEMENTED;
+    if (!(Attr->IsNonResident))
+    {
+        // Attribute is resident.
+        if (CalculateNewRecordSize(this->Header->ActualSize, Attr, *Length) > (this->Header->AllocatedSize))
+        {
+            //TODO: Promote to non-resident if needed.
+            DPRINT1("Unable to promote attribute to non-resident!\n");
+            return STATUS_NOT_IMPLEMENTED;
+        }
+
+        DPRINT1("Updating file record...\n");
+        DPRINT1("Windows may not like the lack of journaling.\n");
+
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    else
+    {
+        // Attribute is non-resident.
+        DPRINT1("We don't support writing to nonresident files yet\n");
+        __debugbreak();
+        return STATUS_NOT_IMPLEMENTED;
+    }
 }
 
 NTSTATUS

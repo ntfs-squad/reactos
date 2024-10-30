@@ -36,11 +36,15 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PUCHAR Buffer;
     LARGE_INTEGER ByteOffset;
     ULONG Length;
+    BOOLEAN WriteToEndOfFile;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     Buffer = (PUCHAR)(GetBuffer(Irp));
     ByteOffset = IrpSp->Parameters.Write.ByteOffset;
     Length = IrpSp->Parameters.Write.Length;
+
+    WriteToEndOfFile = (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_WRITE_TO_END_OF_FILE
+                        && IrpSp->Parameters.Write.ByteOffset.HighPart == -1);
 
     __debugbreak();
     return 1;

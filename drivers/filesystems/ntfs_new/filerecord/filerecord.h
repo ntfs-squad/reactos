@@ -112,11 +112,14 @@ public:
                        _In_ PCWSTR Name,
                        _In_ PUCHAR Buffer,
                        _Inout_ PULONG Length,
+                       _In_ BOOLEAN WriteToEndOfFile,
                        _In_ ULONGLONG Offset = 0);
 
     NTSTATUS WriteData(_In_ PAttribute Attr,
                        _In_ PUCHAR Buffer,
                        _Inout_ PULONG Length,
+                       _In_ BOOLEAN WriteToEndOfFile,
                        _In_ ULONGLONG Offset = 0);
+
     NTSTATUS UpdateResidentAttribute(_In_ PAttribute Attr);
 } *PFileRecord;
