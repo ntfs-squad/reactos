@@ -16,21 +16,19 @@
 min(PathElementLength(FileName->Buffer), GetFileName(CurrentKey)->NameLength)
 
 // NOTE: This is case sensitive!
-INT
+LONG
 WideStringCompare(PWCHAR FirstString,
                   PWCHAR SecondString,
                   UINT Length)
 {
-    INT Result;
+    UNICODE_STRING String1, String2;
 
-    for(int i = 0; i < Length; i++)
-    {
-        Result = (FirstString[i] - SecondString[i]);
-        if (Result)
-            return Result;
-    }
+    RtlInitEmptyUnicodeString(&String1, FirstString, Length);
+    RtlInitEmptyUnicodeString(&String2, SecondString, Length);
+    String1.Length = Length;
+    String2.Length = Length;
 
-    return 0;
+    return RtlCompareUnicodeString(&String1, &String2, TRUE);
 }
 
 PBTreeKey
