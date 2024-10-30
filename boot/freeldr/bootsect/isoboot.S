@@ -136,7 +136,7 @@ relocated:
     // If it's invalid, there is probably no OS installed and we just boot FREELDR from our ReactOS medium.
     mov ax, word ptr ds:[HEX(7C00)+510]
     cmp ax, HEX(AA55)
-    jne .boot_setupldr
+    jne .boot_freeldr
 
     // Jump anyways
     jmp .boot_setupldr
@@ -188,7 +188,6 @@ relocated:
 
     ljmp16 0, HEX(7C00)
 
-.boot_setupldr:
 .boot_freeldr:
 #ifdef WAIT_FOR_KEY
     call crlf_early
