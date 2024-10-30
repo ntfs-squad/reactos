@@ -188,6 +188,11 @@ relocated:
 
     ljmp16 0, HEX(7C00)
 
+.boot_freeldr:
+#ifdef WAIT_FOR_KEY
+    call crlf_early
+    call crlf_early
+#endif
 .boot_setupldr:
 
     // The BIOS gave us a boot drive number, so in a perfect world we could just use that one now.
