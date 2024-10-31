@@ -15,7 +15,6 @@
 #define CompareLength(FileName, CurrentKey) \
 min(PathElementLength(FileName->Buffer), GetFileName(CurrentKey)->NameLength)
 
-// NOTE: This is case sensitive!
 LONG
 WideStringCompare(PWCHAR FirstString,
                   PWCHAR SecondString,

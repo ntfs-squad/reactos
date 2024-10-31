@@ -87,7 +87,8 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
     char* DataRunPtr;
     PDataRun Head, Temp;
     UINT8 LengthSize, OffsetSize;
-    ULONGLONG PreviousOffset;
+    ULONGLONG PreviousLCN = 0;
+    LONGLONG TestOffset = 0;
 
     ASSERT(DataAttr->IsNonResident);
 
@@ -111,20 +112,27 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
                   DataRunPtr + 1 + LengthSize,
                   OffsetSize);
 
+    DPRINT1("Head->LCN: %llu (Sector: %llu), Size: %llu\n", Head->LCN, ((Head->LCN) * 8), Head->Length);
+
     // Populate children data runs for head, if available.
     Temp = Head;
-    PreviousOffset = Temp->LCN;
+    PreviousLCN = Temp->LCN;
     DataRunPtr += (1 + LengthSize + OffsetSize);
 
     while (DataRunPtr[0])
     {
+        TestOffset = 0;
+
         // Initialize next item in linked list.
         Temp->NextRun = new(PagedPool) DataRun();
         Temp = Temp->NextRun;
 
-        // Get length and offset for current data run.
+        // Get length and offset sizes for current data run.
         LengthSize = DataRunPtr[0] & 0xF;
         OffsetSize = DataRunPtr[0] >> 4;
+
+        // We don't yet handle offset sizes larger than 8 bytes.
+        ASSERT(OffsetSize <= sizeof(LONGLONG));
 
         // Copy length and LCN into child data run.
         RtlCopyMemory(&Temp->Length,
@@ -132,20 +140,25 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
                       LengthSize);
 
         /* Note: Child LCN's are relative to previous offset. They can be negative.
-         * So the real LCN = Previous Offset + LCN.
-         * TODO: Make this work with negative offsets.
+         * So the real LCN = Previous LCN + Current LCN.
          */
-        RtlCopyMemory(&Temp->LCN,
-                      DataRunPtr + 1 + LengthSize,
+        RtlCopyMemory(&TestOffset,
+                      (DataRunPtr + 1 + LengthSize),
                       OffsetSize);
 
-        Temp->LCN += PreviousOffset;
+        // Sign extend the LCN offset if needed.
+        TestOffset = (TestOffset << ((sizeof(LONGLONG) - OffsetSize) * 8)) >> ((sizeof(LONGLONG) - OffsetSize) * 8);
+
+        // Assign LCN for this data run
+        Temp->LCN = (TestOffset + PreviousLCN);
+
+        DPRINT1("Temp->LCN: %llu (Sector: %llu), Size: %llu\n", Temp->LCN, Temp->LCN << 3, Temp->Length);
 
         // Move data run pointer to next item.
         DataRunPtr += (1 + LengthSize + OffsetSize);
 
         // Update Previous Offset
-        PreviousOffset = Temp->LCN;
+        PreviousLCN = Temp->LCN;
     }
 
     // The caller is responsible for freeing the linked list.

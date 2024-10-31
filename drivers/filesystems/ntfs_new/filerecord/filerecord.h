@@ -52,7 +52,7 @@ struct DataRun
 {
     PDataRun  NextRun;
     ULONGLONG LCN;
-    ULONGLONG Length;
+    ULONGLONG Length; // In clusters
 };
 
 typedef struct

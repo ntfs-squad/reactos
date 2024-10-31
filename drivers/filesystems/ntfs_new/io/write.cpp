@@ -32,20 +32,21 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     UNREFERENCED_PARAMETER(VolumeDeviceObject);
 
     // NTSTATUS Status;
-    PIO_STACK_LOCATION IrpSp;
-    PUCHAR Buffer;
-    LARGE_INTEGER ByteOffset;
-    ULONG Length;
-    BOOLEAN WriteToEndOfFile;
+    // PIO_STACK_LOCATION IrpSp;
+    // PUCHAR Buffer;
+    // LARGE_INTEGER ByteOffset;
+    // ULONG Length;
+    // BOOLEAN WriteToEndOfFile;
 
-    IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    Buffer = (PUCHAR)(GetBuffer(Irp));
-    ByteOffset = IrpSp->Parameters.Write.ByteOffset;
-    Length = IrpSp->Parameters.Write.Length;
+    // IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    // Buffer = (PUCHAR)(GetBuffer(Irp));
+    // ByteOffset = IrpSp->Parameters.Write.ByteOffset;
+    // Length = IrpSp->Parameters.Write.Length;
 
-    WriteToEndOfFile = (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_WRITE_TO_END_OF_FILE
-                        && IrpSp->Parameters.Write.ByteOffset.HighPart == -1);
+    // WriteToEndOfFile = (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_WRITE_TO_END_OF_FILE
+    //                     && IrpSp->Parameters.Write.ByteOffset.HighPart == -1);
 
-    __debugbreak();
-    return 1;
+    DPRINT1("Called NtfsFsdWrite() which IS NOT IMPLEMENTED!\n");
+    IoSkipCurrentIrpStackLocation(Irp);
+    return STATUS_NOT_IMPLEMENTED;
 }

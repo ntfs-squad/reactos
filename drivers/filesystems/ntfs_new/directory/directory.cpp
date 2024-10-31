@@ -110,11 +110,16 @@ CreateNode(_In_    PFileRecord File,
 
         if (CurrentKey->Entry->Flags & INDEX_ENTRY_NODE)
         {
-            CreateNode(File,
-                       IndexAllocationAttribute,
-                       CurrentKey);
+            Status = CreateNode(File,
+                                IndexAllocationAttribute,
+                                CurrentKey);
 
-            // TODO: Handle failure
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("Failed to create subnode!\n");
+                __debugbreak();
+                return STATUS_NOT_FOUND;
+            }
         }
 
         if (!(CurrentEntry->Flags & INDEX_ENTRY_END))
@@ -154,13 +159,6 @@ CreateRootNode(_In_  PFileRecord File,
     PBTreeKey CurrentKey, NextKey;
     PIndexEntry CurrentEntry;
     ULONG_PTR EndOfIndexRootData;
-
-    // This only works on files that are directories.
-    if (!(File->Header->Flags & FR_IS_DIRECTORY))
-    {
-        DPRINT1("File is not a directory!\n");
-        return STATUS_NOT_FOUND;
-    }
 
     // Get $INDEX_ROOT attribute.
     IndexRootAttribute = File->GetAttribute(TypeIndexRoot, NULL);
@@ -255,11 +253,26 @@ NTSTATUS
 Directory::LoadDirectory(_In_ PFileRecord File)
 {
     NTSTATUS Status;
+    PAttribute BitmapAttribute;
 
+    // This only works on files that are directories.
+    ASSERT(File->Header->Flags & FR_IS_DIRECTORY);
+
+    /* First, we need to get the index allocation bitmap attribute
+     * to determine what index entries are marked as in use.
+     */
+    BitmapAttribute = File->GetAttribute(TypeBitmap, L"$I30");
+    if (!BitmapAttribute)
+    {
+        DPRINT1("Failed to find $BITMAP attribute!\n");
+        return STATUS_NOT_FOUND;
+    }
+
+    // Get the root node for the directory
     Status = CreateRootNode(File, &RootNode);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Failed to load directory!\n");
+        DPRINT1("Failed to create root node!\n");
         return STATUS_NOT_FOUND;
     }
 

@@ -32,6 +32,7 @@ FileRecord::CopyData(_In_    PAttribute Attr,
                      _Inout_ PULONG Length,
                      _In_    ULONGLONG Offset)
 {
+    NTSTATUS Status;
     ULONG BytesToRead, BytesRead, BytesInRun, DataPointer;
     PDataRun Head, CurrentDR;
 
@@ -90,17 +91,24 @@ FileRecord::CopyData(_In_    PAttribute Attr,
             if (Offset >= BytesInRun)
             {
                 Offset -= BytesInRun;
+                DPRINT1("Offset >= BytesInRun! (%llu >= %lu)\n", Offset, BytesInRun);
             }
 
             else
             {
                 // We need to copy data from this run before moving to the next one.
+                DPRINT1("Offset is now: %llu\n", Offset);
 
                 // Get data
-                ReadDiskUnaligned(Volume->PartDeviceObj,
-                                  GetOffset(CurrentDR->LCN, Volume) + Offset,
-                                  min(BytesToRead, (BytesInRun - Offset)),
-                                  Buffer);
+                Status = ReadDiskUnaligned(Volume->PartDeviceObj,
+                                           GetOffset(CurrentDR->LCN, Volume) + Offset,
+                                           min(BytesToRead, (BytesInRun - Offset)),
+                                           Buffer);
+                if (!NT_SUCCESS(Status))
+                {
+                    DPRINT1("Failed to read attribute contents!\n");
+                    return Status;
+                }
 
                 // Adjust bytes read
                 BytesRead += min(BytesToRead, (BytesInRun - Offset));
