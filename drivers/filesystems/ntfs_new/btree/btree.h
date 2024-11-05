@@ -36,6 +36,7 @@ typedef struct _BTreeKey
     _BTreeNode* ChildNode;
     _BTreeKey*  NextKey;
     PIndexEntry Entry;
+    ULONG       Flags;
 } BTreeKey, *PBTreeKey;
 
 typedef struct

@@ -38,6 +38,8 @@ FileRecord::WriteData(_In_ PAttribute Attr,
     UNREFERENCED_PARAMETER(Length);
     UNREFERENCED_PARAMETER(Offset);
 
+    DPRINT1("Called FileRecord::WriteData()!\n");
+
     if (!(Attr->IsNonResident))
     {
         // Attribute is resident.
@@ -76,6 +78,8 @@ FileRecord::UpdateResidentAttribute(_In_ PAttribute Attr)
     ULONG DataPtr, OldDataPtr, OldDataLen, AttrType;
     PAttribute TestAttr;
     BOOLEAN NewAttrWritten = FALSE;
+
+    DPRINT1("Called FileRecord::UpdateResidentAttribute()!\n");
 
     // Ensure this function wasn't called with a non-resident attribute
     ASSERT(!(Attr->IsNonResident));

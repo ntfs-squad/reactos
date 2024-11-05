@@ -79,6 +79,8 @@ Directory::FindNextFile(_In_  PWCHAR FileName,
     UNICODE_STRING FileNameString;
     PBTreeKey FoundKey;
 
+    DPRINT1("Called Directory::FindNextFile()\n");
+
     RtlInitEmptyUnicodeString(&FileNameString, FileName, (USHORT)(wcslen(FileName) * sizeof(WCHAR)));
     FileNameString.Length = (USHORT)((PathElementLength(FileName)) * sizeof(WCHAR));
 

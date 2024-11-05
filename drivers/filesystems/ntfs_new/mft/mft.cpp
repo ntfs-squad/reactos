@@ -53,17 +53,14 @@ MFT::GetFileRecord(_In_   ULONGLONG FileRecordNumber,
 {
     PAGED_CODE();
 
-    *File = new(PagedPool) FileRecord(Volume);
-    (*File)->Data = new(PagedPool) UCHAR[FileRecordSize];
+    ULONGLONG FileRecordOffset;
 
     // HACK! Use VCN-to-LCN mapping.
-    ReadDisk(Volume->PartDeviceObj,
-             (MFTLCN * BytesPerCluster(Volume))
-             + (FileRecordNumber * FileRecordSize),
-             FileRecordSize,
-             (*File)->Data);
+    FileRecordOffset = (MFTLCN * BytesPerCluster(Volume)) + (FileRecordNumber * FileRecordSize);
 
-    (*File)->Header = (PFileRecordHeader)((*File)->Data);
+    *File = new(PagedPool) FileRecord(Volume,
+                                      FileRecordOffset,
+                                      FileRecordSize);
 
     return STATUS_SUCCESS;
 }

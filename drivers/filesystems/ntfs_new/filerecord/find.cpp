@@ -8,6 +8,9 @@
 
 #include "io/ntfsprocs.h"
 
+#define LONGLONG_SIGN_EXTEND(Number, Bytes) \
+(Number << ((sizeof(LONGLONG) - Bytes) * 8)) >> ((sizeof(LONGLONG) - Bytes) * 8)
+
 /* Find Attribute Functions */
 PAttribute
 FileRecord::GetAttribute(_In_ AttributeType Type,
@@ -16,6 +19,8 @@ FileRecord::GetAttribute(_In_ AttributeType Type,
     ULONG DataPtr;
     PAttribute TestAttr;
     UINT NameLength;
+
+    DPRINT1("Called FileRecord::GetAttribute()!\n");
 
     if (Name)
         NameLength = wcslen(Name) * sizeof(WCHAR);
@@ -84,24 +89,28 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
      *    Can be negative.
      */
 
-    char* DataRunPtr;
+    PUCHAR DataRunPtr;
     PDataRun Head, Temp;
     UINT8 LengthSize, OffsetSize;
     ULONGLONG PreviousLCN = 0;
     LONGLONG TestOffset = 0;
+    ULONGLONG AllocatedSize = DataAttr->NonResident.AllocatedSize;
+    ULONGLONG ReadSize = 0;
+
+    DPRINT1("Called FileRecord::FindNonResidentData()!\n");
 
     ASSERT(DataAttr->IsNonResident);
 
     // Get pointer to data run.
-    DataRunPtr = ((char*)DataAttr) + DataAttr->NonResident.DataRunsOffset;
+    DataRunPtr = (PUCHAR)DataAttr + DataAttr->NonResident.DataRunsOffset;
 
     // Populate Head.
     Head = new(PagedPool) DataRun();
     Head->NextRun = NULL;
 
     // Length size is LSB, Offset size is MSB.
-    LengthSize = DataRunPtr[0] & 0xF;
-    OffsetSize = DataRunPtr[0] >> 4;
+    LengthSize = *DataRunPtr & 0xF;
+    OffsetSize = *DataRunPtr >> 4;
 
     // Copy length and LCN into linked list head.
     RtlCopyMemory(&Head->Length,
@@ -112,54 +121,70 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
                   DataRunPtr + 1 + LengthSize,
                   OffsetSize);
 
-    DPRINT1("Head->LCN: %llu (Sector: %llu), Size: %llu\n", Head->LCN, ((Head->LCN) * 8), Head->Length);
+    // DPRINT1("Data Run\n");
+    // DPRINT1("Size: 0x%X\n", *DataRunPtr);
+    // DPRINT1("Cluster count: %llu\n", Head->Length);
+    // DPRINT1("First Cluster: %llu\n", Head->LCN);
+    // DPRINT1("\n");
 
     // Populate children data runs for head, if available.
     Temp = Head;
     PreviousLCN = Temp->LCN;
-    DataRunPtr += (1 + LengthSize + OffsetSize);
+    ReadSize += (Head->Length) * Volume->SectorsPerCluster * Volume->BytesPerSector;
+    DataRunPtr += 1 + LengthSize + OffsetSize;
 
-    while (DataRunPtr[0])
+    while (*DataRunPtr != '\0')
     {
-        TestOffset = 0;
-
         // Initialize next item in linked list.
         Temp->NextRun = new(PagedPool) DataRun();
         Temp = Temp->NextRun;
 
         // Get length and offset sizes for current data run.
-        LengthSize = DataRunPtr[0] & 0xF;
-        OffsetSize = DataRunPtr[0] >> 4;
+        LengthSize = *DataRunPtr & 0xF;
+        OffsetSize = *DataRunPtr >> 4;
 
         // We don't yet handle offset sizes larger than 8 bytes.
         ASSERT(OffsetSize <= sizeof(LONGLONG));
+        ASSERT(OffsetSize != 0);
 
         // Copy length and LCN into child data run.
         RtlCopyMemory(&Temp->Length,
                       DataRunPtr + 1,
                       LengthSize);
 
+        ReadSize += (Temp->Length) * Volume->SectorsPerCluster * Volume->BytesPerSector;
+
         /* Note: Child LCN's are relative to previous offset. They can be negative.
          * So the real LCN = Previous LCN + Current LCN.
          */
+        TestOffset = 0;
         RtlCopyMemory(&TestOffset,
-                      (DataRunPtr + 1 + LengthSize),
+                      DataRunPtr + 1 + LengthSize,
                       OffsetSize);
 
         // Sign extend the LCN offset if needed.
-        TestOffset = (TestOffset << ((sizeof(LONGLONG) - OffsetSize) * 8)) >> ((sizeof(LONGLONG) - OffsetSize) * 8);
+        TestOffset = LONGLONG_SIGN_EXTEND(TestOffset, OffsetSize);
 
         // Assign LCN for this data run
-        Temp->LCN = (TestOffset + PreviousLCN);
+        Temp->LCN = PreviousLCN + TestOffset;
 
-        DPRINT1("Temp->LCN: %llu (Sector: %llu), Size: %llu\n", Temp->LCN, Temp->LCN << 3, Temp->Length);
+        // DPRINT1("Data Run\n");
+        // DPRINT1("Size: 0x%02X\n", *DataRunPtr);
+        // DPRINT1("Cluster count: %llu\n", Head->Length);
+        // DPRINT1("Test offset: %lld (%s)\n", TestOffset, TestOffset > 0 ? "Positive" : "Negative");
+        // DPRINT1("First Cluster: %llu\n", Temp->LCN);
+        // DPRINT1("\n");
 
         // Move data run pointer to next item.
-        DataRunPtr += (1 + LengthSize + OffsetSize);
+        DataRunPtr += OffsetSize + LengthSize + 1;
 
         // Update Previous Offset
         PreviousLCN = Temp->LCN;
     }
+
+    // DPRINT1("Read Size: %llu, Allocated Size: %llu\n", ReadSize, AllocatedSize);
+    if (ReadSize != AllocatedSize)
+        __debugbreak();
 
     // The caller is responsible for freeing the linked list.
     return Head;

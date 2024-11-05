@@ -27,7 +27,10 @@ DumpBTreeKey(PBTreeKey Key,
         FileName.Length = GetFileName(Key)->NameLength * sizeof(WCHAR);
         FileName.MaximumLength = FileName.Length;
         FileName.Buffer = GetFileName(Key)->Name;
-        DbgPrint("|===%wZ\n", &FileName);
+        DbgPrint("|===%wZ (MFT ID: %ld, Flags: 0x%X)\n",
+                 &FileName,
+                 GetFRNFromFileRef(FileRef(Key)),
+                 Key->Flags);
     }
     else
     {

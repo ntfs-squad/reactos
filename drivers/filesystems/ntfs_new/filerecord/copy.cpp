@@ -36,6 +36,8 @@ FileRecord::CopyData(_In_    PAttribute Attr,
     ULONG BytesToRead, BytesRead, BytesInRun, DataPointer;
     PDataRun Head, CurrentDR;
 
+    DPRINT1("Called FileRecord::CopyData()!\n");
+
     ASSERT(Buffer);
     ASSERT(Attr);
 
@@ -69,8 +71,7 @@ FileRecord::CopyData(_In_    PAttribute Attr,
         if (Offset >= Attr->NonResident.DataSize)
         {
             // Don't read past the file data.
-            DPRINT1("Offset is greater than or equal to the data size!\n");
-            DPRINT1("Offset: %ld, Data Size: %ld\n", Offset, Attr->NonResident.DataSize);
+            DPRINT1("Offset >= DataSize! (%ld >= %ld)\n", Offset, Attr->NonResident.DataSize);
             return STATUS_END_OF_FILE;
         }
 
@@ -90,14 +91,14 @@ FileRecord::CopyData(_In_    PAttribute Attr,
 
             if (Offset >= BytesInRun)
             {
+                // DPRINT1("Offset >= BytesInRun! (%llu >= %lu)\n", Offset, BytesInRun);
                 Offset -= BytesInRun;
-                DPRINT1("Offset >= BytesInRun! (%llu >= %lu)\n", Offset, BytesInRun);
             }
 
             else
             {
                 // We need to copy data from this run before moving to the next one.
-                DPRINT1("Offset is now: %llu\n", Offset);
+                // DPRINT1("Offset is now: %llu\n", Offset);
 
                 // Get data
                 Status = ReadDiskUnaligned(Volume->PartDeviceObj,
@@ -128,6 +129,13 @@ FileRecord::CopyData(_In_    PAttribute Attr,
 
         // Free data run
         FreeDataRun(Head);
+
+        // Check to make sure we read what was requested
+        if (BytesRead != BytesToRead)
+        {
+            DPRINT1("Failed to copy file data!\n");
+            return STATUS_NOT_FOUND;
+        }
     }
 
     // Adjust length for caller

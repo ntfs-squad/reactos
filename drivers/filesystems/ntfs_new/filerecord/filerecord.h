@@ -81,9 +81,11 @@ typedef struct
 typedef class FileRecord
 {
 public:
-    PUCHAR Data;
     PFileRecordHeader Header;
-    FileRecord(_In_ PNTFSVolume Volume);
+    FileRecord(_In_ PNTFSVolume Volume,
+               _In_ ULONGLONG FRDiskOffset,
+               _In_ UINT FileRecordSize);
+    ~FileRecord();
 
     // Needed for copy data functions.
     // Should be private.
@@ -122,4 +124,6 @@ public:
                        _In_ ULONGLONG Offset = 0);
 
     NTSTATUS UpdateResidentAttribute(_In_ PAttribute Attr);
+private:
+    PUCHAR Data;
 } *PFileRecord;

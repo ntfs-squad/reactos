@@ -8,37 +8,27 @@
 
 #include "../io/ntfsprocs.h"
 
-#define IsLastEntry(Key) !!(Key->Entry->Flags & INDEX_ENTRY_END)
-
-#define IsIndexNode(Key) !!(Key->Entry->Flags & INDEX_ENTRY_NODE)
-
-#define IsEndOfNode(Key) IsLastEntry(Key) && !IsIndexNode(Key)
-
-#define GetNextKey(Key) \
-IsIndexNode(Key) ? Key->ChildNode->FirstKey : IsEndOfNode(Key) ? \
-Key->ParentNodeKey ? Key->ParentNodeKey->NextKey : NULL : Key->NextKey
-
 static
 NTSTATUS
-AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
-                    _In_    BOOLEAN IsLastEntry,
-                    _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
-                    _Inout_ PULONG BufferLength,
-                    _Out_   PULONG EntryLength = NULL)
+AddKeyToBothDirInfo(_In_     PBTreeKey Key,
+                    _In_opt_ PBTreeKey ShortNameKey,
+                    _In_     BOOLEAN IsLastEntry,
+                    _Inout_  PFILE_BOTH_DIR_INFORMATION Buffer,
+                    _Inout_  PULONG BufferLength,
+                    _Out_    PULONG EntryLength = NULL)
 {
     PFileNameEx FileNameData;
     ULONG EntrySize;
 
     // Set the file name data pointer
-    FileNameData = GetFileName(*Key);
+    FileNameData = GetFileName(Key);
     EntrySize = ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) + GetWStrLength(FileNameData->NameLength));
 
     if (*BufferLength < EntrySize)
     {
         // We will overrun the buffer if we continue
         DPRINT1("Unable to add key to buffer: too small!\n");
-        __debugbreak();
-        return STATUS_BUFFER_TOO_SMALL;
+        return STATUS_BUFFER_OVERFLOW;
     }
 
     Buffer->FileIndex = 0; // Undefined for NTFS
@@ -62,32 +52,15 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
     // Let's get the short name
     RtlZeroMemory(Buffer->ShortName, MAX_SHORTNAME_LENGTH * sizeof(WCHAR));
 
-    if (FileNameData->NameLength <= MAX_SHORTNAME_LENGTH)
+    if (ShortNameKey)
     {
-        // We don't need a short name.
-        Buffer->ShortNameLength = 0;
-    }
-
-    else if (GetFRNFromFileRef(FileRef((*Key))) == GetFRNFromFileRef(FileRef((*Key)->NextKey)))
-    {
-        // Both keys point to the same file. Assert that it is a valid short name.
-        ASSERT(GetFileName((*Key)->NextKey)->NameLength <= MAX_SHORTNAME_LENGTH);
-
-        // Move to next key
-        *Key = (*Key)->NextKey;
-        FileNameData = GetFileName(*Key);
-
-        // Copy short name data into the buffer
+        FileNameData = GetFileName(ShortNameKey);
+        ASSERT(IsLegal8Dot3ShortName(FileNameData->Name, FileNameData->NameLength));
         Buffer->ShortNameLength = GetWStrLength(FileNameData->NameLength);
         RtlCopyMemory(Buffer->ShortName,
                       FileNameData->Name,
                       GetWStrLength(FileNameData->NameLength));
-    }
 
-    else
-    {
-        // The short name is not the next key in the btree. Something is wrong.
-        __debugbreak();
     }
 
     /* Set the entry size.
@@ -108,16 +81,30 @@ AddKeyToBothDirInfo(_In_    PBTreeKey *Key,
     return STATUS_SUCCESS;
 }
 
-/* The FileNameFilter ensures only matching files are included in the buffer.
- * Hidden metadata files consist of MFT file records 0-26, and should be
- * hidden. "NtfsShowMetadataFiles" will override the hiding of the metadata
- * files.
- */
-#define IsEligibleForFileDir(Key, FileNameFilter) \
-!IsLastEntry(Key) && \
-(!FileNameFilter || DoesFileNameMatch(FileNameFilter, Key)) && \
-(GetFRNFromFileRef(Key->Entry->Data.Directory.IndexedFile) > 26 || \
- QueryBooleanRegistryValue(L"NtfsShowMetadataFiles"))
+static
+BOOLEAN
+IsEligibleForFileDir(PBTreeKey Key, PUNICODE_STRING FileNameFilter)
+{
+    // Is this a dummy key?
+    if (IsLastEntry(Key))
+        return FALSE;
+
+    // Does this match the file name filter?
+    if (FileNameFilter
+        && !DoesFileNameMatch(FileNameFilter, Key))
+        return FALSE;
+
+    // Is this a super hidden metadata file (MFT file records 0-26)?
+    if (GetFRNFromFileRef(FileRef(Key)) <= 26
+        && !QueryBooleanRegistryValue(L"NtfsShowMetadataFiles"))
+        return FALSE;
+
+    // Is this a duplicated short name?
+    if (Key->Flags & DIRECTORY_BTREE_DUPLICATE_SHORTNAME)
+        return FALSE;
+
+    return TRUE;
+}
 
 NTSTATUS
 Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
@@ -128,8 +115,13 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
 {
     NTSTATUS Status;
     ULONG EntrySize, TotalBufferLength;
+    PFILE_BOTH_DIR_INFORMATION PreviousBuffer;
+    PBTreeKey ShortFileNameKey;
+
+    DPRINT1("Called Directory::GetFileBothDirInfo()\n");
 
     EntrySize = 0;
+    PreviousBuffer = NULL;
 
     if (!CurrentKey ||
         IsEndOfNode(CurrentKey))
@@ -148,16 +140,36 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
     {
         if (IsEligibleForFileDir(CurrentKey, FileNameFilter))
         {
+            ShortFileNameKey = GetShortNameKey(CurrentKey);
+
+            if (ShortFileNameKey)
+            {
+
+            }
+
             // Add key to buffer
-            Status = AddKeyToBothDirInfo(&CurrentKey,
+            Status = AddKeyToBothDirInfo(CurrentKey,
+                                         ShortFileNameKey,
                                          FALSE,
                                          Buffer,
                                          BufferLength,
                                          &EntrySize);
+
+            if (Status == STATUS_BUFFER_OVERFLOW)
+            {
+                /* Writing this key will lead to a buffer overflow.
+                 * Terminate the last entry and return STATUS_SUCCESS.
+                 */
+                Status = STATUS_SUCCESS;
+                goto done;
+            }
+
             if (!NT_SUCCESS(Status))
             {
-                DPRINT1("We filled the buffer or something.\n");
-                return STATUS_SUCCESS;
+                // Some other error.
+                DPRINT1("Failed to add key to buffer!\n");
+                __debugbreak();
+                goto done;
             }
 
             if (ReturnSingleEntry)
@@ -168,6 +180,7 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
             }
 
             // Adjust buffer
+            PreviousBuffer = Buffer;
             Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Buffer + EntrySize);
         }
 
@@ -184,13 +197,17 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
                 return STATUS_NO_MORE_FILES;
             }
 
-            // Go back to previous entry and end it.
-            DPRINT1("Terminating last entry!\n");
-            Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Buffer - EntrySize);
-            Buffer->NextEntryOffset = 0;
-            break;
+            goto done;
         }
     }
 
-    return STATUS_SUCCESS;
+done:
+    // Go back to previous entry and terminate it.
+    if (PreviousBuffer)
+    {
+        DPRINT1("Terminating last entry!\n");
+        PreviousBuffer->NextEntryOffset = 0;
+    }
+
+    return Status;
 }

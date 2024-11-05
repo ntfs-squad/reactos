@@ -60,10 +60,7 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
         // Free file record
         if (FileCB->FileRec)
-        {
-            delete FileCB->FileRec->Data;
             delete FileCB->FileRec;
-        }
 
         // Free the stream context block
         if (FileCB->StreamCB)

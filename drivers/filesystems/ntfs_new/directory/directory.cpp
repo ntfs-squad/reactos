@@ -85,9 +85,9 @@ CreateNode(_In_    PFileRecord File,
                                        &NodeBuffer->RecordHeader);
 
     ASSERT(NT_SUCCESS(Status));
-    ASSERT(IndexBufferSize == 0);
     ASSERT(RtlCompareMemory(NodeBuffer->RecordHeader.TypeID, "INDX", 4) == 4);
     ASSERT(NodeBuffer->VCN == *VCN);
+    ASSERT(IndexBufferSize == 0);
 
     // Walk through the index and create keys for all the entries
     CurrentEntry = (PIndexEntry)((ULONG_PTR)(&NodeBuffer->IndexHeader)
@@ -118,7 +118,7 @@ CreateNode(_In_    PFileRecord File,
             {
                 DPRINT1("Failed to create subnode!\n");
                 __debugbreak();
-                return STATUS_NOT_FOUND;
+                // return STATUS_NOT_FOUND;
             }
         }
 
@@ -253,7 +253,10 @@ NTSTATUS
 Directory::LoadDirectory(_In_ PFileRecord File)
 {
     NTSTATUS Status;
-    PAttribute BitmapAttribute;
+    PBTreeKey SearchKey, ShortNameKey;
+    // PAttribute BitmapAttribute;
+
+    DPRINT1("Called Directory::LoadDirectory()\n");
 
     // This only works on files that are directories.
     ASSERT(File->Header->Flags & FR_IS_DIRECTORY);
@@ -261,12 +264,12 @@ Directory::LoadDirectory(_In_ PFileRecord File)
     /* First, we need to get the index allocation bitmap attribute
      * to determine what index entries are marked as in use.
      */
-    BitmapAttribute = File->GetAttribute(TypeBitmap, L"$I30");
-    if (!BitmapAttribute)
-    {
-        DPRINT1("Failed to find $BITMAP attribute!\n");
-        return STATUS_NOT_FOUND;
-    }
+    // BitmapAttribute = File->GetAttribute(TypeBitmap, L"$I30");
+    // if (!BitmapAttribute)
+    // {
+    //     DPRINT1("Failed to find $BITMAP attribute!\n");
+    //     return STATUS_NOT_FOUND;
+    // }
 
     // Get the root node for the directory
     Status = CreateRootNode(File, &RootNode);
@@ -277,5 +280,23 @@ Directory::LoadDirectory(_In_ PFileRecord File)
     }
 
     CurrentKey = RootNode->FirstKey;
+    SearchKey = CurrentKey;
+
+    // Mark short name keys accordingly.
+    // TODO: If short name generation is disabled, we can skip this.
+    while(SearchKey)
+    {
+        if (!(SearchKey->Flags & DIRECTORY_BTREE_DUPLICATE_SHORTNAME))
+        {
+            ShortNameKey = GetShortNameKey(SearchKey, FALSE);
+            if (ShortNameKey)
+            {
+                ShortNameKey->Flags |= DIRECTORY_BTREE_DUPLICATE_SHORTNAME;
+            }
+        }
+
+        SearchKey = GetNextKey(SearchKey);
+    }
+
     return Status;
 }

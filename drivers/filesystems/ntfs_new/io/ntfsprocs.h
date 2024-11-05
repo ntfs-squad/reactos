@@ -27,7 +27,7 @@
 #define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
 #define ULONG_ROUND_UP(x)   ROUND_UP((x), (sizeof(ULONG)))
 #define MAX_SHORTNAME_LENGTH 12
-#define FileRef(x) x->Entry->Data.Directory.IndexedFile
+#define FileRef(Key) (Key)->Entry->Data.Directory.IndexedFile
 #define GetUserBuffer(Irp) Irp->MdlAddress ?\
 MmGetSystemAddressForMdlSafe(Irp->MdlAddress, ((Irp->Flags & IRP_PAGING_IO) ? HighPagePriority : NormalPagePriority)) :\
 Irp->UserBuffer
