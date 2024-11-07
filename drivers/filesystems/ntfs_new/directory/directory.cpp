@@ -466,6 +466,14 @@ Directory::GetShortNameKey(_In_ PBTreeKey Key,
     PFileNameEx FileNameData;
     ULONGLONG TargetFRN;
 
+    // If this is a dummy key, there is no short name
+    if (Key->Entry->Flags & INDEX_ENTRY_END)
+    {
+        DPRINT1("Tried to find short name for a dummy key!\n");
+        DPRINT1("FIXME: Rework whatever algorithm to prevent this.\n");
+        return NULL;
+    }
+
     // If the key is already a legal short name, we don't need to search for another one.
     FileNameData = GetFileName(Key);
     if (IsLegal8Dot3ShortName(FileNameData->Name, FileNameData->NameLength))

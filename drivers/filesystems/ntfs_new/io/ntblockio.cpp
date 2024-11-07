@@ -76,38 +76,53 @@ ReadDiskUnaligned(_In_     PDEVICE_OBJECT DeviceToRead,
                    _Inout_ PUCHAR Buffer)
 {
     NTSTATUS Status;
-    PUCHAR PageAlignmentBuffer = NULL;
+    PUCHAR SectorAlignmentBuffer = NULL;
     USHORT RaggedEdgeSize = 0;
-    USHORT SectorSize;
+    USHORT SectorSize = DeviceToRead->SectorSize;
+    ULONG LengthSectorAligned = ALIGN_DOWN_BY(Length, SectorSize);
 
     ASSERT(Length);
-    SectorSize = DeviceToRead->SectorSize;
 
-    if (ALIGN_UP_BY(Length, SectorSize) != Length)
+    DPRINT1("ReadDiskUnaligned() called!\n");
+
+    if (LengthSectorAligned != Length)
     {
-        DPRINT1("ALIGN_UP_BY(Length, SectorSize) != Length\n");
-        DPRINT1("%ld != %ld\n", ALIGN_UP_BY(Length, SectorSize), Length);
-        RaggedEdgeSize = ALIGN_UP_BY(Length, SectorSize) - Length;
-        PageAlignmentBuffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, RaggedEdgeSize, TAG_NTFS);
-        RtlCopyMemory(PageAlignmentBuffer,
-                      Buffer + Length,
-                      RaggedEdgeSize);
+        DPRINT1("LengthSectorAligned != Length\n");
+        DPRINT1("%ld != %ld\n", LengthSectorAligned, Length);
+        RaggedEdgeSize = Length - LengthSectorAligned;
+        SectorAlignmentBuffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, SectorSize, TAG_NTFS);
     }
 
     Status = ReadDisk(DeviceToRead,
                       Offset,
-                      ALIGN_UP_BY(Length, SectorSize),
+                      LengthSectorAligned,
                       Buffer);
 
-    if (PageAlignmentBuffer)
+    if (SectorAlignmentBuffer)
     {
-        // Copy data back where we overwrote it
-        RtlCopyMemory(Buffer + Length,
-                      PageAlignmentBuffer,
+        // TODO: Replace with DPRINT and fail
+        ASSERT(NT_SUCCESS(Status));
+
+        DPRINT1("Grabbing last sector...\n");
+
+        // Get the last sector of data
+        Status = ReadDisk(DeviceToRead,
+                          Offset + LengthSectorAligned,
+                          SectorSize,
+                          SectorAlignmentBuffer);
+
+        // TODO: Replace with DPRINT and fail
+        ASSERT(NT_SUCCESS(Status));
+
+        // Copy what we need into the buffer
+        RtlCopyMemory(Buffer + LengthSectorAligned,
+                      SectorAlignmentBuffer,
                       RaggedEdgeSize);
 
         // Free page alignment buffer
-        delete PageAlignmentBuffer;
+        delete SectorAlignmentBuffer;
+
+        DPRINT1("Copied %ld bytes from the last sector!\n", RaggedEdgeSize);
     }
 
     return Status;
