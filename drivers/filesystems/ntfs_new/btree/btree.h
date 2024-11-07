@@ -9,18 +9,6 @@
 #define INDEX_ENTRY_NODE 1
 #define INDEX_ENTRY_END  2
 
-#define GetVCN(NodeKey) \
-(PULONGLONG)(NodeKey->Entry + NodeKey->Entry->EntryLength - sizeof(ULONGLONG))
-
-// Calculates start of Index Buffer relative to the index allocation, given the node's VCN
-#define GetAllocationOffsetFromVCN(Volume, IndexBufferSize, VCN) \
-(IndexBufferSize < BytesPerCluster(Volume)) ? \
-(VCN * (Volume->BytesPerSector)) : \
-(VCN * BytesPerCluster(Volume))
-
-#define BytesPerIndexRecord(Volume) \
-(BytesPerCluster(Volume) * Volume->ClustersPerIndexRecord)
-
 struct _BTreeNode;
 struct _BTreeKey;
 

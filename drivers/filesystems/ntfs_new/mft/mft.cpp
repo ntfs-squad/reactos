@@ -92,7 +92,7 @@ MFT::GetFileRecordFromQuery(_In_ PWCHAR Query,
         return STATUS_NOT_FOUND;
     }
 
-    CurrentDirectory = new(PagedPool) Directory();
+    CurrentDirectory = new(PagedPool) Directory(Volume);
 
     Status = CurrentDirectory->LoadDirectory(CurrentFile);
     if(!NT_SUCCESS(Status))
@@ -131,11 +131,11 @@ MFT::GetFileRecordFromQuery(_In_ PWCHAR Query,
         }
 
         // Second condition is to check "//folder//target//"
-        // Potential hack? or fix?
+        // Is this a hack or fix?
         if (wcschr(QueryElementPtr, L'\\') &&
             wcschr(QueryElementPtr, L'\\')[1] != L'\0')
         {
-            CurrentDirectory = new(PagedPool) Directory();
+            CurrentDirectory = new(PagedPool) Directory(Volume);
             Status = CurrentDirectory->LoadDirectory(CurrentFile);
             if (!NT_SUCCESS(Status))
             {

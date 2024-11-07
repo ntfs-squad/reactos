@@ -31,8 +31,8 @@ WideStringCompare(PWCHAR FirstString,
 }
 
 PBTreeKey
-FindKeyInNode(PUNICODE_STRING FileName,
-              PBTreeKey Key)
+Directory::FindKeyInNode(PUNICODE_STRING FileName,
+                         PBTreeKey Key)
 {
     PBTreeKey CurrentKey;
 

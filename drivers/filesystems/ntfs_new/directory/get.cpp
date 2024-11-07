@@ -55,7 +55,6 @@ AddKeyToBothDirInfo(_In_     PBTreeKey Key,
     if (ShortNameKey)
     {
         FileNameData = GetFileName(ShortNameKey);
-        ASSERT(IsLegal8Dot3ShortName(FileNameData->Name, FileNameData->NameLength));
         Buffer->ShortNameLength = GetWStrLength(FileNameData->NameLength);
         RtlCopyMemory(Buffer->ShortName,
                       FileNameData->Name,
@@ -81,9 +80,9 @@ AddKeyToBothDirInfo(_In_     PBTreeKey Key,
     return STATUS_SUCCESS;
 }
 
-static
 BOOLEAN
-IsEligibleForFileDir(PBTreeKey Key, PUNICODE_STRING FileNameFilter)
+Directory::IsEligibleForFileDir(PBTreeKey Key,
+                                PUNICODE_STRING FileNameFilter)
 {
     // Is this a dummy key?
     if (IsLastEntry(Key))
@@ -100,7 +99,7 @@ IsEligibleForFileDir(PBTreeKey Key, PUNICODE_STRING FileNameFilter)
         return FALSE;
 
     // Is this a duplicated short name?
-    if (Key->Flags & DIRECTORY_BTREE_DUPLICATE_SHORTNAME)
+    if (Key->Flags & DIR_KEY_8DOT3)
         return FALSE;
 
     return TRUE;
@@ -116,7 +115,6 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
     NTSTATUS Status;
     ULONG EntrySize, TotalBufferLength;
     PFILE_BOTH_DIR_INFORMATION PreviousBuffer;
-    PBTreeKey ShortFileNameKey;
 
     DPRINT1("Called Directory::GetFileBothDirInfo()\n");
 
@@ -140,16 +138,9 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
     {
         if (IsEligibleForFileDir(CurrentKey, FileNameFilter))
         {
-            ShortFileNameKey = GetShortNameKey(CurrentKey);
-
-            if (ShortFileNameKey)
-            {
-
-            }
-
             // Add key to buffer
             Status = AddKeyToBothDirInfo(CurrentKey,
-                                         ShortFileNameKey,
+                                         GetShortNameKey(CurrentKey),
                                          FALSE,
                                          Buffer,
                                          BufferLength,

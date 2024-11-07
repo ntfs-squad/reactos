@@ -146,7 +146,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (FileCB->IsDirectory)
     {
         // Set up btree for this file
-        FileCB->FileDir = new(PagedPool) Directory();
+        FileCB->FileDir = new(PagedPool) Directory(Volume);
         Status = FileCB->FileDir->LoadDirectory(FileCB->FileRec);
 
         if (!NT_SUCCESS(Status))

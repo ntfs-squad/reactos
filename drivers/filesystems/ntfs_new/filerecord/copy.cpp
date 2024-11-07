@@ -64,6 +64,8 @@ FileRecord::CopyData(_In_    PAttribute Attr,
         RtlCopyMemory(Buffer,
                       GetResidentDataPointer(Attr) + Offset,
                       BytesToRead);
+
+        BytesRead = BytesToRead;
     }
 
     else // Attribute is nonresident.
@@ -91,14 +93,12 @@ FileRecord::CopyData(_In_    PAttribute Attr,
 
             if (Offset >= BytesInRun)
             {
-                // DPRINT1("Offset >= BytesInRun! (%llu >= %lu)\n", Offset, BytesInRun);
                 Offset -= BytesInRun;
             }
 
             else
             {
                 // We need to copy data from this run before moving to the next one.
-                // DPRINT1("Offset is now: %llu\n", Offset);
 
                 // Get data
                 Status = ReadDiskUnaligned(Volume->PartDeviceObj,
@@ -139,7 +139,7 @@ FileRecord::CopyData(_In_    PAttribute Attr,
     }
 
     // Adjust length for caller
-    *Length -= BytesToRead;
+    *Length -= BytesRead;
 
     return STATUS_SUCCESS;
 }

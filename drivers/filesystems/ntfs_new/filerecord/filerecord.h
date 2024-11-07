@@ -87,10 +87,6 @@ public:
                _In_ UINT FileRecordSize);
     ~FileRecord();
 
-    // Needed for copy data functions.
-    // Should be private.
-    PNTFSVolume Volume;
-
     // ./find.cpp
     PAttribute GetAttribute(_In_ AttributeType Type,
                             _In_ PCWSTR Name);
@@ -125,5 +121,6 @@ public:
 
     NTSTATUS UpdateResidentAttribute(_In_ PAttribute Attr);
 private:
+    PNTFSVolume Volume;
     PUCHAR Data;
 } *PFileRecord;

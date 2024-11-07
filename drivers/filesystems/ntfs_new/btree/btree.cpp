@@ -52,7 +52,6 @@ BTree::~BTree()
         else
             delete RootNode;
     }
-    DPRINT1("BTree destroyed!\n");
 }
 
 NTSTATUS
