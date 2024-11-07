@@ -123,4 +123,11 @@ public:
 private:
     PNTFSVolume Volume;
     PUCHAR Data;
+
+    // ./ fixup.cpp
+    NTSTATUS
+    ApplyFixup();
+
+    NTSTATUS
+    CommitFixup();
 } *PFileRecord;

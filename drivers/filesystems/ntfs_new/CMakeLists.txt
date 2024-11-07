@@ -16,6 +16,7 @@ list(APPEND SOURCE
      io/registry.cpp
      filerecord/copy.cpp
      filerecord/filerecord.cpp
+     filerecord/fixup.cpp
      filerecord/find.cpp
      filerecord/write.cpp
      ntfsvol.cpp

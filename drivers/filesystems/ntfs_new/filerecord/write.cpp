@@ -45,7 +45,7 @@ FileRecord::WriteData(_In_ PAttribute Attr,
         // Attribute is resident.
         if (CalculateNewRecordSize(this->Header->ActualSize, Attr, *Length) > (this->Header->AllocatedSize))
         {
-            //TODO: Promote to non-resident if needed.
+            //TODO: Promote to non-resident.
             DPRINT1("Unable to promote attribute to non-resident!\n");
             return STATUS_NOT_IMPLEMENTED;
         }
@@ -64,6 +64,14 @@ FileRecord::WriteData(_In_ PAttribute Attr,
         return STATUS_NOT_IMPLEMENTED;
     }
 }
+
+// NTSTATUS
+// FileRecord::WriteRecordToDisk()
+// {
+//     // Insert the fixup array into the file record in memory.
+//     // Write to disk.
+//     // Undo the fixup array to fix file record in memory.
+// }
 
 NTSTATUS
 FileRecord::UpdateResidentAttribute(_In_ PAttribute Attr)
