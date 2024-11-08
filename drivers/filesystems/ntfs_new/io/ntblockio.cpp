@@ -10,7 +10,7 @@
 
 NTSTATUS
 ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
-         _In_    LONGLONG Offset,
+         _In_    ULONGLONG Offset,
          _In_    ULONG Length,
          _Inout_ PUCHAR Buffer)
 {
@@ -21,6 +21,8 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
     IO_STATUS_BLOCK Iosb;
 
     PAGED_CODE();
+
+    DPRINT1("ReadDisk called!\n");
 
     //  Initialize the event we're going to use
     KeInitializeEvent(&Event, NotificationEvent, FALSE);
@@ -42,13 +44,19 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
 
     SetFlag(IoGetNextIrpStackLocation(Irp)->Flags, SL_OVERRIDE_VERIFY_VOLUME);
 
+    DPRINT1("Built IRP!\n");
+
     //  Call the device to do the read and wait for it to finish.
     Status = IoCallDriver(DeviceToRead, Irp);
 
+    DPRINT1("Called driver!\n");
+
     if (Status == STATUS_PENDING)
     {
+        DPRINT1("Status is pending!!\n");
         (VOID)KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL);
         Status = Iosb.Status;
+        DPRINT1("Finished waiting!\n");
     }
 
     NT_ASSERT(Status != STATUS_VERIFY_REQUIRED);
@@ -71,7 +79,7 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
 
 NTSTATUS
 ReadDiskUnaligned(_In_     PDEVICE_OBJECT DeviceToRead,
-                   _In_    LONGLONG Offset,
+                   _In_    ULONGLONG Offset,
                    _In_    ULONG Length,
                    _Inout_ PUCHAR Buffer)
 {
@@ -91,25 +99,32 @@ ReadDiskUnaligned(_In_     PDEVICE_OBJECT DeviceToRead,
         DPRINT1("%ld != %ld\n", LengthSectorAligned, Length);
         RaggedEdgeSize = Length - LengthSectorAligned;
         SectorAlignmentBuffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, SectorSize, TAG_NTFS);
+        DPRINT1("Created sector alignment buffer!\n");
     }
 
-    Status = ReadDisk(DeviceToRead,
-                      Offset,
-                      LengthSectorAligned,
-                      Buffer);
+    if (LengthSectorAligned)
+    {
+        // LengthSectorAligned will equal 0 if we only need to read 1 sector.
+        Status = ReadDisk(DeviceToRead,
+                          Offset,
+                          LengthSectorAligned,
+                          Buffer);
+
+        // TODO: Replace with DPRINT and fail
+        ASSERT(NT_SUCCESS(Status));
+    }
 
     if (SectorAlignmentBuffer)
     {
-        // TODO: Replace with DPRINT and fail
-        ASSERT(NT_SUCCESS(Status));
-
         DPRINT1("Grabbing last sector...\n");
 
         // Get the last sector of data
         Status = ReadDisk(DeviceToRead,
-                          Offset + LengthSectorAligned,
+                          (Offset + LengthSectorAligned),
                           SectorSize,
                           SectorAlignmentBuffer);
+
+        DPRINT1("Grabbed sector!\n");
 
         // TODO: Replace with DPRINT and fail
         ASSERT(NT_SUCCESS(Status));

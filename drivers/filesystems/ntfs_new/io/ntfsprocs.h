@@ -239,13 +239,13 @@ NtfsFsdPnp(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 /* ntblockio.cpp*/
 NTSTATUS
 ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
-         _In_    LONGLONG Offset,
+         _In_    ULONGLONG Offset,
          _In_    ULONG Length,
          _Inout_ PUCHAR Buffer);
 
 NTSTATUS
 ReadDiskUnaligned(_In_    PDEVICE_OBJECT DeviceToRead,
-                  _In_    LONGLONG Offset,
+                  _In_    ULONGLONG Offset,
                   _In_    ULONG Length,
                   _Inout_ PUCHAR Buffer);
 
