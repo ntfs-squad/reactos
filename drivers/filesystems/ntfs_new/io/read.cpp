@@ -47,6 +47,10 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     ASSERT(!(FileCB->FileAttributes & FILE_PERM_COMPRESSED));
     ASSERT(!(FileCB->FileAttributes & FILE_PERM_ENCRYPTED));
 
+    // TODO: Investigate minor function before reading
+    if (IrpSp->MinorFunction == IRP_MN_COMPLETE)
+        __debugbreak();
+
     if (RequestedLength)
     {
         // Copy data from $DATA into file buffer.

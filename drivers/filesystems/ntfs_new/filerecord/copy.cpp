@@ -36,8 +36,6 @@ FileRecord::CopyData(_In_    PAttribute Attr,
     ULONG BytesToRead, BytesRead, BytesInRun, DataPointer;
     PDataRun Head, CurrentDR;
 
-    DPRINT1("Called FileRecord::CopyData()!\n");
-
     ASSERT(Buffer);
     ASSERT(Attr);
 

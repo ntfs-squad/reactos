@@ -20,8 +20,6 @@ FileRecord::GetAttribute(_In_ AttributeType Type,
     PAttribute TestAttr;
     UINT NameLength;
 
-    DPRINT1("Called FileRecord::GetAttribute()!\n");
-
     if (Name)
         NameLength = wcslen(Name) * sizeof(WCHAR);
 

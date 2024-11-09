@@ -47,8 +47,18 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 
     // Check if we are actually NTFS.
     // Check bytes per sector.
-    if (DiskGeometry.BytesPerSector > 512)
+    if (DiskGeometry.BytesPerSector != 512
+        && DiskGeometry.BytesPerSector != 4096)
+    {
+        /* NOTE:
+         * Per Microsoft's documentation, bytes per sector can either be
+         * 4096 bytes or 512 bytes.
+         *
+         * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iobuildsynchronousfsdrequest
+         */
+        DPRINT1("Volume has invalid sector size! (%ld bytes)\n", DiskGeometry.BytesPerSector);
         return STATUS_UNRECOGNIZED_VOLUME;
+    }
 
     // Get boot sector information.
     PartBootSector = new(NonPagedPool) BootSector();
