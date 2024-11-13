@@ -6,9 +6,7 @@
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "../ntfsprocs.h"
-#define NDEBUG
-#include <debug.h>
+#include "ntfspch.h"
 
 extern NPAGED_LOOKASIDE_LIST FileCBLookasideList;
 //TODO:

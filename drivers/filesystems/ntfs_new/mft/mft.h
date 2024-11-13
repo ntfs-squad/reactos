@@ -6,22 +6,28 @@
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-class MFT
+typedef class MasterFileTable
 {
 public:
-    MFT(_In_ PNTFSVolume TargetVolume,
-        _In_ UINT64 MFTLCN,
-        _In_ UINT64 MFTMirrLCN,
-        _In_ INT8   ClustersPerFileRecord);
-    // ~MFT();
+    UINT FileRecordSize;
+
+    MasterFileTable(_In_ PNTFSVolume TargetVolume,
+                    _In_ UINT64 MFTLCN,
+                    _In_ UINT64 MFTMirrLCN,
+                    _In_ INT8   ClustersPerFileRecord);
+    // ~MasterFileTable();
 
     NTSTATUS
-    GetFileRecord(_In_   ULONGLONG FileRecordNumber,
+    GetFileRecord(_In_   ULONG FileRecordNumber,
                   _Out_  PFileRecord* File);
 
     NTSTATUS
     GetFileRecordFromQuery(_In_ PWCHAR Query,
                            _Out_ PFileRecord* File);
+
+    NTSTATUS
+    GetFileRecordDiskOffset(_In_ ULONG FileRecordNumber,
+                            _Out_ PULONGLONG FileRecordDiskOffset);
 
     // NTSTATUS
     // WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
@@ -32,5 +38,4 @@ private:
     PNTFSVolume Volume;
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;
-    UINT   FileRecordSize;
-};
+} *PMasterFileTable;

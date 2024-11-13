@@ -6,7 +6,7 @@
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "../io/ntfsprocs.h"
+#include "ntfspch.h"
 
 static
 void

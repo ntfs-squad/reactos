@@ -8,9 +8,7 @@
 
 /* INCLUDES *****************************************************************/
 
-#include "../ntfsprocs.h"
-#define NDEBUG
-#include <debug.h>
+#include "ntfspch.h"
 
 /* GLOBALS *****************************************************************/
 
@@ -85,7 +83,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     }
 
     // TODO: Check if we have rights to access file here.
-    Status = Volume->MasterFileTable->GetFileRecordFromQuery(FileNameQuery, &CurrentFile);
+    Status = Volume->MFT->GetFileRecordFromQuery(FileNameQuery, &CurrentFile);
     if (!NT_SUCCESS(Status))
     {
         // This isn't always an issue, but it isn't implemented yet.

@@ -8,12 +8,7 @@
 
 /* INCLUDES *****************************************************************/
 
-#include <ntddk.h>
-
-#define NDEBUG
-#include <debug.h>
-
-#include "ntfsprocs.h"
+#include "ntfspch.h"
 
 /* FUNCTIONS ****************************************************************/
 
@@ -24,7 +19,7 @@ NtfsAcqLazyWrite(PVOID Context,
 {
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(Wait);
-    UNIMPLEMENTED;
+    __debugbreak();
     return FALSE;
 }
 
@@ -34,7 +29,7 @@ NTAPI
 NtfsRelLazyWrite(PVOID Context)
 {
     UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED;
+    __debugbreak();
 }
 
 
@@ -45,7 +40,7 @@ NtfsAcqReadAhead(PVOID Context,
 {
     UNREFERENCED_PARAMETER(Context);
     UNREFERENCED_PARAMETER(Wait);
-    UNIMPLEMENTED;
+    __debugbreak();
     return FALSE;
 }
 
@@ -55,7 +50,7 @@ NTAPI
 NtfsRelReadAhead(PVOID Context)
 {
     UNREFERENCED_PARAMETER(Context);
-    UNIMPLEMENTED;
+    __debugbreak();
 }
 
 BOOLEAN

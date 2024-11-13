@@ -6,14 +6,14 @@
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "io/ntfsprocs.h"
+#include "ntfspch.h"
 
-#define GetOffset(LCN, Volume) (LCN * Volume->SectorsPerCluster * Volume->BytesPerSector)
-#define GetRunSize(Run, Volume) (Run->Length * Volume->SectorsPerCluster * Volume->BytesPerSector)
+#define GetOffset(LCN) (LCN * BytesPerCluster(Volume))
+#define GetRunSize(Run) (Run->Length * BytesPerCluster(Volume))
 
 NTSTATUS
 FileRecord::CopyData(_In_    AttributeType Type,
-                     _In_    PCWSTR Name,
+                     _In_    PWSTR Name,
                      _In_    PUCHAR Buffer,
                      _Inout_ PULONG Length,
                      _In_    ULONGLONG Offset)
@@ -87,7 +87,7 @@ FileRecord::CopyData(_In_    PAttribute Attr,
         while(CurrentDR)
         {
             // Get data run length
-            BytesInRun = GetRunSize(CurrentDR, Volume);
+            BytesInRun = GetRunSize(CurrentDR);
 
             if (Offset >= BytesInRun)
             {
@@ -100,7 +100,7 @@ FileRecord::CopyData(_In_    PAttribute Attr,
 
                 // Get data
                 Status = ReadDiskUnaligned(Volume->PartDeviceObj,
-                                           GetOffset(CurrentDR->LCN, Volume) + Offset,
+                                           GetOffset(CurrentDR->LCN) + Offset,
                                            min(BytesToRead, (BytesInRun - Offset)),
                                            Buffer);
                 if (!NT_SUCCESS(Status))

@@ -6,7 +6,7 @@
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "ntfsprocs.h"
+#include "ntfspch.h"
 
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType)
 {

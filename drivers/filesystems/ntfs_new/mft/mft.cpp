@@ -7,26 +7,33 @@
  */
 
 /* INCLUDES *****************************************************************/
-/* Get File Record Size (Bytes).
- * If clusters per file record is less than 0, the file record size is 2^(-ClustersPerFileRecord).
- * Otherwise, the file record size is ClustersPerFileRecord * SectorsPerCluster * BytesPerSector.
-*/
-#define GetFileRecordSize(ClustersPerFileRecord, BytesPerCluster) \
-ClustersPerFileRecord < 0 ? \
-1 << (-(ClustersPerFileRecord)) : \
-ClustersPerFileRecord * BytesPerCluster
+#include "ntfspch.h"
 
 #define IsRootFile(Path) \
 Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 
-#include "../io/ntfsprocs.h"
-
-MFT::MFT(_In_ PNTFSVolume TargetVolume,
-         _In_ UINT64 MFTLCN,
-         _In_ UINT64 MFTMirrLCN,
-         _In_ INT8   ClustersPerFileRecord)
+MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
+                                 _In_ UINT64 MFTLCN,
+                                 _In_ UINT64 MFTMirrLCN,
+                                 _In_ INT8   ClustersPerFileRecord)
 {
+    Volume = TargetVolume;
+    this->MFTLCN = MFTLCN;
+    this->MFTMirrLCN = MFTMirrLCN;
 
+    /* Set the file record size, in bytes.
+     * If clusters per file record is less than 0, the file record size is 2^(-ClustersPerFileRecord).
+     * Otherwise, the file record size is ClustersPerFileRecord * SectorsPerCluster * BytesPerSector.
+     */
+    FileRecordSize = ClustersPerFileRecord < 0 ?
+                     1 << (-(ClustersPerFileRecord))
+                     : ClustersPerFileRecord * BytesPerCluster(Volume);
+}
+
+NTSTATUS
+MasterFileTable::GetFileRecordDiskOffset(_In_ ULONG FileRecordNumber,
+                                         _Out_ PULONGLONG FileRecordDiskOffset)
+{
     /* TODO: We need to implement VCN-to-LCN mapping.
      * From Windows Internals 7th ed, Part 2:
      * "Once NTFS finds the file record for the MFT, it obtains the VCN-to-LCN mapping information
@@ -40,35 +47,28 @@ MFT::MFT(_In_ PNTFSVolume TargetVolume,
      * volume is now ready for user access."
      */
 
-    Volume = TargetVolume;
-    this->MFTLCN = MFTLCN;
-    this->MFTMirrLCN = MFTMirrLCN;
-
-    FileRecordSize = GetFileRecordSize(ClustersPerFileRecord, BytesPerCluster(Volume));
-}
-
-NTSTATUS
-MFT::GetFileRecord(_In_   ULONGLONG FileRecordNumber,
-                   _Out_  PFileRecord* File)
-{
-    PAGED_CODE();
-
-    ULONGLONG FileRecordOffset;
-
     // HACK! Use VCN-to-LCN mapping.
-    FileRecordOffset = (MFTLCN * BytesPerCluster(Volume)) + (FileRecordNumber * FileRecordSize);
-
-    *File = new(PagedPool) FileRecord(Volume,
-                                      FileRecordOffset,
-                                      FileRecordSize);
+    *FileRecordDiskOffset = (MFTLCN * BytesPerCluster(Volume)) + (FileRecordNumber * FileRecordSize);
 
     return STATUS_SUCCESS;
 }
 
+NTSTATUS
+MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
+                               _Out_  PFileRecord* File)
+{
+    PAGED_CODE();
+    NTSTATUS Status;
+
+    *File = new(PagedPool) FileRecord(Volume);
+    Status = (*File)->LoadFileRecordFromDisk(FileRecordNumber);
+    return Status;
+}
+
 // TODO: Handle wildcards and comparators
 NTSTATUS
-MFT::GetFileRecordFromQuery(_In_ PWCHAR Query,
-                            _Out_ PFileRecord* File)
+MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
+                                        _Out_ PFileRecord* File)
 {
     NTSTATUS Status;
     PWCHAR QueryElementPtr;

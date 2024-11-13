@@ -8,7 +8,7 @@
 
 /* INCLUDES *****************************************************************/
 
-#include "ntfsprocs.h"
+#include "ntfspch.h"
 
 #define NDEBUG
 #include <debug.h>

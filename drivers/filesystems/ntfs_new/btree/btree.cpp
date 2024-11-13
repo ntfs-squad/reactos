@@ -7,7 +7,7 @@
  */
 
 /* INCLUDES *****************************************************************/
-#include "../io/ntfsprocs.h"
+#include "ntfspch.h"
 
 NTSTATUS
 DestroyBTreeNode(PBTreeNode Node);

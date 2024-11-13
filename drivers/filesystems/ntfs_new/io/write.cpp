@@ -8,10 +8,7 @@
 
 /* INCLUDES *****************************************************************/
 
-#include "ntfsprocs.h"
-
-#define NDEBUG
-#include <debug.h>
+#include "ntfspch.h"
 
 /* GLOBALS *****************************************************************/
 
@@ -31,22 +28,31 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      */
     UNREFERENCED_PARAMETER(VolumeDeviceObject);
 
-    // NTSTATUS Status;
-    // PIO_STACK_LOCATION IrpSp;
-    // PUCHAR Buffer;
-    // LARGE_INTEGER ByteOffset;
-    // ULONG Length;
-    // BOOLEAN WriteToEndOfFile;
+    NTSTATUS Status;
+    PIO_STACK_LOCATION IrpSp;
+    PUCHAR Buffer;
+    ULONGLONG ByteOffset;
+    ULONG Length;
+    PFileContextBlock FileCB;
 
-    // IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    // Buffer = (PUCHAR)(GetBuffer(Irp));
-    // ByteOffset = IrpSp->Parameters.Write.ByteOffset;
-    // Length = IrpSp->Parameters.Write.Length;
+    IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    Buffer = (PUCHAR)(GetBuffer(Irp));
+    ByteOffset = IrpSp->Parameters.Write.ByteOffset.QuadPart;
+    Length = IrpSp->Parameters.Write.Length;
+    FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
 
-    // WriteToEndOfFile = (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_WRITE_TO_END_OF_FILE
-    //                     && IrpSp->Parameters.Write.ByteOffset.HighPart == -1);
+    Status = FileCB->FileRec->WriteFileData(NULL, Buffer, &Length, ByteOffset);
 
-    DPRINT1("Called NtfsFsdWrite() which IS NOT IMPLEMENTED!\n");
-    IoSkipCurrentIrpStackLocation(Irp);
-    return STATUS_NOT_IMPLEMENTED;
+    if (NT_SUCCESS(Status))
+    {
+        // I don't know yet what to do here...
+        __debugbreak();
+    }
+
+    else
+    {
+        Irp->IoStatus.Information = NULL;
+    }
+
+    return Status;
 }

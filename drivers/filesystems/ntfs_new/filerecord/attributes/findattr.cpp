@@ -6,15 +6,14 @@
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "io/ntfsprocs.h"
-
+#include "ntfspch.h"
 #define LONGLONG_SIGN_EXTEND(Number, Bytes) \
 (Number << ((sizeof(LONGLONG) - Bytes) * 8)) >> ((sizeof(LONGLONG) - Bytes) * 8)
 
 /* Find Attribute Functions */
 PAttribute
-FileRecord::GetAttribute(_In_ AttributeType Type,
-                         _In_ PCWSTR Name)
+FileRecord::GetAttribute(_In_     AttributeType Type,
+                         _In_opt_ PWSTR Name)
 {
     ULONG DataPtr;
     PAttribute TestAttr;
@@ -119,12 +118,6 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
                   DataRunPtr + 1 + LengthSize,
                   OffsetSize);
 
-    // DPRINT1("Data Run\n");
-    // DPRINT1("Size: 0x%X\n", *DataRunPtr);
-    // DPRINT1("Cluster count: %llu\n", Head->Length);
-    // DPRINT1("First Cluster: %llu\n", Head->LCN);
-    // DPRINT1("\n");
-
     // Populate children data runs for head, if available.
     Temp = Head;
     PreviousLCN = Temp->LCN;
@@ -166,13 +159,6 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
         // Assign LCN for this data run
         Temp->LCN = PreviousLCN + TestOffset;
 
-        // DPRINT1("Data Run\n");
-        // DPRINT1("Size: 0x%02X\n", *DataRunPtr);
-        // DPRINT1("Cluster count: %llu\n", Head->Length);
-        // DPRINT1("Test offset: %lld (%s)\n", TestOffset, TestOffset > 0 ? "Positive" : "Negative");
-        // DPRINT1("First Cluster: %llu\n", Temp->LCN);
-        // DPRINT1("\n");
-
         // Move data run pointer to next item.
         DataRunPtr += OffsetSize + LengthSize + 1;
 
@@ -180,9 +166,7 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
         PreviousLCN = Temp->LCN;
     }
 
-    // DPRINT1("Read Size: %llu, Allocated Size: %llu\n", ReadSize, AllocatedSize);
-    if (ReadSize != AllocatedSize)
-        __debugbreak();
+    ASSERT(ReadSize == AllocatedSize);
 
     // The caller is responsible for freeing the linked list.
     return Head;

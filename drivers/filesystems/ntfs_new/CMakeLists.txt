@@ -1,30 +1,32 @@
 list(APPEND SOURCE
+     ntfspch.h
      io/ntfsinit.cpp
-     io/ntfsprocs.h
      io/util.cpp
      io/fastio.cpp
      io/read.cpp
      io/ea.cpp
      io/write.cpp
-     io/vol/vol.cpp
+     io/vol.cpp
      io/pnp.cpp
-     io/create/create.cpp
+     io/create.cpp
      io/close.cpp
-     io/fileinfo/fileinfo.cpp
+     io/fileinfo.cpp
      io/ntblockio.cpp
-     io/fsctrl/fsctrl.cpp
+     io/fsctrl.cpp
      io/registry.cpp
-     filerecord/copy.cpp
+     filerecord/read/copy.cpp
      filerecord/filerecord.cpp
      filerecord/fixup.cpp
-     filerecord/find.cpp
-     filerecord/write.cpp
-     ntfsvol.cpp
+     filerecord/attributes/findattr.cpp
+     filerecord/attributes/addattr.cpp
+     filerecord/write/disk.cpp
+     filerecord/write/filedata.cpp
+     ntfsvol/ntfsvol.cpp
      btree/btree.cpp
-     directory/directory.cpp
-     directory/dbg.cpp
-     directory/get.cpp
-     directory/find.cpp
+     btree/directory/directory.cpp
+     btree/directory/dbg.cpp
+     btree/directory/get.cpp
+     btree/directory/find.cpp
      mft/mft.cpp)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
@@ -34,5 +36,5 @@ if(GDB AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
     target_compile_options(ntfs PRIVATE -O0)
 endif()
 add_importlibs(ntfs ntoskrnl hal)
-add_pch(ntfs io/ntfsprocs.h SOURCE)
+add_pch(ntfs ntfspch.h SOURCE)
 add_cd_file(TARGET ntfs DESTINATION reactos/system32/drivers NO_CAB FOR all)

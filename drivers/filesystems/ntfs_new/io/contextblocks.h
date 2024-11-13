@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "ntfsprocs.h"
+#include "ntfspch.h"
 #include <pshpack1.h>
 #include <poppack.h>
 
@@ -73,17 +73,4 @@ typedef struct _FCB
     // Consider moving, multiple files can point to the same stream in NTFS.
     PStreamContextBlock StreamCB;
 
-    // We will uncomment these when/if we need them.
-    // PVolumeContextBlock VolCB;
-    // FSRTL_COMMON_FCB_HEADER RFCB; // DDK
-    // PFILE_OBJECT FileObject; //DDK
-    // ERESOURCE MainResource; //DDK
-    // struct _FCB* ParentFileCB;
-    // ERESOURCE PagingIoResource; //DDK
-    // LIST_ENTRY FileCBListEntry; //DDK
-    // ULONG DirIndex;
-    // LONG RefCount;
-    // ULONG Flags;
-    // ULONG OpenHandleCount;
-    // USHORT LinkCount;
 } FileContextBlock, *PFileContextBlock;

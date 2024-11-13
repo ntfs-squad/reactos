@@ -6,7 +6,7 @@
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "io/ntfsprocs.h"
+#include "ntfspch.h"
 
 #define GetUpdateSequenceNumber(Header) \
 (PUSHORT)((ULONG_PTR)Header + Header->Header.UpdateSequenceOffset)
@@ -14,13 +14,62 @@
 #define GetUpdateSequenceArray(Header) \
 (PUSHORT)((ULONG_PTR)Header + Header->Header.UpdateSequenceOffset + sizeof(USHORT))
 
-#define OffsetToNextUSN(Volume) \
+#define OffsetToFirstUSN(Volume) \
 (Volume->BytesPerSector - sizeof(USHORT))
 
 #define IncrementUpdateSequenceNumber(Header) \
 ((*GetUpdateSequenceNumber(Header)) == 0xFFFF) \
 ? *GetUpdateSequenceNumber(Header) = 0x1 \
 : (*GetUpdateSequenceNumber(Header))++
+
+/* NOTE: For more information, see: https://flatcap.github.io/linux-ntfs/ntfs/concepts/fixup.html
+ *
+ * Abbreviations used
+ *     USA: Update Sequence Array
+ *     USN: Update Sequence Number
+ */
+
+NTSTATUS
+FileRecord::CommitFixup()
+{
+    USHORT UpdateSequenceNumber, USAPos;
+    PUSHORT UpdateSequenceArray;
+    PUSHORT DataPtr;
+
+    // Increment update sequence number by one.
+    // IncrementUpdateSequenceNumber(Header);
+
+    // Get update sequence number
+    UpdateSequenceNumber = *GetUpdateSequenceNumber(Header);
+    UpdateSequenceArray = GetUpdateSequenceArray(Header);
+
+    /* HACK: We don't update the USN right now because
+     * doing so would require a working log file service (lfs).
+     */
+#if 0
+    IncrementUpdateSequenceNumber(Header);
+#else
+    DPRINT1("Skipping USN update!\n");
+#endif
+
+    DataPtr = (PUSHORT)(Data + OffsetToFirstUSN(Volume));
+    USAPos = 0;
+
+    while (DataPtr < (PUSHORT)((ULONG_PTR)Header + Header->AllocatedSize))
+    {
+        // Grab the last two bytes of this sector and insert into the USA.
+        UpdateSequenceArray[USAPos] = *DataPtr;
+
+        // Set the end of the sector to the USN.
+        *DataPtr = UpdateSequenceNumber;
+
+        // Move to the next element.
+        DataPtr = (PUSHORT)((ULONG_PTR)DataPtr + Volume->BytesPerSector);
+        USAPos++;
+    }
+
+    return STATUS_SUCCESS;
+}
 
 NTSTATUS
 FileRecord::ApplyFixup()
@@ -38,15 +87,13 @@ FileRecord::ApplyFixup()
      *    corresponding entry in the update sequence array.
      *
      * Luckily for us, file records are already sector aligned.
-     *
-     * For more information, see: https://flatcap.github.io/linux-ntfs/ntfs/concepts/fixup.html
      */
 
     // Get update sequence number
     UpdateSequenceNumber = *GetUpdateSequenceNumber(Header);
     UpdateSequenceArray = GetUpdateSequenceArray(Header);
 
-    DataPtr = (PUSHORT)(Data + OffsetToNextUSN(Volume));
+    DataPtr = (PUSHORT)(Data + OffsetToFirstUSN(Volume));
     UpdateSequenceArrayPos = 0;
 
     while (DataPtr < (PUSHORT)((ULONG_PTR)Header + Header->AllocatedSize))
@@ -66,14 +113,4 @@ FileRecord::ApplyFixup()
     }
 
     return STATUS_SUCCESS;
-}
-
-NTSTATUS
-FileRecord::CommitFixup()
-{
-    // Increment update sequence number by one.
-    // IncrementUpdateSequenceNumber(Header);
-
-    __debugbreak();
-    return STATUS_NOT_IMPLEMENTED;
 }

@@ -7,7 +7,7 @@
  */
 
 /* INCLUDES *****************************************************************/
-#include "../io/ntfsprocs.h"
+#include "ntfspch.h"
 
 #define PathElementLength(FileName) \
 (wcschr(FileName, L'\\')) ? (wcschr(FileName, L'\\') - FileName) : (wcslen(FileName)) \

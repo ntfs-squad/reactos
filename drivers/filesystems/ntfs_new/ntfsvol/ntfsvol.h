@@ -53,7 +53,7 @@ public:
 
     PVPB VolParamBlock;
 
-    class MFT* MasterFileTable;
+    class MasterFileTable* MFT;
 
     ~NTFSVolume();
     NTSTATUS LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
@@ -69,4 +69,3 @@ public:
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
 } *PNTFSVolume;
-

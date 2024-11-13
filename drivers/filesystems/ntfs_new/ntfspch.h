@@ -257,10 +257,10 @@ ReadBlock(_In_    PDEVICE_OBJECT DeviceObject,
           _Inout_ PUCHAR Buffer);
 
 NTSTATUS
-WriteDisk(_In_ PDEVICE_OBJECT DeviceBeingRead,
-          _In_ LONGLONG StartingOffset,
-          _In_ ULONG AmountOfBytes,
-          _In_ PUCHAR BufferToWrite);
+WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
+          _In_    ULONGLONG Offset,
+          _In_    ULONG Length,
+          _In_    PUCHAR Buffer);
 
 NTSTATUS
 WriteBlock(_In_   PDEVICE_OBJECT DeviceObject,
@@ -283,13 +283,13 @@ QueryBooleanRegistryValue(_In_ PWCHAR Name);
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 
-#include "../filerecord/attributes.h"
-#include "contextblocks.h"
-#include "../ntfsvol.h"
-#include "../filerecord/filerecord.h"
-#include "../btree/btree.h"
-#include "../directory/directory.h"
-#include "../mft/mft.h"
+#include "filerecord/attributes/attributes.h"
+#include "io/contextblocks.h"
+#include "ntfsvol/ntfsvol.h"
+#include "filerecord/filerecord.h"
+#include "btree/btree.h"
+#include "btree/directory/directory.h"
+#include "mft/mft.h"
 
 #include <debug.h>
 

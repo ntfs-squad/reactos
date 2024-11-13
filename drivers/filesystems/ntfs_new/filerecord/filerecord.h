@@ -82,47 +82,50 @@ typedef class FileRecord
 {
 public:
     PFileRecordHeader Header;
-    FileRecord(_In_ PNTFSVolume Volume,
-               _In_ ULONGLONG FRDiskOffset,
-               _In_ UINT FileRecordSize);
+
+    // ./filerecord.cpp
+    FileRecord(_In_ PNTFSVolume Volume);
     ~FileRecord();
+    NTSTATUS LoadFileRecordFromDisk(_In_ ULONGLONG FileRecordNumber);
 
     // ./find.cpp
-    PAttribute GetAttribute(_In_ AttributeType Type,
-                            _In_ PCWSTR Name);
-
-    PDataRun FindNonResidentData(_In_ PAttribute Attr);
+    PAttribute GetAttribute(_In_     AttributeType Type,
+                            _In_opt_ PWSTR Name);
+    PDataRun FindNonResidentData(_In_ PAttribute DataAttr);
 
     // ./copy.cpp
     NTSTATUS CopyData(_In_ AttributeType Type,
-                      _In_ PCWSTR Name,
+                      _In_ PWSTR Name,
                       _In_ PUCHAR Buffer,
                       _Inout_ PULONG Length,
                       _In_ ULONGLONG Offset = 0);
-
     NTSTATUS CopyData(_In_ PAttribute Attr,
                       _In_ PUCHAR Buffer,
                       _Inout_ PULONG Length,
                       _In_ ULONGLONG Offset = 0);
 
     // ./write.cpp
-    NTSTATUS WriteData(_In_ AttributeType Type,
-                       _In_ PCWSTR Name,
-                       _In_ PUCHAR Buffer,
-                       _Inout_ PULONG Length,
-                       _In_ BOOLEAN WriteToEndOfFile,
-                       _In_ ULONGLONG Offset = 0);
+    NTSTATUS
+    WriteFileData(_In_opt_ PWSTR StreamName,
+                  _In_     PUCHAR Buffer,
+                  _Inout_  PULONG Length,
+                  _In_     ULONGLONG Offset = 0);
 
-    NTSTATUS WriteData(_In_ PAttribute Attr,
-                       _In_ PUCHAR Buffer,
-                       _Inout_ PULONG Length,
-                       _In_ BOOLEAN WriteToEndOfFile,
-                       _In_ ULONGLONG Offset = 0);
-
-    NTSTATUS UpdateResidentAttribute(_In_ PAttribute Attr);
 private:
     PNTFSVolume Volume;
-    PUCHAR Data;
+    MasterFileTable* MFT;
+    PUCHAR Data = NULL;
+
+    // ./write.cpp
+    NTSTATUS
+    InsertAttribute(_In_ PAttribute AttributeToInsert);\
+    NTSTATUS
+    UpdateAttributeData(_In_     AttributeType Type,
+                        _In_opt_ PWSTR AttributeName,
+                        _In_     PUCHAR Buffer,
+                        _In_     ULONG Length,
+                        _In_     ULONG Offset = 0);
+    NTSTATUS WriteRecordToDisk();
 
     // ./ fixup.cpp
     NTSTATUS

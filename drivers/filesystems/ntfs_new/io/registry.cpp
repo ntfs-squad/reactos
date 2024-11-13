@@ -1,4 +1,4 @@
-#include "ntfsprocs.h"
+#include "ntfspch.h"
 
 BOOLEAN
 QueryBooleanRegistryValue(_In_ PWCHAR Name)

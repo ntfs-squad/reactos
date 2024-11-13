@@ -62,6 +62,7 @@ enum AttributeType
     TypeEAInformation       = 0xD0,
     TypeEA                  = 0xE0,
     TypeLoggedUtilityStream = 0x100,
+    TypeAttributeEndMarker  = 0xFFFFFFFF
 };
 
 typedef struct

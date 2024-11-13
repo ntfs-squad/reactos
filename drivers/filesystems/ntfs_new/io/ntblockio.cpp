@@ -6,7 +6,7 @@
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "ntfsprocs.h"
+#include "ntfspch.h"
 
 NTSTATUS
 ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
@@ -132,14 +132,13 @@ ReadDiskUnaligned(_In_     PDEVICE_OBJECT DeviceToRead,
 
 // You might notice Carl this looks exactly like ReadDisk, So let's go over WHY...
 NTSTATUS
-WriteDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
-          _In_    LONGLONG StartingOffset,
-          _In_    ULONG AmountOfBytes,
-          _In_    PUCHAR BufferToWrite)
+WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
+          _In_    ULONGLONG Offset,
+          _In_    ULONG Length,
+          _In_    PUCHAR Buffer)
 {
     KEVENT Event;
     PIRP Irp;
-    LARGE_INTEGER ByteOffset;
     NTSTATUS Status;
     IO_STATUS_BLOCK Iosb;
 
@@ -149,15 +148,12 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
     //  Initialize an event which will be used to STALL THE OS UNTIL THE OPERATION COMPLETES
     KeInitializeEvent(&Event, NotificationEvent, FALSE);
 
-    //  Convert the offset into a LARGE_INTEGER
-    ByteOffset.QuadPart = StartingOffset;
-
     /* let's build an IO request, the Irp Representing the request buffer. */
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_WRITE, //we ARE writing
-                                       DeviceBeingRead, // this IS the devce
-                                       BufferToWrite, // This is the bufffer
-                                       AmountOfBytes, /// how many bytes
-                                       &ByteOffset, //offset on disk
+                                       DeviceToWrite, // this IS the devce
+                                       Buffer, // This is the bufffer
+                                       Length, /// how many bytes
+                                       (PLARGE_INTEGER) &Offset, //offset on disk
                                        &Event, //event in question
                                        &Iosb); //status check
 
@@ -170,12 +166,12 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
     SetFlag(IoGetNextIrpStackLocation( Irp )->Flags, SL_OVERRIDE_VERIFY_VOLUME); // override this because it causes problems
 
     //  Call the device to do the write and wait for it to finish.
-    Status = IoCallDriver(DeviceBeingRead, Irp); // DO DE WRITE
+    Status = IoCallDriver(DeviceToWrite, Irp); // DO DE WRITE
 
     if (Status == STATUS_PENDING)
     {
         // Infinitely stall the OS until this kernel mode executive event completes
-        (VOID)KeWaitForSingleObject( &Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL );
+        (VOID)KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL);
         Status = Iosb.Status;
     }
 
@@ -190,6 +186,7 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceBeingRead,
     //  If it doesn't succeed then either return or raise the error.
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Status: 0x%X\n", Status);
         __debugbreak();
     }
 

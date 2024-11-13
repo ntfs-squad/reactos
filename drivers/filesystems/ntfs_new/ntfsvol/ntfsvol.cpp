@@ -6,7 +6,7 @@
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "io/ntfsprocs.h"
+#include "ntfspch.h"
 
 // Macros for GetFreeClusters
 const UINT8 Zeros[16] = { 4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0 };
@@ -135,7 +135,7 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
                   sizeof(UINT64));
 
     // Initialize MFT
-    MasterFileTable = new(PagedPool) MFT(this,
+    MFT = new(PagedPool) MasterFileTable(this,
                                          PartBootSector->MFTLCN,
                                          PartBootSector->MFTMirrLCN,
                                          PartBootSector->ClustersPerFileRecord);
@@ -155,7 +155,7 @@ NTFSVolume::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
     UINT32 AttrLength;
 
     // Allocate memory for $Volume file record and retrieve the file record.
-    Status = MasterFileTable->GetFileRecord(_Volume, &VolumeFileRecord);
+    Status = MFT->GetFileRecord(_Volume, &VolumeFileRecord);
 
     // Clean up if failed.
     if (!NT_SUCCESS(Status))
@@ -238,7 +238,7 @@ NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
     PAttribute VolumeNameAttr;
 
     // Allocate memory for $Volume file record and retrieve the file record.
-    Status = MasterFileTable->GetFileRecord(_Volume, &VolumeFileRecord);
+    Status = MFT->GetFileRecord(_Volume, &VolumeFileRecord);
 
     // Clean up if failed.
     if (!NT_SUCCESS(Status))
@@ -291,7 +291,7 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     ULONG BytesPerCluster, ClusterPtr;
 
     // Get file record for $Bitmap
-    Status = MasterFileTable->GetFileRecord(_Bitmap, &BitmapFileRecord);
+    Status = MFT->GetFileRecord(_Bitmap, &BitmapFileRecord);
 
     if (!BitmapFileRecord)
     {
@@ -300,7 +300,7 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     }
 
     // Calculate bytes per cluster
-    BytesPerCluster = BytesPerSector * SectorsPerCluster;
+    BytesPerCluster = BytesPerCluster(this);
 
     // Get pointers for $Bitmap to get data runs and file size.
     BitmapData = BitmapFileRecord->GetAttribute(TypeData, NULL);
