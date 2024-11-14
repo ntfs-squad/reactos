@@ -8,9 +8,9 @@
 
 typedef class LogFileService
 {
-private:
-    PNTFSVolume Volume;
 public:
     LogFileService(_In_ PNTFSVolume TargetVolume);
+private:
+    PNTFSVolume Volume;
 } *PLogFileService;
 

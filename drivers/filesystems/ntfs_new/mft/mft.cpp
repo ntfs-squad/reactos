@@ -14,6 +14,11 @@ Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 
 #define InvalidMftZoneReservation(Num) Num < 1 || Num > 4
 
+#define IsFileRecordInMFTMirr(FileRecordNumber) \
+((Volume->SectorsPerCluster * Volume->BytesPerSector) > (FileRecordSize << 2)) ? \
+((Volume->SectorsPerCluster * Volume->BytesPerSector) / FileRecordSize) < FileRecordNumber \
+: FileRecordNumber < 4
+
 MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
                                  _In_ UINT64 MFTLCN,
                                  _In_ UINT64 MFTMirrLCN,
@@ -169,4 +174,71 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
     // Current File should now point to the queried file.
     *File = CurrentFile;
     return STATUS_SUCCESS;
+}
+
+NTSTATUS
+MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
+{
+    NTSTATUS Status;
+    ULONGLONG FileRecordDiskOffset;
+
+    // TODO: Add logging here
+
+    // Insert the fixup array into the file record in memory.
+    Status = File->CommitFixup();
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Unable to commit fixup! (Status: 0x%X)\n", Status);
+        return Status;
+    }
+
+    // HACK! Use VCN-to-LCN mapping (needed for fragmented MFTs).
+    FileRecordDiskOffset = (MFTLCN * BytesPerCluster(Volume))
+                           + (File->Header->MFTRecordNumber * FileRecordSize);
+
+    // Write to disk.
+    Status = WriteDisk(Volume->PartDeviceObj,
+                       FileRecordDiskOffset,
+                       FileRecordSize,
+                       File->Data);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Unable to write to disk! (Status: 0x%X)\n", Status);
+        return Status;
+    }
+
+    if (IsFileRecordInMFTMirr(File->Header->MFTRecordNumber))
+    {
+        /* TODO: Is it even possible that an MFT mirror can become fragmented?
+         * Very rarely would it ever be larger than one cluster.
+         */
+        FileRecordDiskOffset = (MFTMirrLCN * BytesPerCluster(Volume))
+                               + (File->Header->MFTRecordNumber * FileRecordSize);
+
+        // Write to disk.
+        Status = WriteDisk(Volume->PartDeviceObj,
+                           FileRecordDiskOffset,
+                           FileRecordSize,
+                           File->Data);
+
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Unable to write to MFT Mirror! (Status: 0x%X)\n", Status);
+            return Status;
+        }
+    }
+
+    // Undo the fixup array to fix the file record in memory.
+    Status = File->ApplyFixup();
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Unable to revert fixup! (Status: 0x%X)\n", Status);
+        return Status;
+    }
+
+
+    return Status;
 }

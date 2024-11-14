@@ -29,6 +29,9 @@ public:
     GetFileRecordDiskOffset(_In_ ULONG FileRecordNumber,
                             _Out_ PULONGLONG FileRecordDiskOffset);
 
+    NTSTATUS
+    WriteFileRecordToMFT(_In_ PFileRecord File);
+
 private:
     PNTFSVolume Volume;
     UINT64 MFTLCN;

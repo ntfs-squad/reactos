@@ -14,13 +14,12 @@ list(APPEND SOURCE
      io/ntblockio.cpp
      io/fsctrl.cpp
      io/registry.cpp
+     filerecord/attributes/addattr.cpp
+     filerecord/attributes/findattr.cpp
      filerecord/read/copy.cpp
+     filerecord/write/filedata.cpp
      filerecord/filerecord.cpp
      filerecord/fixup.cpp
-     filerecord/attributes/findattr.cpp
-     filerecord/attributes/addattr.cpp
-     filerecord/write/disk.cpp
-     filerecord/write/filedata.cpp
      lfs/lfs.cpp
      ntfsvol/ntfsvol.cpp
      btree/btree.cpp

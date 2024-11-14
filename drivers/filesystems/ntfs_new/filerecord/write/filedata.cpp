@@ -41,7 +41,7 @@ FileRecord::WriteFileData(_In_opt_ PWSTR StreamName,
                                  *Length);
 
     // Write the file record to disk
-    Status = WriteRecordToDisk();
+    Status = MFT->WriteFileRecordToMFT(this);
 
     return Status;
 }

@@ -82,6 +82,7 @@ typedef class FileRecord
 {
 public:
     PFileRecordHeader Header;
+    PUCHAR Data = NULL;
 
     // ./filerecord.cpp
     FileRecord(_In_ PNTFSVolume Volume);
@@ -111,10 +112,16 @@ public:
                   _Inout_  PULONG Length,
                   _In_     ULONGLONG Offset = 0);
 
+    // ./ fixup.cpp
+    NTSTATUS
+    CommitFixup();
+
+    NTSTATUS
+    ApplyFixup();
+
 private:
     PNTFSVolume Volume;
     MasterFileTable* MFT;
-    PUCHAR Data = NULL;
 
     // ./write.cpp
     NTSTATUS
@@ -125,12 +132,4 @@ private:
                         _In_     PUCHAR Buffer,
                         _In_     ULONG Length,
                         _In_     ULONG Offset = 0);
-    NTSTATUS WriteRecordToDisk();
-
-    // ./ fixup.cpp
-    NTSTATUS
-    ApplyFixup();
-
-    NTSTATUS
-    CommitFixup();
 } *PFileRecord;
