@@ -61,7 +61,7 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     }
 
     // Get boot sector information.
-    PartBootSector = new(NonPagedPool) BootSector();
+    PartBootSector = new(PagedPool) BootSector();
     ReadBlock(DeviceToMount,
               0,
               1,
@@ -134,11 +134,14 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
                   &PartBootSector->SerialNumber,
                   sizeof(UINT64));
 
-    // Initialize MFT
-    MFT = new(PagedPool) MasterFileTable(this,
-                                         PartBootSector->MFTLCN,
-                                         PartBootSector->MFTMirrLCN,
-                                         PartBootSector->ClustersPerFileRecord);
+    // Initialize Master File Table
+    MFT = new(PagedPool, TAG_MFT) MasterFileTable(this,
+                                                  PartBootSector->MFTLCN,
+                                                  PartBootSector->MFTMirrLCN,
+                                                  PartBootSector->ClustersPerFileRecord);
+
+    // Initialize Log File Service
+    LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
 
 Cleanup:
     delete PartBootSector;

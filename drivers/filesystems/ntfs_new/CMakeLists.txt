@@ -21,6 +21,7 @@ list(APPEND SOURCE
      filerecord/attributes/addattr.cpp
      filerecord/write/disk.cpp
      filerecord/write/filedata.cpp
+     lfs/lfs.cpp
      ntfsvol/ntfsvol.cpp
      btree/btree.cpp
      btree/directory/directory.cpp

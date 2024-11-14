@@ -20,6 +20,11 @@
 #include <pseh/pseh2.h>
 
 #define TAG_NTFS 'NTFS'
+#define TAG_MFT '$MFT'
+#define TAG_FILE_RECORD 'FREC'
+#define TAG_DATA_RUN 'DTRN'
+#define TAG_LOG_FILE_SERVICE 'LgFS'
+#define TAG_BTREE 'BTRE'
 #define NTFS_DEBUG
 
 #define GetWStrLength(x) x * sizeof(WCHAR)
@@ -287,7 +292,9 @@ QueryDwordRegistryValue(_In_ PWCHAR Name,
                         _In_ INT Default = 0);
 
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
+void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
+void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 
 #include "filerecord/attributes/attributes.h"
 #include "io/contextblocks.h"

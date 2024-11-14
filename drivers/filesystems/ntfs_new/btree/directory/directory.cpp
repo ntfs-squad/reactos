@@ -69,8 +69,8 @@ Directory::CreateNode(_In_    PFileRecord File,
     IndexBufferSize = BytesPerIndexRecord(Volume);
 
     // Create the new node and first key.
-    NewNode = new(PagedPool) BTreeNode();
-    CurrentKey = new(PagedPool) BTreeKey();
+    NewNode = new(PagedPool, TAG_BTREE) BTreeNode();
+    CurrentKey = new(PagedPool, TAG_BTREE) BTreeKey();
     NewNode->FirstKey = CurrentKey;
     NodeBuffer = (PIndexBuffer)ExAllocatePoolWithTag(PagedPool,
                                                      IndexBufferSize,
@@ -133,7 +133,7 @@ Directory::CreateNode(_In_    PFileRecord File,
         if (!(CurrentEntry->Flags & INDEX_ENTRY_END))
         {
             // Create the next key
-            NextKey = new(PagedPool) BTreeKey();
+            NextKey = new(PagedPool, TAG_BTREE) BTreeKey();
             CurrentKey->NextKey = NextKey;
 
             // Advance to next entry
@@ -191,8 +191,8 @@ Directory::CreateRootNode(_In_  PFileRecord File,
     }
 
     // Initialize variables
-    RootNode = new(PagedPool) BTreeNode();
-    CurrentKey = new(PagedPool) BTreeKey();
+    RootNode = new(PagedPool, TAG_BTREE) BTreeNode();
+    CurrentKey = new(PagedPool, TAG_BTREE) BTreeKey();
     RootNode->FirstKey = CurrentKey;
 
     CurrentEntry = (PIndexEntry)(((ULONG_PTR)IndexRootData) +
@@ -235,7 +235,7 @@ Directory::CreateRootNode(_In_  PFileRecord File,
         if (!(CurrentEntry->Flags & INDEX_ENTRY_END))
         {
             // Create next key
-            NextKey = new(PagedPool) BTreeKey();
+            NextKey = new(PagedPool, TAG_BTREE) BTreeKey();
             CurrentKey->NextKey = NextKey;
 
             // Advance to the next entry

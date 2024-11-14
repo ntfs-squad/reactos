@@ -30,7 +30,7 @@ FileRecord::LoadFileRecordFromDisk(_In_ ULONGLONG FileRecordNumber)
     // Initialize data buffer and header pointer.
     if (Data == NULL)
     {
-        Data = new(PagedPool) UCHAR[MFT->FileRecordSize];
+        Data = new(PagedPool, TAG_FILE_RECORD) UCHAR[MFT->FileRecordSize];
         Header = (PFileRecordHeader)Data;
     }
 

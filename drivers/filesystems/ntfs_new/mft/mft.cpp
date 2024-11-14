@@ -70,7 +70,7 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
     PAGED_CODE();
     NTSTATUS Status;
 
-    *File = new(PagedPool) FileRecord(Volume);
+    *File = new(PagedPool, TAG_MFT) FileRecord(Volume);
     Status = (*File)->LoadFileRecordFromDisk(FileRecordNumber);
     return Status;
 }
@@ -102,7 +102,7 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
         return STATUS_NOT_FOUND;
     }
 
-    CurrentDirectory = new(PagedPool) Directory(Volume);
+    CurrentDirectory = new(PagedPool, TAG_MFT) Directory(Volume);
 
     Status = CurrentDirectory->LoadDirectory(CurrentFile);
     if(!NT_SUCCESS(Status))
@@ -145,7 +145,7 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
         if (wcschr(QueryElementPtr, L'\\') &&
             wcschr(QueryElementPtr, L'\\')[1] != L'\0')
         {
-            CurrentDirectory = new(PagedPool) Directory(Volume);
+            CurrentDirectory = new(PagedPool, TAG_MFT) Directory(Volume);
             Status = CurrentDirectory->LoadDirectory(CurrentFile);
             if (!NT_SUCCESS(Status))
             {
