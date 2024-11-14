@@ -2,8 +2,8 @@
  * PROJECT:     ReactOS Kernel
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     NTFS filesystem driver
- * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
- *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ * COPYRIGHT:   Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
 typedef class MasterFileTable
@@ -29,13 +29,9 @@ public:
     GetFileRecordDiskOffset(_In_ ULONG FileRecordNumber,
                             _Out_ PULONGLONG FileRecordDiskOffset);
 
-    // NTSTATUS
-    // WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
-    //                 _In_ PULONG BufferLength,
-    //                 _In_ PUCHAR Buffer);
-
 private:
     PNTFSVolume Volume;
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;
+    INT    MftZoneReservation;
 } *PMasterFileTable;

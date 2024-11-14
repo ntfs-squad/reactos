@@ -1,9 +1,9 @@
 /*
  * PROJECT:     ReactOS Kernel
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     Source file for the ntfs_new volume managment
- * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
- *              Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
+ * PURPOSE:     Source file for the ntfs_new volume management
+ * COPYRIGHT:   Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
 /* INCLUDES *****************************************************************/

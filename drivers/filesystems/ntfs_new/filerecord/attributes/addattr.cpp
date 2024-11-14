@@ -2,8 +2,8 @@
  * PROJECT:     ReactOS Kernel
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     NTFS filesystem driver
- * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
- *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ * COPYRIGHT:   Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
 #include "ntfspch.h"
@@ -11,15 +11,16 @@
 #define UpdatedAttributeSize(OldAttribute, NewDataLength) \
 ROUND_UP(OldAttribute->Resident.DataOffset + NewDataLength, 8)
 
-#define NewAttributeEndPtr(OldAttribute, NewDataLength) \
-(PUCHAR)OldAttribute + UpdatedAttributeSize(OldAttribute, NewDataLength)
-
 #define NewRecordSize(OldSize, OldAttribute, NewDataLength) \
 ROUND_UP(OldSize - OldAttribute->Length + UpdatedAttributeSize(OldAttribute, NewDataLength), 8)
 
-#define AttributePtr FileAttributesPtr + WorkingOffset
+#define NewAttributeEndPtr(OldAttribute, NewDataLength) \
+(PUCHAR)OldAttribute + UpdatedAttributeSize(OldAttribute, NewDataLength)
 
 #define EndOfAttributesMarker 0xFFFFFFFF
+
+
+// NOTE: ATTRIBUTES ARE ALIGNED TO 8-BYTE BOUNDARIES!!!
 
 NTSTATUS
 FileRecord::UpdateAttributeData(_In_     AttributeType Type,
@@ -30,8 +31,6 @@ FileRecord::UpdateAttributeData(_In_     AttributeType Type,
 {
     PAttribute CurrentAttribute;
     PUCHAR EndOfFileRecord;
-
-    // NOTE: ATTRIBUTES ARE ALIGNED TO 8-BYTE BOUNDARIES!!!
 
     // Eventually I want this to work with offsets
     // but it doesn't work yet.
@@ -52,52 +51,19 @@ FileRecord::UpdateAttributeData(_In_     AttributeType Type,
         return STATUS_FILE_CORRUPT_ERROR;
     EndOfFileRecord += sizeof(UINT32);
 
-    // Move the attributes after the found attribute.
-    DPRINT1("Moving from: 0x%X\n", (PUCHAR)CurrentAttribute + CurrentAttribute->Length);
-    DPRINT1("Moving to: 0x%X\n", NewAttributeEndPtr(CurrentAttribute, Length));
-    DPRINT1("Moving %ld bytes.\n", NewAttributeEndPtr(CurrentAttribute, Length) - ((PUCHAR)CurrentAttribute + CurrentAttribute->Length));
-
-    DPRINT1("End Of File Record: 0x%X\n", EndOfFileRecord);
-    DPRINT1("Current Attribute: 0x%X\n", CurrentAttribute);
-    DPRINT1("Current Attribute Length: %ld\n", CurrentAttribute->Length);
-
-    DPRINT1("Length: %ld\n", EndOfFileRecord - (PUCHAR)CurrentAttribute - CurrentAttribute->Length);
-
-    // __debugbreak();
-
     RtlMoveMemory(NewAttributeEndPtr(CurrentAttribute, Length),
                   (PUCHAR)CurrentAttribute + CurrentAttribute->Length,
                   (EndOfFileRecord - (PUCHAR)CurrentAttribute - CurrentAttribute->Length));
-
-    DPRINT1("Copying to: 0x%X\n", ((PUCHAR)CurrentAttribute + CurrentAttribute->Resident.DataOffset));
-    DPRINT1("Copying from: 0x%X\n", Buffer);
-    DPRINT1("Length:\n", Length);
-
-    DPRINT1("Buffer Contents: \"%s\"\n", Buffer);
-
-    // __debugbreak();
 
     // Copy the buffer contents into the current attribute.
     RtlCopyMemory((PUCHAR)CurrentAttribute + CurrentAttribute->Resident.DataOffset,
                   Buffer,
                   Length);
 
-    DPRINT1("Old File Record Size: %ld\n", Header->ActualSize);
-    DPRINT1("New File Record Size: %ld\n", NewRecordSize(EndOfFileRecord - (PUCHAR)Data, CurrentAttribute, Length));
-
-    // __debugbreak();
-
     // Adjust length of the file record
     Header->ActualSize = NewRecordSize(EndOfFileRecord - (PUCHAR)Data,
                                        CurrentAttribute,
                                        Length);
-
-    DPRINT1("Old Attribute Length: %ld\n", CurrentAttribute->Length);
-    DPRINT1("New Attribute Length: %ld\n", UpdatedAttributeSize(CurrentAttribute, Length));
-    DPRINT1("Old Attribute Data Length: %ld\n", CurrentAttribute->Resident.DataLength);
-    DPRINT1("New Attribute Data Length: %ld\n", Length);
-
-    // __debugbreak();
 
     // Adjust length of the attribute data
     CurrentAttribute->Length = ROUND_UP(UpdatedAttributeSize(CurrentAttribute, Length), 8);
@@ -105,6 +71,8 @@ FileRecord::UpdateAttributeData(_In_     AttributeType Type,
 
     return STATUS_SUCCESS;
 }
+
+// #define AttributePtr FileAttributesPtr + WorkingOffset
 
 // #define DoesAttributeNameMatch(Attribute1, Attribute2) \
 // Attribute1->NameLength == Attribute2->NameLength \

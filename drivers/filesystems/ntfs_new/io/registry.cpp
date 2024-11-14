@@ -1,7 +1,16 @@
+/*
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     NTFS filesystem driver
+ * COPYRIGHT:   Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
+ */
+
 #include "ntfspch.h"
 
-BOOLEAN
-QueryBooleanRegistryValue(_In_ PWCHAR Name)
+INT
+QueryDwordRegistryValue(_In_ PWCHAR Name,
+                        _In_ INT Default)
 {
     NTSTATUS Status;
     HANDLE hRegistryKey;
@@ -10,7 +19,7 @@ QueryBooleanRegistryValue(_In_ PWCHAR Name)
     const UINT BufferSize = ROUND_UP(sizeof(KeyValuePartialInformation) + sizeof(ULONG), 0x10);
     UCHAR Buffer[BufferSize];
     ULONG DataLength;
-    BOOLEAN Result;
+    INT Result;
 
     // Set up registry path
     RtlInitUnicodeString(&RegistryPath,
@@ -26,7 +35,7 @@ QueryBooleanRegistryValue(_In_ PWCHAR Name)
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to open registry key!\n");
-        return FALSE;
+        return Default;
     }
 
     // Set up registry value
@@ -42,20 +51,18 @@ QueryBooleanRegistryValue(_In_ PWCHAR Name)
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to query registry value \"%S\"!\n", Name);
-        return FALSE;
+        return Default;
     }
 
-    Result = FALSE;
-
-    for (int i = 0; i < sizeof(DWORD); i++)
-    {
-        if (((PKEY_VALUE_PARTIAL_INFORMATION)Buffer)->Data[i])
-        {
-            Result = TRUE;
-            break;
-        }
-    }
+    Result = *((INT*)(((PKEY_VALUE_PARTIAL_INFORMATION)Buffer)->Data));
 
     ZwClose(hRegistryKey);
     return Result;
+}
+
+BOOLEAN
+QueryBooleanRegistryValue(_In_ PWCHAR Name,
+                          _In_ BOOLEAN Default)
+{
+    return !!QueryDwordRegistryValue(Name, Default ? 1 : 0);
 }

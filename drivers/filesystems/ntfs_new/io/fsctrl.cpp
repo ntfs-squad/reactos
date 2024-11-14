@@ -2,8 +2,8 @@
  * PROJECT:     ReactOS Kernel
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     Source file for the filesystem controls
- * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
- *              Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
+ * COPYRIGHT:   Copyright 2024 Carl J. Bialorucki <carl.bialorucki@reactos.org>
+ *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
 /* INCLUDES *****************************************************************/

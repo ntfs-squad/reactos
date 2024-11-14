@@ -2,8 +2,8 @@
  * PROJECT:     ReactOS Kernel
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     NTFS filesystem driver
- * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
- *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ * COPYRIGHT:   Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
 #define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
@@ -54,6 +54,7 @@ public:
     PVPB VolParamBlock;
 
     class MasterFileTable* MFT;
+    class LogFileService* LFS;
 
     ~NTFSVolume();
     NTSTATUS LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);

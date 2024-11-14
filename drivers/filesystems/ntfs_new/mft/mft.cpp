@@ -2,8 +2,8 @@
  * PROJECT:     ReactOS Kernel
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     NTFS filesystem driver
- * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
- *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ * COPYRIGHT:   Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
 /* INCLUDES *****************************************************************/
@@ -11,6 +11,8 @@
 
 #define IsRootFile(Path) \
 Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
+
+#define InvalidMftZoneReservation(Num) Num < 1 || Num > 4
 
 MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
                                  _In_ UINT64 MFTLCN,
@@ -28,6 +30,14 @@ MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
     FileRecordSize = ClustersPerFileRecord < 0 ?
                      1 << (-(ClustersPerFileRecord))
                      : ClustersPerFileRecord * BytesPerCluster(Volume);
+
+    /* Get the MftReservationZone registry value.
+     * Per Microsoft Learn: This value should be between 1 and 4. 1 is the default.
+     * TODO: Actually use it for MFT Zone reservations.
+     */
+    MftZoneReservation = QueryDwordRegistryValue(L"NtfsMftZoneReservation", 1);
+    if (InvalidMftZoneReservation(MftZoneReservation))
+        MftZoneReservation = 1;
 }
 
 NTSTATUS

@@ -2,8 +2,8 @@
  * PROJECT:     ReactOS Kernel
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     NTFS filesystem driver
- * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
- *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ * COPYRIGHT:   Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
 #include "ntfspch.h"
@@ -82,7 +82,8 @@ AddKeyToBothDirInfo(_In_     PBTreeKey Key,
 
 BOOLEAN
 Directory::IsEligibleForFileDir(PBTreeKey Key,
-                                PUNICODE_STRING FileNameFilter)
+                                PUNICODE_STRING FileNameFilter,
+                                BOOLEAN MetadataFilesAllowed)
 {
     // Is this a dummy key?
     if (IsLastEntry(Key))
@@ -95,7 +96,7 @@ Directory::IsEligibleForFileDir(PBTreeKey Key,
 
     // Is this a super hidden metadata file (MFT file records 0-26)?
     if (GetFRNFromFileRef(FileRef(Key)) <= 26
-        && !QueryBooleanRegistryValue(L"NtfsShowMetadataFiles"))
+        && !MetadataFilesAllowed) // QueryBooleanRegistryValue(L"NtfsShowMetadataFiles"))
         return FALSE;
 
     // Is this a duplicated short name?
@@ -115,6 +116,7 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
     NTSTATUS Status;
     ULONG EntrySize, TotalBufferLength;
     PFILE_BOTH_DIR_INFORMATION PreviousBuffer;
+    BOOLEAN ShowMetadataFiles;
 
     DPRINT1("Called Directory::GetFileBothDirInfo()\n");
 
@@ -133,10 +135,13 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
         ResetCurrentKey();
 
     TotalBufferLength = *BufferLength;
+    ShowMetadataFiles = QueryBooleanRegistryValue(L"NtfsShowMetadataFiles");
 
     while (CurrentKey)
     {
-        if (IsEligibleForFileDir(CurrentKey, FileNameFilter))
+        if (IsEligibleForFileDir(CurrentKey,
+                                 FileNameFilter,
+                                 ShowMetadataFiles))
         {
             // Add key to buffer
             Status = AddKeyToBothDirInfo(CurrentKey,

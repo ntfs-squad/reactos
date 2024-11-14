@@ -277,8 +277,14 @@ DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
                 _Inout_ PULONG OutputBufferSize,
                 _In_    BOOLEAN Override);
 
+// io/registry.cpp
 BOOLEAN
-QueryBooleanRegistryValue(_In_ PWCHAR Name);
+QueryBooleanRegistryValue(_In_ PWCHAR Name,
+                          _In_ BOOLEAN Default = FALSE);
+
+INT
+QueryDwordRegistryValue(_In_ PWCHAR Name,
+                        _In_ INT Default = 0);
 
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
@@ -290,6 +296,7 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 #include "btree/btree.h"
 #include "btree/directory/directory.h"
 #include "mft/mft.h"
+#include "lfs/lfs.h"
 
 #include <debug.h>
 

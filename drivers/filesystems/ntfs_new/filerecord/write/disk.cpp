@@ -2,8 +2,8 @@
  * PROJECT:     ReactOS Kernel
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     NTFS filesystem driver
- * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
- *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ * COPYRIGHT:   Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
 #include "ntfspch.h"
@@ -37,7 +37,7 @@ FileRecord::WriteRecordToDisk()
         __debugbreak();
     }
 
-    // Undo the fixup array to fix file record in memory.
+    // Undo the fixup array to fix the file record in memory.
     Status = ApplyFixup();
 
     if (!NT_SUCCESS(Status))
