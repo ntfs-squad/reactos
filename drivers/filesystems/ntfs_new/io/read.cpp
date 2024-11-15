@@ -51,8 +51,8 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (RequestedLength)
     {
         // Copy data from $DATA into file buffer.
-        Status = FileCB->FileRec->CopyData(TypeData,
-                                           NULL,
+        Status = FileCB->FileRec->CopyData(FileCB->RequestedType,
+                                           FileCB->RequestedStream,
                                            Buffer,
                                            &RequestedLength,
                                            ReadOffset.QuadPart);

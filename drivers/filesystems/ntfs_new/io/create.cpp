@@ -41,7 +41,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     NTSTATUS Status;
     PFILE_OBJECT FileObject;
     BOOLEAN PerformAccessChecks;
-    PWCHAR FileNameQuery;
+    PWSTR FileNameQuery, ADSPtr, ADSTypePtr;
     FileRecord* CurrentFile;
     PAttribute Attr;
     PStandardInformationEx StdInfo;
@@ -74,16 +74,17 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (Disposition == FILE_SUPERSEDE ||
         Disposition == FILE_CREATE ||
         Disposition == FILE_OVERWRITE ||
-        Disposition == FILE_OVERWRITE_IF ||
-        wcschr(FileNameQuery, L':'))
+        Disposition == FILE_OVERWRITE_IF)
     {
         DPRINT1("Rejecting file open!\n");
         Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
         return STATUS_NOT_IMPLEMENTED;
     }
 
-    // TODO: Check if we have rights to access file here.
     Status = Volume->MFT->GetFileRecordFromQuery(FileNameQuery, &CurrentFile);
+
+    // TODO: Check if we have rights to access file here.
+
     if (!NT_SUCCESS(Status))
     {
         // This isn't always an issue, but it isn't implemented yet.
@@ -101,6 +102,54 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     RtlCopyMemory(FileCB->FileName,
                   IrpSp->FileObject->FileName.Buffer,
                   IrpSp->FileObject->FileName.Length);
+
+    ADSPtr = wcschr(FileNameQuery, L':');
+
+    if (ADSPtr)
+    {
+        /* This file request is for an alternate data stream.
+         * Format:
+         *     filename.ext:AttributeName:$AttributeType
+         * If the last element is missing, it is equivalent to
+         *     filename.ext:AttributeName:$DATA
+         */
+        DPRINT1("Asking for alternate data stream!\n");
+
+        // Go to the next character after the colon
+        ADSPtr++;
+        ADSTypePtr = wcschr(ADSPtr, L':');
+
+        if (ADSTypePtr)
+        {
+            // TODO: Use $AttrDef file to look up this type.
+            ADSTypePtr++;
+            DPRINT1("ADSType is \"%S\"\n", ADSTypePtr);
+            __debugbreak();
+            delete FileCB;
+            Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+            return STATUS_NOT_IMPLEMENTED;
+        }
+
+        else
+        {
+            // Copy the stream name
+            FileCB->RequestedStream = new(NonPagedPool) WCHAR[wcslen(ADSPtr) + 1];
+            RtlCopyMemory(FileCB->RequestedStream,
+                          ADSPtr,
+                          wcslen(ADSPtr) * sizeof(WCHAR));
+            FileCB->RequestedStream[wcslen(ADSPtr)] = L'\0';
+
+            // No type specified, use $DATA
+            FileCB->RequestedType = TypeData;
+        }
+    }
+
+    else
+    {
+        // This is a normal file.
+        FileCB->RequestedType = TypeData;
+        FileCB->RequestedStream = NULL;
+    }
 
     // From file record
     FileCB->NumberOfLinks = CurrentFile->Header->HardLinkCount;

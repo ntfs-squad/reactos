@@ -24,14 +24,6 @@ typedef struct
     NTFSVolume *Volume;
     PDEVICE_OBJECT StorageDevice;
     PFILE_OBJECT StreamFileObject;
-
-    // We will uncomment these when needed.
-    // ERESOURCE DirResource; //DDK
-    // KSPIN_LOCK FileCBListLock; //DDK
-    // LIST_ENTRY FileCBListHead; //WinSDK
-    // struct _FCB *RootFileCB;
-    // ULONG Flags;
-
 } VolumeContextBlock, *PVolumeContextBlock;
 
 typedef struct _SCB
@@ -49,6 +41,10 @@ typedef struct _FCB
 
     // Used for file name information;
     WCHAR FileName[MAX_PATH];
+
+    // Used for Alternate Data Streams (ADS)
+    AttributeType RequestedType;
+    PWSTR RequestedStream;
 
     // Used for File Basic Information
     LARGE_INTEGER CreationTime;

@@ -10,7 +10,11 @@
 #include "ntfspch.h"
 
 #define PathElementLength(FileName) \
-(wcschr(FileName, L'\\')) ? (wcschr(FileName, L'\\') - FileName) : (wcslen(FileName)) \
+(wcschr(FileName, L'\\')) \
+? (wcschr(FileName, L'\\') - FileName) \
+: (wcschr(FileName, L':')) \
+? (wcschr(FileName, L':') - FileName) \
+: (wcslen(FileName))
 
 #define CompareLength(FileName, CurrentKey) \
 min(PathElementLength(FileName->Buffer), GetFileName(CurrentKey)->NameLength)
