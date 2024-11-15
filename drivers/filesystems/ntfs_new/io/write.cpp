@@ -41,7 +41,11 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     Length = IrpSp->Parameters.Write.Length;
     FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
 
-    Status = FileCB->FileRec->WriteFileData(NULL, Buffer, &Length, ByteOffset);
+    Status = FileCB->FileRec->WriteFileData(FileCB->RequestedType,
+                                            FileCB->RequestedStream,
+                                            Buffer,
+                                            &Length,
+                                            ByteOffset);
 
     if (NT_SUCCESS(Status))
     {

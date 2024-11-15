@@ -303,6 +303,8 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 #include "btree/btree.h"
 #include "btree/directory/directory.h"
 #include "mft/mft.h"
+#include "lfs/logfile.h"
+#include "lfs/usnjrnl.h"
 #include "lfs/lfs.h"
 
 #include <debug.h>

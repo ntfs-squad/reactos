@@ -25,7 +25,8 @@
 #define WriteToEOF(Offset) Offset == ~0
 
 NTSTATUS
-FileRecord::WriteFileData(_In_opt_ PWSTR StreamName,
+FileRecord::WriteFileData(_In_     AttributeType AttrType,
+                          _In_opt_ PWSTR StreamName,
                           _In_     PUCHAR Buffer,
                           _Inout_  PULONG Length,
                           _In_     ULONGLONG Offset)
@@ -35,8 +36,8 @@ FileRecord::WriteFileData(_In_opt_ PWSTR StreamName,
     DPRINT1("Called FileRecord::WriteData()!\n");
 
     // This is incredibly naive, I know.
-    Status = UpdateAttributeData(TypeData,
-                                 NULL,
+    Status = UpdateAttributeData(AttrType,
+                                 StreamName,
                                  Buffer,
                                  *Length);
 

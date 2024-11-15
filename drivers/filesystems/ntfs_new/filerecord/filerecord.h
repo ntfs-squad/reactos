@@ -107,7 +107,8 @@ public:
 
     // ./write.cpp
     NTSTATUS
-    WriteFileData(_In_opt_ PWSTR StreamName,
+    WriteFileData(_In_     AttributeType AttrType,
+                  _In_opt_ PWSTR StreamName,
                   _In_     PUCHAR Buffer,
                   _Inout_  PULONG Length,
                   _In_     ULONGLONG Offset = 0);
