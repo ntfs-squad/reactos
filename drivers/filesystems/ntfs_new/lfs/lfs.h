@@ -10,6 +10,18 @@ typedef class LogFileService
 {
 public:
     LogFileService(_In_ PNTFSVolume TargetVolume);
+    NTSTATUS LogTransaction();
+    NTSTATUS CommitTransaction();
 private:
     PNTFSVolume Volume;
+    PFileRecord LogFile;
+
+    // Call when creating LFS Object
+    NTSTATUS PerformFileSystemRecovery();
+
+    // Call every 5 seconds
+    NTSTATUS WriteCheckpointRecord();
+
+    // Set in registry with fsutil
+    BOOLEAN BugCheckOnCorrupt;
 } *PLogFileService;
