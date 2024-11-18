@@ -72,64 +72,6 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
     return Status;
 }
 
-NTSTATUS
-ReadDiskUnaligned(_In_     PDEVICE_OBJECT DeviceToRead,
-                   _In_    ULONGLONG Offset,
-                   _In_    ULONG Length,
-                   _Inout_ PUCHAR Buffer)
-{
-    NTSTATUS Status;
-    PUCHAR SectorAlignmentBuffer = NULL;
-    USHORT RaggedEdgeSize = 0;
-    USHORT SectorSize = DeviceToRead->SectorSize;
-    ULONG LengthSectorAligned = ALIGN_DOWN_BY(Length, SectorSize);
-
-    ASSERT(Length);
-
-    DPRINT1("ReadDiskUnaligned() called!\n");
-
-    if (LengthSectorAligned != Length)
-    {
-        DPRINT1("LengthSectorAligned != Length (%ld != %ld)\n", LengthSectorAligned, Length);
-        RaggedEdgeSize = Length - LengthSectorAligned;
-        SectorAlignmentBuffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, SectorSize, TAG_NTFS);
-    }
-
-    if (LengthSectorAligned)
-    {
-        // LengthSectorAligned will equal 0 if we only need to read 1 sector.
-        Status = ReadDisk(DeviceToRead,
-                          Offset,
-                          LengthSectorAligned,
-                          Buffer);
-
-        // TODO: Replace with DPRINT and fail
-        ASSERT(NT_SUCCESS(Status));
-    }
-
-    if (SectorAlignmentBuffer)
-    {
-        // Get the last sector of data
-        Status = ReadDisk(DeviceToRead,
-                          (Offset + LengthSectorAligned),
-                          SectorSize,
-                          SectorAlignmentBuffer);
-
-        // TODO: Replace with DPRINT and fail
-        ASSERT(NT_SUCCESS(Status));
-
-        // Copy what we need into the buffer
-        RtlCopyMemory(Buffer + LengthSectorAligned,
-                      SectorAlignmentBuffer,
-                      RaggedEdgeSize);
-
-        // Free page alignment buffer
-        delete SectorAlignmentBuffer;
-    }
-
-    return Status;
-}
-
 // You might notice Carl this looks exactly like ReadDisk, So let's go over WHY...
 NTSTATUS
 WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
@@ -192,23 +134,6 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
 
     //  And return to our caller.
     return Status;
-}
-
-
-NTSTATUS
-ReadBlock(_In_    PDEVICE_OBJECT DeviceObject,
-          _In_    ULONG DiskSector,
-          _In_    ULONG SectorCount,
-          _In_    ULONG SectorSize,
-          _Inout_ PUCHAR Buffer)
-{
-    LONGLONG Offset;
-    ULONG BlockSize;
-
-    Offset = (LONGLONG)DiskSector * (LONGLONG)SectorSize;
-    BlockSize = SectorCount * SectorSize;
-
-    return ReadDisk(DeviceObject, Offset, BlockSize, Buffer);
 }
 
 NTSTATUS

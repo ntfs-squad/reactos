@@ -99,10 +99,9 @@ FileRecord::CopyData(_In_    PAttribute Attr,
                 // We need to copy data from this run before moving to the next one.
 
                 // Get data
-                Status = ReadDiskUnaligned(Volume->PartDeviceObj,
-                                           GetOffset(CurrentDR->LCN) + Offset,
-                                           min(BytesToRead, (BytesInRun - Offset)),
-                                           Buffer);
+                Status = Volume->ReadVolume(GetOffset(CurrentDR->LCN) + Offset,
+                                            min(BytesToRead, (BytesInRun - Offset)),
+                                            Buffer);
                 if (!NT_SUCCESS(Status))
                 {
                     DPRINT1("Failed to read attribute contents!\n");

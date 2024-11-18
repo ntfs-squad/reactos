@@ -47,10 +47,9 @@ FileRecord::LoadFileRecordFromDisk(_In_ ULONGLONG FileRecordNumber)
     }
 
     // Read disk for file record contents.
-    Status = ReadDisk(Volume->PartDeviceObj,
-                      FileRecordDiskOffset,
-                      MFT->FileRecordSize,
-                      Data);
+    Status = Volume->ReadVolume(FileRecordDiskOffset,
+                                MFT->FileRecordSize,
+                                Data);
 
     // Ensure the file record was read correctly.
     if (!NT_SUCCESS(Status) ||

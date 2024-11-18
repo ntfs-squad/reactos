@@ -31,55 +31,95 @@ FileRecord::UpdateAttributeData(_In_     AttributeType Type,
 {
     PAttribute CurrentAttribute;
     PUCHAR EndOfFileRecord;
-
-    // Eventually I want this to work with offsets
-    // but it doesn't work yet.
-    ASSERT(Offset == 0);
+    PDataRun NonResidentDataRun, CurrentDR;
 
     // Find the attribute we need to update.
     CurrentAttribute = GetAttribute(Type, AttributeName);
     if (!CurrentAttribute)
         return STATUS_NOT_FOUND;
 
-    // Eventually I want this to work with nonresident attributes
-    // but it doesn't work yet.
-    ASSERT(!CurrentAttribute->IsNonResident);
-
-    // Find the real end of the file record.
+    // Find the end of the file record.
+    // TODO: Do this better.
     EndOfFileRecord = (PUCHAR)GetAttribute(TypeAttributeEndMarker, NULL);
     if (!EndOfFileRecord)
         return STATUS_FILE_CORRUPT_ERROR;
     EndOfFileRecord += sizeof(UINT32);
 
-    RtlMoveMemory(NewAttributeEndPtr(CurrentAttribute, Length),
-                  (PUCHAR)CurrentAttribute + CurrentAttribute->Length,
-                  (EndOfFileRecord - (PUCHAR)CurrentAttribute - CurrentAttribute->Length));
+    /* TODO: Determine if the attribute needs to be made non-resident.
+     *
+     * Note: MS NTFS doesn't bother shrinking back down to resident once an
+     * attribute is made non-resident. I want to try it though.
+     */
 
-    // Copy the buffer contents into the current attribute.
-    RtlCopyMemory((PUCHAR)CurrentAttribute + CurrentAttribute->Resident.DataOffset,
-                  Buffer,
-                  Length);
+    if (CurrentAttribute->IsNonResident)
+    {
+        // The attribute is non-resident.
 
-    // Adjust length of the file record
-    Header->ActualSize = NewRecordSize(EndOfFileRecord - (PUCHAR)Data,
-                                       CurrentAttribute,
-                                       Length);
+        // Get the data run for this attribute.
+        NonResidentDataRun = FindNonResidentData(CurrentAttribute);
 
-    // Adjust length of the attribute data
-    CurrentAttribute->Length = ROUND_UP(UpdatedAttributeSize(CurrentAttribute, Length), 8);
-    CurrentAttribute->Resident.DataLength = Length;
+        // Loop through data run to find where we need to update attribute data
+        CurrentDR = NonResidentDataRun;
 
-    return STATUS_SUCCESS;
+        while(CurrentDR && Length)
+        {
+            if (Offset >= (CurrentDR->Length * BytesPerCluster(Volume)))
+            {
+                // We need to move onto the next data run.
+                Offset -= (CurrentDR->Length * BytesPerCluster(Volume));
+            }
+
+            else
+            {
+                // There is information in this data run we have to edit.
+                // WriteDiskUnaligned(Volume->PartDeviceObj,
+                //                    Offset + (CurrentDR->LCN * BytesPerCluster(Volume)),
+                //                    )
+
+                __debugbreak();
+                // Free the data run.
+                FreeDataRun(NonResidentDataRun);
+                return STATUS_NOT_IMPLEMENTED;
+            }
+
+            // Set up next data run.
+            CurrentDR = CurrentDR->NextRun;
+        }
+
+        // Free the data run.
+        FreeDataRun(NonResidentDataRun);
+        return STATUS_SUCCESS;
+    }
+
+    else
+    {
+        // The attribute is resident.
+
+        // TODO: Implement offsets
+        ASSERT(Offset == 0);
+
+        // Move the attribute data after the target attribute to where it needs to go
+        RtlMoveMemory(NewAttributeEndPtr(CurrentAttribute, Length),
+                      (PUCHAR)CurrentAttribute + CurrentAttribute->Length,
+                      (EndOfFileRecord - (PUCHAR)CurrentAttribute - CurrentAttribute->Length));
+
+        // Copy the buffer contents into the current attribute
+        RtlCopyMemory((PUCHAR)CurrentAttribute + CurrentAttribute->Resident.DataOffset,
+                      Buffer,
+                      Length);
+
+        // Adjust length of the file record
+        Header->ActualSize = NewRecordSize(EndOfFileRecord - (PUCHAR)Data,
+                                           CurrentAttribute,
+                                           Length);
+
+        // Adjust length of the attribute data
+        CurrentAttribute->Length = UpdatedAttributeSize(CurrentAttribute, Length);
+        CurrentAttribute->Resident.DataLength = Length;
+
+        return STATUS_SUCCESS;
+    }
 }
-
-// #define AttributePtr FileAttributesPtr + WorkingOffset
-
-// #define DoesAttributeNameMatch(Attribute1, Attribute2) \
-// Attribute1->NameLength == Attribute2->NameLength \
-// && (Attribute1->NameLength == 0 \
-//     || RtlCompareMemory(Attribute1 + Attribute1->NameOffset, \
-//                         Attribute2 + Attribute2->NameOffset, \
-//                         Attribute1->NameLength) == Attribute1->NameLength)
 
 /* Inserts or overwrites an attribute to the file record in memory.
  */

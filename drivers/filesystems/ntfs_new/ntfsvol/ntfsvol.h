@@ -65,8 +65,12 @@ public:
                             _In_ USHORT Length);
     NTSTATUS GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
     void RunSanityChecks();
-
     void SanityCheckBlockIO();
+    NTSTATUS ReadVolume(_In_    ULONGLONG Offset,
+                        _In_    ULONG Length,
+                        _Inout_ PUCHAR Buffer);
+    NTSTATUS WriteToDisk();
+
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
 } *PNTFSVolume;

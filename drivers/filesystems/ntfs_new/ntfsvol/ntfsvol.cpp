@@ -46,6 +46,7 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     }
 
     // Check if we are actually NTFS.
+
     // Check bytes per sector.
     if (DiskGeometry.BytesPerSector != 512
         && DiskGeometry.BytesPerSector != 4096)
@@ -62,11 +63,11 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 
     // Get boot sector information.
     PartBootSector = new(PagedPool) BootSector();
-    ReadBlock(DeviceToMount,
-              0,
-              1,
-              DiskGeometry.BytesPerSector,
-              (PUCHAR)PartBootSector);
+
+    Status = ReadDisk(DeviceToMount,
+                      0,
+                      DiskGeometry.BytesPerSector,
+                      (PUCHAR)PartBootSector);
 
     if (!NT_SUCCESS(Status))
         goto Cleanup;
@@ -198,40 +199,6 @@ cleanup:
     return Status;
 }
 
-// NTSTATUS
-// NTFSVolume::WriteFileRecord(_In_ ULONGLONG FileRecordNumber,
-//                                _In_ FileRecord* File)
-// {
-//     PAGED_CODE();
-//     INT FileRecordOffset;
-
-//     FileRecordOffset = (FileRecordNumber * FileRecordSize) / BytesPerSector;
-
-//     // Warning: insane!
-//     WriteBlock(PartDeviceObj,
-//                (MFTLCN * SectorsPerCluster) + FileRecordOffset,
-//                FileRecordSize / BytesPerSector,
-//                BytesPerSector,
-//                File->Data);
-
-//     if (FileRecordNumber <= 4)
-//     {
-//         // The first 4 records are always duplicated in MFT Mirror
-//         // See: https://flatcap.github.io/linux-ntfs/ntfs/files/mftmirr.html
-//         // TODO: Larger disks duplicate more file records.
-
-//         DPRINT1("This should also be written to $MftMirr, but isn't so I can compare.\n");
-//         // Warning: also insane!
-//         // WriteBlock(PartDeviceObj,
-//         //            (MFTMirrLCN * SectorsPerCluster) + FileRecordOffset,
-//         //            FileRecordSize / BytesPerSector,
-//         //            BytesPerSector,
-//         //            File->Data);
-//     }
-
-//     return STATUS_SUCCESS;
-// }
-
 NTSTATUS
 NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
                               _In_ USHORT Length)
@@ -334,11 +301,9 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
             ClusterReadSize = BytesPerCluster;
 
             // Get current LCN
-            ReadBlock(PartDeviceObj,
-                      (DRCurrent->LCN) + ClusterPtr,
-                      1,
-                      BytesPerCluster,
-                      DiskBuffer);
+            ReadVolume((DRCurrent->LCN) + ClusterPtr,
+                        BytesPerCluster,
+                        DiskBuffer);
 
             // Adjust cluster read size and the number of bytes to read according to actual file size.
             if (ClusterReadSize > BytesToRead)
@@ -376,12 +341,11 @@ NTFSVolume::SanityCheckBlockIO()
     UCHAR ReadBuffer[512] = {0};
     UCHAR PostWriteBuffer[512] = {0};
     UCHAR ZeroOutBuffer[512] = {0};
-        //save disk
-       ReadBlock(PartDeviceObj,
-                     1,
-                     1,
-                     BytesPerSector,
-                     (PUCHAR)ReadBuffer);
+
+    // Save disk
+    ReadVolume(BytesPerSector,
+               BytesPerSector,
+               (PUCHAR)ReadBuffer);
 
         //erase disk
         WriteBlock(PartDeviceObj,
@@ -396,12 +360,12 @@ NTFSVolume::SanityCheckBlockIO()
             1,
             BytesPerSector,
             ReadBuffer);
-        //verify
-       ReadBlock(PartDeviceObj,
-                     1,
-                     1,
-                     BytesPerSector,
-                     (PUCHAR)PostWriteBuffer);
+
+    // Verify disk
+    ReadVolume(BytesPerSector,
+               BytesPerSector,
+               (PUCHAR)PostWriteBuffer);
+
     for (int i = 0; i < 512; i++)
     {
         DPRINT1("ReadBuffer at Location %d, is value: %X\n", i, ReadBuffer[i]);

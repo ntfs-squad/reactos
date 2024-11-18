@@ -85,7 +85,7 @@ typedef struct LfsRecordPage
     UINT16 NextRecordOffset;           // Offset 0x18, Size 2
     UCHAR  Padding[6];                 // Offset 0x1A, Size 6
     UINT64 LastEndLsn;                 // Offset 0x20, Size 8
-    USHORT UpdateSequenceArray         // Offset 0x28, Size Variable
+    USHORT UpdateSequenceArray;        // Offset 0x28, Size Variable
 } *PLfsRecordPage;
 
 typedef struct LfsRecord

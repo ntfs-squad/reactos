@@ -249,19 +249,6 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
          _Inout_ PUCHAR Buffer);
 
 NTSTATUS
-ReadDiskUnaligned(_In_    PDEVICE_OBJECT DeviceToRead,
-                  _In_    ULONGLONG Offset,
-                  _In_    ULONG Length,
-                  _Inout_ PUCHAR Buffer);
-
-NTSTATUS
-ReadBlock(_In_    PDEVICE_OBJECT DeviceObject,
-          _In_    ULONG DiskSector,
-          _In_    ULONG SectorCount,
-          _In_    ULONG SectorSize,
-          _Inout_ PUCHAR Buffer);
-
-NTSTATUS
 WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
           _In_    ULONGLONG Offset,
           _In_    ULONG Length,

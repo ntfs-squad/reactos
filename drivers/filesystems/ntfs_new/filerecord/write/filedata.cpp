@@ -35,7 +35,6 @@ FileRecord::WriteFileData(_In_     AttributeType AttrType,
 
     DPRINT1("Called FileRecord::WriteData()!\n");
 
-    // This is incredibly naive, I know.
     Status = UpdateAttributeData(AttrType,
                                  StreamName,
                                  Buffer,
