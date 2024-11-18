@@ -43,8 +43,6 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     BOOLEAN PerformAccessChecks;
     PWSTR FileNameQuery, ADSPtr, ADSTypePtr;
     FileRecord* CurrentFile;
-    PAttribute Attr;
-    PStandardInformationEx StdInfo;
     UINT8 Disposition;
     ULONG CreateOptions;
     PNTFSVolume Volume;
@@ -151,33 +149,6 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         FileCB->RequestedStream = NULL;
     }
 
-    // From file record
-    FileCB->NumberOfLinks = CurrentFile->Header->HardLinkCount;
-    FileCB->IsDirectory = !!(CurrentFile->Header->Flags & FR_IS_DIRECTORY);
-    // This should probably come from the index search reference.
-    FileCB->IndexNumber.QuadPart = CurrentFile->Header->MFTRecordNumber;
-
-    // From $STANDARD_INFORMATION
-    Attr = CurrentFile->GetAttribute(TypeStandardInformation,
-                                     NULL);
-    StdInfo = (PStandardInformationEx)GetResidentDataPointer(Attr);
-    FileCB->CreationTime.QuadPart = StdInfo->CreationTime;
-    FileCB->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
-    FileCB->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
-    FileCB->ChangeTime.QuadPart = StdInfo->ChangeTime;
-    FileCB->FileAttributes = StdInfo->FilePermissions;
-
-    // From $DATA
-    Attr = CurrentFile->GetAttribute(TypeData,
-                                     NULL);
-    if (Attr)
-    {
-        if (Attr->IsNonResident)
-            FileCB->EndOfFile.QuadPart = Attr->NonResident.DataSize;
-        else
-            FileCB->EndOfFile.QuadPart = Attr->Resident.DataLength;
-    }
-
     // Add pointer for file record
     FileCB->FileRec = CurrentFile;
 
@@ -190,7 +161,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     FileCB->StreamCB = new(NonPagedPool) StreamContextBlock();
     FileCB->StreamCB->SectionObjectPointers = {0};
 
-    if (FileCB->IsDirectory)
+    if (!!(CurrentFile->Header->Flags & FR_IS_DIRECTORY))
     {
         // Set up btree for this file
         FileCB->FileDir = new(PagedPool) Directory(Volume);

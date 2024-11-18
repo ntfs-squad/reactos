@@ -49,7 +49,7 @@ typedef enum _TYPE_OF_OPEN {
     EaFile,
 } TYPE_OF_OPEN;
 
-/* ntfsinit.cpp */
+// io/ntfsinit.cpp
 
 _Function_class_(DRIVER_UNLOAD)
 EXTERN_C
@@ -94,7 +94,7 @@ NTSTATUS
 NTAPI
 NtfsFsdShutdown (_In_    PDEVICE_OBJECT VolumeDeviceObject,
                  _Inout_ PIRP Irp);
-/* fastio */
+// io/fastio
 BOOLEAN NTAPI
 NtfsAcqLazyWrite(PVOID Context,
                  BOOLEAN Wait);
@@ -109,7 +109,7 @@ NtfsAcqReadAhead(PVOID Context,
 VOID NTAPI
 NtfsRelReadAhead(PVOID Context);
 
-/* fsctrl */
+// io/fsctrl
 _Requires_lock_held_(_Global_critical_region_)
 EXTERN_C
 NTSTATUS
@@ -131,7 +131,7 @@ NTAPI
 NtfsFsdFlushBuffers (_In_    PDEVICE_OBJECT VolumeDeviceObject,
                      _Inout_ PIRP Irp);
 
-/* create.cpp */
+// io/create.cpp
 _Function_class_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -140,7 +140,7 @@ NTAPI
 NtfsFsdCreate(_In_    PDEVICE_OBJECT VolumeDeviceObject,
               _Inout_ PIRP Irp);
 
-/* close.cpp  */
+// io/close.cpp
 _Function_class_(IRP_MJ_CLOSE)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -149,7 +149,7 @@ NTAPI
 NtfsFsdClose (_In_    PDEVICE_OBJECT VolumeDeviceObject,
               _Inout_ PIRP Irp);
 
-/* read.cpp */
+// io/read.cpp
 _Function_class_(IRP_MJ_READ)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -158,7 +158,7 @@ NTAPI
 NtfsFsdRead(_In_    PDEVICE_OBJECT VolumeDeviceObject,
             _Inout_ PIRP Irp);
 
-/* write.cpp */
+// io/write.cpp
 _Function_class_(IRP_MJ_WRITE)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -167,7 +167,7 @@ NTAPI
 NtfsFsdWrite (_In_    PDEVICE_OBJECT VolumeDeviceObject,
               _Inout_ PIRP Irp);
 
-/* fileinfo.cpp */
+// io/fileinfo.cpp
 
 _Function_class_(IRP_MJ_QUERY_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
@@ -192,7 +192,7 @@ NTSTATUS
 NTAPI
 NtfsFsdSetInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                       _Inout_ PIRP Irp);
-/* ea.cpp */
+// io/ea.cpp
 _Function_class_(IRP_MJ_QUERY_EA)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -209,7 +209,7 @@ NTAPI
 NtfsFsdSetEa(_In_   PDEVICE_OBJECT VolumeDeviceObject,
             _Inout_ PIRP Irp);
 
-/* vol.cpp */
+// io/vol.cpp
 _Function_class_(IRP_MJ_QUERY_VOLUME_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -232,7 +232,7 @@ NTSTATUS
 NTAPI
 NtfsFsdSetVolumeInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                             _Inout_ PIRP Irp);
-/* pnp.cpp */
+// io/pnp.cpp
 _Function_class_(IRP_MJ_PNP)
 _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
@@ -241,7 +241,7 @@ NTAPI
 NtfsFsdPnp(_In_    PDEVICE_OBJECT VolumeDeviceObject,
            _Inout_ PIRP Irp);
 
-/* ntblockio.cpp*/
+// io/ntblockio.cpp
 NTSTATUS
 ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
          _In_    ULONGLONG Offset,
@@ -365,16 +365,10 @@ static inline void PrintFileContextBlock(PFileContextBlock FileCB)
 {
     DbgPrint("File name:          \"%S\"\n", FileCB->FileName);
 
-    if (FileCB->IsDirectory)
+    if (FileCB->FileDir)
         DbgPrint("Directory:          TRUE\n");
     else
         DbgPrint("Directory:          FALSE\n");
-
-    DbgPrint("Number of Links:    %lu\n", FileCB->NumberOfLinks);
-    DbgPrint("Change Time:        %lu\n", FileCB->ChangeTime);
-    DbgPrint("Last Access Time:   %lu\n", FileCB->LastAccessTime);
-    DbgPrint("Last Write Time:    %lu\n", FileCB->LastWriteTime);
-    DbgPrint("Creation Time:      %lu\n", FileCB->CreationTime);
 };
 
 static inline void PrintStdInfoEx(StandardInformationEx* StdInfo)

@@ -46,22 +46,8 @@ typedef struct _FCB
     AttributeType RequestedType;
     PWSTR RequestedStream;
 
-    // Used for File Basic Information
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    ULONG FileAttributes;
-
-    // Used for File Standard Information
-    BOOLEAN IsDirectory;
+    // TODO: Where/how is this determined?
     BOOLEAN DeletePending;
-    LARGE_INTEGER AllocationSize;
-    LARGE_INTEGER EndOfFile;
-    ULONG NumberOfLinks;
-
-    // Used for File Internal Information
-    LARGE_INTEGER IndexNumber;
 
     // Used for query directory requests
     class Directory* FileDir;

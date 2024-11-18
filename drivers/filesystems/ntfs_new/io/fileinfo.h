@@ -8,23 +8,35 @@
 
 #include "ntfspch.h"
 
+// NOTE: We don't include MFT space in our allocation size, similar to Windows.
+
 static
 NTSTATUS
 GetFileBasicInformation(_In_ PFileContextBlock FileCB,
                         _Out_ PFILE_BASIC_INFORMATION Buffer,
                         _Inout_ PULONG Length)
 {
+    PFileRecord File;
+    PStandardInformationEx StdInfo;
+
     if (!FileCB)
         return STATUS_INVALID_PARAMETER;
 
     if (*Length < sizeof(FILE_BASIC_INFORMATION))
         return STATUS_BUFFER_TOO_SMALL;
 
-    Buffer->CreationTime = FileCB->CreationTime;
-    Buffer->LastAccessTime = FileCB->LastAccessTime;
-    Buffer->LastWriteTime = FileCB->LastWriteTime;
-    Buffer->ChangeTime = FileCB->ChangeTime;
-    Buffer->FileAttributes = FileCB->FileAttributes;
+    File = FileCB->FileRec;
+
+    // From $STANDARD_INFORMATION
+    StdInfo = (PStandardInformationEx)
+              GetResidentDataPointer(File->GetAttribute(TypeStandardInformation,
+                                     NULL));
+
+    Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
+    Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
+    Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
+    Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
+    Buffer->FileAttributes = StdInfo->FilePermissions;
 
     *Length -= sizeof(FILE_BASIC_INFORMATION);
 
@@ -37,6 +49,8 @@ GetFileStandardInformation(_In_ PFileContextBlock FileCB,
                            _Out_ PFILE_STANDARD_INFORMATION Buffer,
                            _Inout_ PULONG Length)
 {
+    PFileRecord File;
+    PAttribute DataAttribute;
     size_t FileInfoSize = sizeof(FILE_STANDARD_INFORMATION);
 
     if (*Length < FileInfoSize)
@@ -45,10 +59,38 @@ GetFileStandardInformation(_In_ PFileContextBlock FileCB,
     if (!FileCB)
         return STATUS_NOT_FOUND;
 
-    Buffer->Directory = FileCB->IsDirectory;
-    Buffer->AllocationSize = FileCB->AllocationSize;
-    Buffer->EndOfFile = FileCB->EndOfFile;
-    Buffer->NumberOfLinks = FileCB->NumberOfLinks;
+    File = FileCB->FileRec;
+
+    // Information from $DATA
+    DataAttribute = File->GetAttribute(TypeData,
+                                       NULL);
+
+    if (DataAttribute)
+    {
+        if (DataAttribute->IsNonResident)
+        {
+            Buffer->EndOfFile.QuadPart = DataAttribute->NonResident.DataSize;
+            Buffer->AllocationSize.QuadPart = DataAttribute->NonResident.AllocatedSize;
+        }
+
+        else
+        {
+            Buffer->EndOfFile.QuadPart = DataAttribute->Resident.DataLength;
+            Buffer->AllocationSize.QuadPart = 0;
+        }
+    }
+
+    else
+    {
+        Buffer->EndOfFile.QuadPart = 0;
+        Buffer->AllocationSize.QuadPart = 0;
+    }
+
+    // Information from file header
+    Buffer->Directory = !!(File->Header->Flags & FR_IS_DIRECTORY);
+    Buffer->NumberOfLinks = File->Header->HardLinkCount;
+
+    // Information from file context block
     Buffer->DeletePending = FileCB->DeletePending;
 
     *Length -= FileInfoSize;
@@ -108,7 +150,7 @@ GetFileInternalInformation(_In_ PFileContextBlock FileCB,
     if (*Length < sizeof(FILE_INTERNAL_INFORMATION))
         return STATUS_BUFFER_TOO_SMALL;
 
-    Buffer->IndexNumber = FileCB->IndexNumber;
+    Buffer->IndexNumber.QuadPart = FileCB->FileRec->Header->MFTRecordNumber;
 
     *Length -= sizeof(FILE_INTERNAL_INFORMATION);
 
@@ -121,16 +163,52 @@ GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
                               _Out_ PFILE_NETWORK_OPEN_INFORMATION Buffer,
                               _Inout_ PULONG Length)
 {
+    PAttribute DataAttribute;
+    PStandardInformationEx StdInfo;
+    PFileRecord File;
+
     ASSERT(Buffer);
     ASSERT(FileCB);
 
-    Buffer->CreationTime = FileCB->CreationTime;
-    Buffer->LastAccessTime = FileCB->LastAccessTime;
-    Buffer->LastWriteTime = FileCB->LastWriteTime;
-    Buffer->ChangeTime = FileCB->ChangeTime;
-    Buffer->AllocationSize = FileCB->AllocationSize;
-    Buffer->EndOfFile = FileCB->EndOfFile;
-    Buffer->FileAttributes = FileCB->FileAttributes;
+    File = FileCB->FileRec;
+
+    // Information from $DATA
+    DataAttribute = File->GetAttribute(TypeData,
+                                       NULL);
+
+    if (DataAttribute)
+    {
+        if (DataAttribute->IsNonResident)
+        {
+            Buffer->EndOfFile.QuadPart = DataAttribute->NonResident.DataSize;
+            Buffer->AllocationSize.QuadPart = DataAttribute->NonResident.AllocatedSize;
+        }
+
+        else
+        {
+            Buffer->EndOfFile.QuadPart = DataAttribute->Resident.DataLength;
+            Buffer->AllocationSize.QuadPart = 0;
+        }
+    }
+
+    else
+    {
+        Buffer->EndOfFile.QuadPart = 0;
+        Buffer->AllocationSize.QuadPart = 0;
+    }
+
+    File = FileCB->FileRec;
+
+    // From $STANDARD_INFORMATION
+    StdInfo = (PStandardInformationEx)
+              GetResidentDataPointer(File->GetAttribute(TypeStandardInformation,
+                                     NULL));
+
+    Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
+    Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
+    Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
+    Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
+    Buffer->FileAttributes = StdInfo->FilePermissions;
 
     *Length -= (sizeof(PFILE_NETWORK_OPEN_INFORMATION));
 

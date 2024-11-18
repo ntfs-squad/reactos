@@ -32,6 +32,7 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     LARGE_INTEGER ReadOffset;
     ULONG RequestedLength;
     PFileContextBlock FileCB;
+    PStandardInformationEx StdInfo;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     Buffer = (PUCHAR)(GetBuffer(Irp));
@@ -41,8 +42,14 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     ASSERT(FileCB);
     ASSERT(FileCB->FileRec);
-    ASSERT(!(FileCB->FileAttributes & FILE_PERM_COMPRESSED));
-    ASSERT(!(FileCB->FileAttributes & FILE_PERM_ENCRYPTED));
+
+    // For now until I add support for these
+    StdInfo = (PStandardInformationEx)
+              GetResidentDataPointer(FileCB->FileRec->GetAttribute(TypeStandardInformation,
+                                     NULL));
+
+    ASSERT(!(StdInfo->FilePermissions & FILE_PERM_COMPRESSED));
+    ASSERT(!(StdInfo->FilePermissions & FILE_PERM_ENCRYPTED));
 
     // TODO: Investigate minor function before reading
     if (IrpSp->MinorFunction == IRP_MN_COMPLETE)
