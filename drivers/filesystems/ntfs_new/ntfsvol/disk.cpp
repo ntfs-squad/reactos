@@ -65,7 +65,21 @@ NTFSVolume::ReadVolume(_In_    ULONGLONG Offset,
 }
 
 NTSTATUS
-NTFSVolume::WriteToDisk()
+NTFSVolume::WriteVolume(_In_    ULONGLONG Offset,
+                        _In_    ULONG Length,
+                        _Inout_ PUCHAR Buffer)
 {
-    return STATUS_NOT_IMPLEMENTED;
+    ULONG LengthSectorAligned = ALIGN_DOWN_BY(Length, BytesPerSector);
+
+    if (LengthSectorAligned != Length)
+    {
+        DPRINT1("LengthSectorAligned != Length (%ld != %ld)\n", LengthSectorAligned, Length);
+        __debugbreak();
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    return WriteDisk(PartDeviceObj,
+                     Offset,
+                     Length,
+                     Buffer);
 }

@@ -345,26 +345,24 @@ NTFSVolume::SanityCheckBlockIO()
     // Save disk
     ReadVolume(BytesPerSector,
                BytesPerSector,
-               (PUCHAR)ReadBuffer);
+               ReadBuffer);
 
-        //erase disk
-        WriteBlock(PartDeviceObj,
-            1,
-            1,
-            BytesPerSector,
-            ZeroOutBuffer);
-        KeStallExecutionProcessor(100);
-        //recover disk
-        WriteBlock(PartDeviceObj,
-            1,
-            1,
-            BytesPerSector,
-            ReadBuffer);
+    // Erase disk
+    WriteVolume(BytesPerSector,
+                BytesPerSector,
+                ZeroOutBuffer);
+
+    KeStallExecutionProcessor(100);
+
+    // Recover disk
+    WriteVolume(BytesPerSector,
+                BytesPerSector,
+                ReadBuffer);
 
     // Verify disk
     ReadVolume(BytesPerSector,
                BytesPerSector,
-               (PUCHAR)PostWriteBuffer);
+               PostWriteBuffer);
 
     for (int i = 0; i < 512; i++)
     {

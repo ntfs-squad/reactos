@@ -69,7 +69,9 @@ public:
     NTSTATUS ReadVolume(_In_    ULONGLONG Offset,
                         _In_    ULONG Length,
                         _Inout_ PUCHAR Buffer);
-    NTSTATUS WriteToDisk();
+    NTSTATUS WriteVolume(_In_    ULONGLONG Offset,
+                         _In_    ULONG Length,
+                         _Inout_ PUCHAR Buffer);
 
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;

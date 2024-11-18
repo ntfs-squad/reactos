@@ -137,23 +137,6 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
 }
 
 NTSTATUS
-WriteBlock(_In_    PDEVICE_OBJECT DeviceObject,
-           _In_    ULONG DiskSector,
-           _In_    ULONG SectorCount,
-           _In_    ULONG SectorSize,
-           _Inout_ PUCHAR Buffer)
-{
-    LONGLONG Offset;
-    ULONG BlockSize;
-
-    Offset = (LONGLONG)DiskSector * (LONGLONG)SectorSize;
-    BlockSize = SectorCount * SectorSize; // NUMBER OF BLOCKS
-
-    return WriteDisk(DeviceObject, Offset, BlockSize, Buffer );
-}
-
-
-NTSTATUS
 DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
                 _In_    ULONG ControlCode,
                 _In_    PVOID InputBuffer,
