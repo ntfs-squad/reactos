@@ -15,6 +15,8 @@ public:
 private:
     PNTFSVolume Volume;
     PFileRecord LogFile;
+    ULONG ClientMajorVersion;
+    ULONG ClientMinorVersion;
 
     // Call when creating LFS Object
     NTSTATUS PerformFileSystemRecovery();

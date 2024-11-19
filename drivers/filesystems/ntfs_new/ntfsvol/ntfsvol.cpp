@@ -28,6 +28,8 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     ULONG ClusterSize, Size;
     USHORT i;
     BootSector* PartBootSector;
+    PFileRecord VolumeFile;
+    PVolumeInformationEx VolumeInfo;
 
     PartDeviceObj = DeviceToMount;
 
@@ -119,7 +121,9 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     }
 
     // We are NTFS. Store only the boot sector information we need in memory.
+#ifdef NTFS_DEBUG
     PrintNTFSBootSector(PartBootSector);
+#endif
 
     RtlCopyMemory(&BytesPerSector,
                   &PartBootSector->BytesPerSector,
@@ -144,8 +148,25 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     // Initialize Log File Service
     LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
 
+    // Get the NTFS Major and Minor versions from $Volume.
+    Status = MFT->GetFileRecord(_Volume, &VolumeFile);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to get $Volume file!\n");
+        Status = STATUS_DISK_CORRUPT_ERROR;
+        goto Cleanup;
+    }
+
+    VolumeInfo = (PVolumeInformationEx)GetResidentDataPointer(VolumeFile->GetAttribute(TypeVolumeInformation, NULL));
+    NtfsMajorVersion = VolumeInfo->MajorVersion;
+    NtfsMinorVersion = VolumeInfo->MinorVersion;
+    DPRINT1("NTFS Version %ld.%ld\n", VolumeInfo->MajorVersion, VolumeInfo->MinorVersion);
+
 Cleanup:
     delete PartBootSector;
+    if (VolumeFile)
+        delete VolumeFile;
     return Status;
 }
 
@@ -254,11 +275,11 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     // Note: $Bitmap is *always* non-resident on Windows.
     NTSTATUS Status;
     FileRecord* BitmapFileRecord;
-    PAttribute BitmapData, BitmapFileName;
-    FileNameEx* BitmapFileNameEx;
-    PDataRun DRHead, DRCurrent;
-    UINT64 BytesToRead, ClusterReadSize;
-    ULONG BytesPerCluster, ClusterPtr;
+    PAttribute BitmapData;
+    ULONG BytesToRead;
+    PUCHAR BitmapBuffer;
+
+    DPRINT1("Determining free clusters!!!\n");
 
     // Get file record for $Bitmap
     Status = MFT->GetFileRecord(_Bitmap, &BitmapFileRecord);
@@ -269,65 +290,41 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
         goto cleanup;
     }
 
-    // Calculate bytes per cluster
-    BytesPerCluster = BytesPerCluster(this);
-
-    // Get pointers for $Bitmap to get data runs and file size.
+    // Get pointer for $Bitmap::$DATA.
     BitmapData = BitmapFileRecord->GetAttribute(TypeData, NULL);
-    BitmapFileName = BitmapFileRecord->GetAttribute(TypeFileName, NULL);
-    BitmapFileNameEx = (FileNameEx*)(GetResidentDataPointer(BitmapFileName));
 
-    if (!BitmapData | !BitmapFileName | !BitmapFileNameEx)
+    if (!BitmapData)
     {
         Status = STATUS_NOT_FOUND;
         goto cleanup;
     }
 
     // Get the size of $Bitmap
-    BytesToRead = BitmapFileNameEx->DataSize;
+    BytesToRead = GetAttributeDataSize(BitmapData);
 
-    // Loop through data runs to calculate free space
-    DRHead = BitmapFileRecord->FindNonResidentData(BitmapData);
-    DRCurrent = DRHead;
+    // Initialize bitmap buffer
+    BitmapBuffer = new(NonPagedPool) UCHAR[BytesToRead];
+
+    // Copy attribute data into this buffer.
+    BitmapFileRecord->CopyData(BitmapData,
+                               BitmapBuffer,
+                               &BytesToRead);
+
+    BytesToRead = GetAttributeDataSize(BitmapData) - BytesToRead;
+
     FreeClusters->QuadPart = 0;
 
-    while(DRCurrent)
+    for (int i = 0; i < BytesToRead; i++)
     {
-        ClusterPtr = 0;
-
-        while (ClusterPtr < DRCurrent->Length)
-        {
-            // Preliminarily set the cluster read size to the number of bytes per cluster.
-            ClusterReadSize = BytesPerCluster;
-
-            // Get current LCN
-            ReadVolume((DRCurrent->LCN) + ClusterPtr,
-                        BytesPerCluster,
-                        DiskBuffer);
-
-            // Adjust cluster read size and the number of bytes to read according to actual file size.
-            if (ClusterReadSize > BytesToRead)
-                ClusterReadSize = BytesToRead;
-
-            else
-                BytesToRead -= ClusterReadSize;
-
-            // Count number of unset bits and add to *FreeClusters
-            for (ULONGLONG i = 0; i < ClusterReadSize; i++)
-                FreeClusters->QuadPart += GetZerosFromByte(DiskBuffer[i]);
-
-            // Increment cluster pointer
-            ClusterPtr++;
-        }
-        // Set up next data run.
-        DRCurrent = DRCurrent->NextRun;
+        FreeClusters->QuadPart += GetZerosFromByte(BitmapBuffer[i]);
     }
 
     Status = STATUS_SUCCESS;
+    DPRINT1("Got free clusters!!!\n");
 
 // We're done! Time to cleanup.
 cleanup:
-    FreeDataRun(DRHead);
+    delete BitmapBuffer;
     delete BitmapFileRecord;
     return Status;
 }
@@ -409,18 +406,6 @@ NTFSVolume::RunSanityChecks()
 
 }
 
-NTFSVolume::~NTFSVolume()
-{
-
-
-}
-
-void
-NTFSVolume::CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject)
-{
-
-}
-
 NTSTATUS
 NTFSVolume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
                                      _Out_ AttributeType* Type)
@@ -471,7 +456,7 @@ NTFSVolume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
                              NameCompareLength) == NameCompareLength)
         {
             // We found the attribute name!
-            *Type = (AttributeType)TableEntry->AttributeType;
+            *Type = AttributeType(TableEntry->AttributeType);
             return STATUS_SUCCESS;
         }
 

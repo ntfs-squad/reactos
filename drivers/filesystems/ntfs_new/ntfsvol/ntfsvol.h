@@ -44,6 +44,8 @@ public:
     UINT32 ClustersInVolume;
     INT8   ClustersPerIndexRecord;
     UINT64 SerialNumber;
+    USHORT NtfsMajorVersion;
+    USHORT NtfsMinorVersion;
 
     PDEVICE_OBJECT StorageDevice;
     PFILE_OBJECT StreamFileObject;
@@ -56,9 +58,7 @@ public:
     class MasterFileTable* MFT;
     class LogFileService* LFS;
 
-    ~NTFSVolume();
     NTSTATUS LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
-    void     CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject);
     NTSTATUS GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
                             _Inout_ PUSHORT Length);
     NTSTATUS SetVolumeLabel(_In_ PWCHAR VolumeLabel,

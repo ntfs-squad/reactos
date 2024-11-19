@@ -121,6 +121,9 @@ typedef struct
 
 #define GetNamePointer(x) (((char*)x) + (x->NameOffset))
 
+#define GetAttributeDataSize(Attribute1) \
+Attribute1->IsNonResident ? Attribute1->NonResident.DataSize : Attribute1->Resident.DataLength
+
 // Macro to free memory from data run.
 #define FreeDataRun(x) while(x) {\
     PDataRun tmp = x->NextRun;\
