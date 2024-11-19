@@ -420,3 +420,64 @@ NTFSVolume::CreateFileObject(_In_ PDEVICE_OBJECT DeviceObject)
 {
 
 }
+
+NTSTATUS
+NTFSVolume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
+                                     _Out_ AttributeType* Type)
+{
+    NTSTATUS Status;
+    PFileRecord AttrDefFile;
+    PAttribute DataAttr;
+    PAttrDefEntry TableEntry;
+    ULONG AttrDefEntryIndex, AttrDefDataSize, MaxIndex, NameCompareLength;
+    PUCHAR Buffer;
+
+    // NOTE: Lookup should be case-insensitive.
+
+    // Get the $AttrDef file.
+    Status = MFT->GetFileRecord(_AttrDef, &AttrDefFile);
+
+    // If this fails, there's something seriously wrong with this drive.
+    ASSERT(NT_SUCCESS(Status));
+
+#ifdef NTFS_DEBUG
+    PrintAttrDefTable(AttrDefFile);
+#endif
+
+    DataAttr = AttrDefFile->GetAttribute(TypeData, NULL);
+    AttrDefDataSize = DataAttr->NonResident.DataSize;
+    Buffer = new(NonPagedPool) UCHAR[DataAttr->NonResident.DataSize];
+    AttrDefFile->CopyData(DataAttr,
+                          Buffer,
+                          &AttrDefDataSize,
+                          0);
+    AttrDefDataSize = DataAttr->NonResident.DataSize - AttrDefDataSize;
+    AttrDefEntryIndex = 0;
+    MaxIndex = AttrDefDataSize / sizeof(AttrDefEntry);
+    TableEntry = (PAttrDefEntry)Buffer;
+    NameCompareLength = wcslen(AttributeTypeName);
+
+    // Uppercase the AttributeTypeName for case-insensitive matching
+    for (int i = 0; i < NameCompareLength; i++)
+        AttributeTypeName[i] = RtlUpcaseUnicodeChar(AttributeTypeName[i]);
+
+    NameCompareLength *= sizeof(WCHAR);
+
+    for (int i = 0; i < MaxIndex; i++)
+    {
+        if ((wcslen(TableEntry->Label) * sizeof(WCHAR)) == NameCompareLength &&
+            RtlCompareMemory(TableEntry->Label,
+                             AttributeTypeName,
+                             NameCompareLength) == NameCompareLength)
+        {
+            // We found the attribute name!
+            *Type = (AttributeType)TableEntry->AttributeType;
+            return STATUS_SUCCESS;
+        }
+
+        // Move onto the next element
+        TableEntry++;
+    }
+
+    return STATUS_NOT_FOUND;
+}

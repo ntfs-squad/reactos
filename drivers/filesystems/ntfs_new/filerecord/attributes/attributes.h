@@ -44,13 +44,19 @@
 #define VOL_REPAIR_OBJ_IDS 0x0020
 #define VOL_CHECKED        0x8000
 
-// Attribute types
+/* Attribute types
+ * Note that TypeVolumeVersion and TypeSymbolicLink existed in Windows NT 4 and
+ * older but was unused. They were superseded by TypeObjectId and
+ * TypeReparsePoint. TypePropertySet existed in Windows 2000 beta builds for
+ * Native Structured Storage (NSS) before being canceled for Beta 3.
+ */
 enum AttributeType
 {
     TypeStandardInformation = 0x10,
     TypeAttributeList       = 0x20,
     TypeFileName            = 0x30,
     TypeObjectId            = 0x40,
+    TypeVolumeVersion       = 0x40,
     TypeSecurityDescriptor  = 0x50,
     TypeVolumeName          = 0x60,
     TypeVolumeInformation   = 0x70,
@@ -59,8 +65,10 @@ enum AttributeType
     TypeIndexAllocation     = 0xA0,
     TypeBitmap              = 0xB0,
     TypeReparsePoint        = 0xC0,
+    TypeSymbolicLink        = 0xC0,
     TypeEAInformation       = 0xD0,
     TypeEA                  = 0xE0,
+    TypePropertySet         = 0xF0,
     TypeLoggedUtilityStream = 0x100,
     TypeAttributeEndMarker  = 0xFFFFFFFF
 };
@@ -124,10 +132,37 @@ typedef struct
 #define GetFRNFromFileRef(x) (x & 0xFFFFFFFFFFFF)
 #define GetSQNFromFileRef(x) ((x << 48) >> 48) & 0xFFFF
 
+/* *** $ATTRDEF ENTRIES *** */
+
+// Collation Rules
+#define ATTRDEF_COLLATION_BINARY      0x00
+#define ATTRDEF_COLLATION_FILENAME    0x01
+#define ATTRDEF_COLLATION_WSTR        0x02
+#define ATTRDEF_COLLATION_ULONG       0x10
+#define ATTRDEF_COLLATION_SID         0x11
+#define ATTRDEF_COLLATION_SEC_HASH    0x12
+#define ATTRDEF_COLLATION_ULONG_MULTI 0x13
+
+// Entry Flags
+#define ATTRDEF_INDEXED      0x02
+#define ATTRDEF_RESIDENT     0x40
+#define ATTRDEF_NON_RESIDENT 0x80
+
+typedef struct
+{
+    WCHAR  Label[64];
+    UINT32 AttributeType;
+    UINT32 DisplayRule;
+    UINT32 CollationRule;
+    UINT32 Flags;
+    UINT64 MinimumSize;
+    UINT64 MaximumSize;
+} AttrDefEntry, *PAttrDefEntry;
+
 /* *** EXTENDED ATTRIBUTE HEADERS *** */
 
 // $STANDARD_INFORMATION (0x10)
-typedef struct
+typedef struct StandardInformationEx
 {
     UINT64 CreationTime;                   // Offset 0x00, Size 8
     UINT64 LastWriteTime;                  // Offset 0x08, Size 8
@@ -141,7 +176,7 @@ typedef struct
     UINT32 SecurityId;                     // Offset 0x34, Size 4
     UINT64 QuotaCharged;                   // Offset 0x38, Size 8
     UINT64 UpdateSequenceNumber;           // Offset 0x40, Size 8
-} StandardInformationEx, *PStandardInformationEx;
+} *PStandardInformationEx;
 
 /// $ATTRIBUTE_LIST (0x20)
 typedef struct

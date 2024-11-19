@@ -72,7 +72,8 @@ public:
     NTSTATUS WriteVolume(_In_    ULONGLONG Offset,
                          _In_    ULONG Length,
                          _Inout_ PUCHAR Buffer);
-
+    NTSTATUS GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
+                                      _Out_ AttributeType* Type);
     PFILE_OBJECT PubFileObject;
     PDEVICE_OBJECT PartDeviceObj;
 } *PNTFSVolume;

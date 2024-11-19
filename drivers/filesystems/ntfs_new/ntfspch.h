@@ -295,6 +295,45 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 #define PrintFlag(Item, Flag, FlagName) if(Item & Flag) \
 DbgPrint("    %s\n", FlagName); \
 /* Debug print functions. REMOVE WHEN DONE. */
+
+static inline void PrintAttrDefTable(PFileRecord AttrDef)
+{
+    PAttrDefEntry TableEntry;
+    ULONG AttrDefEntryIndex, AttrDefDataSize, MaxIndex;
+    PUCHAR Buffer;
+    PAttribute DataAttr;
+
+    DataAttr = AttrDef->GetAttribute(TypeData, NULL);
+    AttrDefDataSize = DataAttr->NonResident.DataSize;
+    Buffer = new(NonPagedPool) UCHAR[DataAttr->NonResident.DataSize];
+    AttrDef->CopyData(DataAttr,
+                      Buffer,
+                      &AttrDefDataSize,
+                      0);
+    AttrDefDataSize = DataAttr->NonResident.DataSize - AttrDefDataSize;
+    AttrDefEntryIndex = 0;
+    MaxIndex = AttrDefDataSize / sizeof(AttrDefEntry);
+    TableEntry = (PAttrDefEntry)Buffer;
+
+    DbgPrint(" Type  | Name                       | Flags | Min  | Max  \n");
+    DbgPrint("==========================================================\n");
+
+    for (int i = 0; i < MaxIndex; i++)
+    {
+        DbgPrint(" 0x%03X | %-26S | 0x%02X  | 0x%02X | 0x%X\n",
+                 TableEntry->AttributeType,
+                 TableEntry->Label,
+                 TableEntry->Flags,
+                 TableEntry->MinimumSize,
+                 TableEntry->MaximumSize);
+
+        // Move onto the next element
+        TableEntry++;
+    }
+
+    delete Buffer;
+}
+
 static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
 {
     DbgPrint("MFT Record Number: %ld\n", FRH->MFTRecordNumber);
