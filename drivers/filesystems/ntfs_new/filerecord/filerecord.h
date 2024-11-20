@@ -85,6 +85,8 @@ public:
     PUCHAR Data = NULL;
 
     // ./filerecord.cpp
+    FileRecord(_In_ PNTFSVolume Volume,
+               _In_ ULONG FileRecordSize);
     FileRecord(_In_ PNTFSVolume Volume);
     ~FileRecord();
 
