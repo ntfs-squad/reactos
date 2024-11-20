@@ -171,7 +171,7 @@ Cleanup:
 }
 
 NTSTATUS
-NTFSVolume::GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
+NTFSVolume::GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
                            _Inout_ PUSHORT Length)
 {
     NTSTATUS Status = STATUS_SUCCESS;
@@ -221,8 +221,8 @@ cleanup:
 }
 
 NTSTATUS
-NTFSVolume::SetVolumeLabel(_In_ PWCHAR VolumeLabel,
-                              _In_ USHORT Length)
+NTFSVolume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
+                           _In_ USHORT Length)
 {
     NTSTATUS Status;
     FileRecord* VolumeFileRecord;
@@ -279,8 +279,6 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     ULONG BytesToRead;
     PUCHAR BitmapBuffer;
 
-    DPRINT1("Determining free clusters!!!\n");
-
     // Get file record for $Bitmap
     Status = MFT->GetFileRecord(_Bitmap, &BitmapFileRecord);
 
@@ -320,7 +318,6 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     }
 
     Status = STATUS_SUCCESS;
-    DPRINT1("Got free clusters!!!\n");
 
 // We're done! Time to cleanup.
 cleanup:

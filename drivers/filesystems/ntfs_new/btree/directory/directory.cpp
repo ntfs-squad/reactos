@@ -20,6 +20,11 @@
 #define BytesPerIndexRecord(Volume) \
 (BytesPerCluster(Volume) * Volume->ClustersPerIndexRecord)
 
+// Used for LoadDirectory()
+#define MayHaveShortKey(SearchKey) \
+!(SearchKey->Flags & DIR_KEY_8DOT3) \
+&& !(SearchKey->Entry->Flags & INDEX_ENTRY_END)
+
 NTSTATUS
 Directory::VerifyUpdateSequenceArray(PNTFSRecordHeader Record)
 {
@@ -226,10 +231,8 @@ Directory::CreateRootNode(_In_  PFileRecord File,
             {
                 DPRINT1("Failed to create node!\n");
                 __debugbreak();
-                return STATUS_NOT_FOUND;
+                goto Failed;
             }
-
-            // TODO: Handle failure.
         }
 
         if (!(CurrentEntry->Flags & INDEX_ENTRY_END))
@@ -253,7 +256,9 @@ Directory::CreateRootNode(_In_  PFileRecord File,
 
     *NewRootNode = RootNode;
     return STATUS_SUCCESS;
-
+Failed:
+    delete RootNode;
+    return Status;
 }
 
 NTSTATUS
@@ -271,6 +276,7 @@ Directory::LoadDirectory(_In_ PFileRecord File)
     /* First, we need to get the index allocation bitmap attribute
      * to determine what index entries are marked as in use.
      */
+    // TODO: Implement.
     // BitmapAttribute = File->GetAttribute(TypeBitmap, L"$I30");
     // if (!BitmapAttribute)
     // {
@@ -290,16 +296,14 @@ Directory::LoadDirectory(_In_ PFileRecord File)
     SearchKey = CurrentKey;
 
     // Mark short name keys accordingly.
-    // TODO: If short name generation is disabled, we can skip this.
+    // TODO: If short name generation is disabled for this volume, we can skip this.
     while(SearchKey)
     {
-        if (!(SearchKey->Flags & DIR_KEY_8DOT3))
+        if (MayHaveShortKey(SearchKey))
         {
             ShortNameKey = GetShortNameKey(SearchKey, FALSE);
             if (ShortNameKey)
-            {
                 ShortNameKey->Flags |= DIR_KEY_8DOT3;
-            }
         }
 
         SearchKey = GetNextKey(SearchKey);
@@ -469,12 +473,14 @@ Directory::GetShortNameKey(_In_ PBTreeKey Key,
     // If this is a dummy key, there is no short name
     if (Key->Entry->Flags & INDEX_ENTRY_END)
     {
+#ifdef NTFS_DEBUG
         DPRINT1("Tried to find short name for a dummy key!\n");
         DPRINT1("FIXME: Rework whatever algorithm to prevent this.\n");
+#endif
         return NULL;
     }
 
-    // If the key is already a legal short name, we don't need to search for another one.
+    // If the key is already a legal short name, there isn't another short name
     FileNameData = GetFileName(Key);
     if (IsLegal8Dot3ShortName(FileNameData->Name, FileNameData->NameLength))
         return NULL;

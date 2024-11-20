@@ -59,9 +59,9 @@ public:
     class LogFileService* LFS;
 
     NTSTATUS LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
-    NTSTATUS GetVolumeLabel(_Inout_ PWCHAR VolumeLabel,
+    NTSTATUS GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
                             _Inout_ PUSHORT Length);
-    NTSTATUS SetVolumeLabel(_In_ PWCHAR VolumeLabel,
+    NTSTATUS SetVolumeLabel(_In_ PWSTR VolumeLabel,
                             _In_ USHORT Length);
     NTSTATUS GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
     void RunSanityChecks();

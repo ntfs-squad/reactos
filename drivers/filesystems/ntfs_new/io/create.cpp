@@ -71,11 +71,25 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     // Hack: Fail certain requests we aren't ready for
     if (Disposition == FILE_SUPERSEDE ||
-        Disposition == FILE_CREATE ||
         Disposition == FILE_OVERWRITE ||
         Disposition == FILE_OVERWRITE_IF)
     {
         DPRINT1("Rejecting file open!\n");
+        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    if (Disposition == FILE_CREATE)
+    {
+        DPRINT1("Creating new file not implemented!\n");
+        __debugbreak();
+
+        /* Algorithm will probably be something like:
+         *     - Call MFT to allocate a new file record
+         *     - Open the newly created file.
+         * MFT will handle finding a free RecordID and calling LFS.
+         */
+
         Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
         return STATUS_NOT_IMPLEMENTED;
     }
