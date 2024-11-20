@@ -185,6 +185,62 @@ Failed:
 }
 
 NTSTATUS
+MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
+                                          _Out_  PFileRecord* File)
+{
+    NTSTATUS Status;
+    BOOLEAN IsRecordInUse;
+    ULONG BytesToRead;
+
+    if (!IsFileRecordInMFTMirr(FileRecordNumber))
+        return STATUS_NOT_FOUND;
+
+    // Initialize MFTMirr file if it isn't already.
+    if (!MFTMirrFile)
+    {
+        Status = GetFileRecord(_MFTMirr, &MFTMirrFile);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to get file from MFT Mirror!\n");
+            goto Failed;
+        }
+    }
+
+    // If the file record is not in use, fail.
+    Status = IsFileRecordNumberInUse(FileRecordNumber,
+                                     &IsRecordInUse);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to determine if file record number is in use!\n");
+        goto Failed;
+    }
+
+    if (!IsRecordInUse)
+    {
+        DPRINT1("File record is not in use!\n");
+        goto Failed;
+    }
+
+    // File is in MFTMirr. Let's try to get it from there.
+    BytesToRead = FileRecordSize;
+    Status = MFTMirrFile->CopyData(TypeData,
+                                   NULL,
+                                   (*File)->Data,
+                                   &BytesToRead,
+                                   FileRecordOffset(FileRecordNumber));
+    if (!NT_SUCCESS(Status) ||
+        !(RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) == 4))
+    {
+        DPRINT1("Failed to get file from MFT Mirror!\n");
+        goto Failed;
+    }
+
+Failed:
+    return Status;
+}
+
+NTSTATUS
 MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
                                         _Out_ PFileRecord* File)
 {

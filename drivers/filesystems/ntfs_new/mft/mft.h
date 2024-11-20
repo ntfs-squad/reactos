@@ -22,6 +22,10 @@ public:
                   _Out_  PFileRecord* File);
 
     NTSTATUS
+    GetFileRecordFromMFTMirr(_In_  ULONG FileRecordNumber,
+                             _Out_ PFileRecord* File);
+
+    NTSTATUS
     GetFileRecordFromQuery(_In_ PWCHAR Query,
                            _Out_ PFileRecord* File);
 

@@ -28,7 +28,7 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     ULONG ClusterSize, Size;
     USHORT i;
     BootSector* PartBootSector;
-    PFileRecord VolumeFile;
+    PFileRecord VolumeFile = NULL;
     PVolumeInformationEx VolumeInfo;
 
     PartDeviceObj = DeviceToMount;
