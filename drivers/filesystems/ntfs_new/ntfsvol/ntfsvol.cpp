@@ -65,6 +65,11 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 
     // Get boot sector information.
     PartBootSector = new(PagedPool) BootSector();
+    if (!PartBootSector)
+    {
+        DPRINT1("Failed to allocate memory for boot sector!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
     Status = ReadDisk(DeviceToMount,
                       0,

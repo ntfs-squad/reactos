@@ -94,6 +94,13 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         return STATUS_NOT_IMPLEMENTED;
     }
 
+    if (!FileNameQuery)
+    {
+        DPRINT1("FileNameQuery is NULL! This should never happen!\n");
+        __debugbreak();
+        return STATUS_NOT_FOUND;
+    }
+
     Status = Volume->MFT->GetFileRecordFromQuery(FileNameQuery, &CurrentFile);
 
     // TODO: Check if we have rights to access file here.

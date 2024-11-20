@@ -184,7 +184,6 @@ Failed:
     return NT_SUCCESS(Status) ? STATUS_FILE_CORRUPT_ERROR : Status;
 }
 
-// TODO: Handle wildcards and comparators
 NTSTATUS
 MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
                                         _Out_ PFileRecord* File)
