@@ -26,10 +26,6 @@ public:
                            _Out_ PFileRecord* File);
 
     NTSTATUS
-    GetFileRecordDiskOffset(_In_ ULONG FileRecordNumber,
-                            _Out_ PULONGLONG FileRecordDiskOffset);
-
-    NTSTATUS
     WriteFileRecordToMFT(_In_ PFileRecord File);
 
 private:
@@ -37,4 +33,6 @@ private:
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;
     INT    MftZoneReservation;
+    PFileRecord MFTFile = NULL;
+    PFileRecord MFTMirrFile = NULL;
 } *PMasterFileTable;

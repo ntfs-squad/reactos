@@ -111,7 +111,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     RtlZeroMemory(FileCB, sizeof(FileContextBlock));
 
     // Set file name
-    // TODO: Axe or get from $FILE_NAME
+    // TODO: Axe?
     RtlCopyMemory(FileCB->FileName,
                   IrpSp->FileObject->FileName.Buffer,
                   IrpSp->FileObject->FileName.Length);

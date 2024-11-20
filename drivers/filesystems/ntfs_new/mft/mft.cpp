@@ -19,6 +19,11 @@ Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 ((Volume->SectorsPerCluster * Volume->BytesPerSector) / FileRecordSize) < FileRecordNumber \
 : FileRecordNumber < 4
 
+#define MFTDiskOffset (MFTLCN * BytesPerCluster(Volume))
+#define MFTMirrDiskOffset (MFTMirrLCN * BytesPerCluster(Volume))
+#define FileRecordOffset(FileRecordNumber) (FileRecordNumber * FileRecordSize)
+
+
 MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
                                  _In_ UINT64 MFTLCN,
                                  _In_ UINT64 MFTMirrLCN,
@@ -45,39 +50,119 @@ MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
         MftZoneReservation = 1;
 }
 
-NTSTATUS
-MasterFileTable::GetFileRecordDiskOffset(_In_ ULONG FileRecordNumber,
-                                         _Out_ PULONGLONG FileRecordDiskOffset)
-{
-    /* TODO: We need to implement VCN-to-LCN mapping.
-     * From Windows Internals 7th ed, Part 2:
-     * "Once NTFS finds the file record for the MFT, it obtains the VCN-to-LCN mapping information
-     * in the file record’s data attribute and stores it into memory. Each run (runs are explained
-     * later in this chapter in the section “Resident and nonresident attributes”) has a VCN-to-LCN
-     * mapping and a run length because that’s all the information necessary to locate the LCN for
-     * any VCN. This mapping information tells NTFS where the runs containing the MFT are located
-     * on the disk. NTFS then processes the MFT records for several more metadata files and opens
-     * the files. Next, NTFS performs its file system recovery operation (described in the section
-     * “Recovery” later in this chapter), and finally, it opens its remaining metadata files. The
-     * volume is now ready for user access."
-     */
-
-    // HACK! Use VCN-to-LCN mapping.
-    *FileRecordDiskOffset = (MFTLCN * BytesPerCluster(Volume)) + (FileRecordNumber * FileRecordSize);
-
-    return STATUS_SUCCESS;
-}
-
+// TODO: Utilize MFT $BITMAP to determine if file record is in use.
 NTSTATUS
 MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
                                _Out_  PFileRecord* File)
 {
     PAGED_CODE();
     NTSTATUS Status;
+    ULONG BytesToRead;
 
     *File = new(PagedPool, TAG_MFT) FileRecord(Volume);
-    Status = (*File)->LoadFileRecordFromDisk(FileRecordNumber);
+    BytesToRead = FileRecordSize;
+
+    if (FileRecordNumber == _MFT)
+    {
+        // The $MFT file is calculated from the MFT LCN.
+        Status = Volume->ReadVolume(MFTDiskOffset,
+                                    FileRecordSize,
+                                    (*File)->Data);
+    }
+
+    else if (FileRecordNumber == _MFTMirr)
+    {
+        // The $MFTMirr file is calculated from the MFTMirr LCN.
+        Status = Volume->ReadVolume(MFTMirrDiskOffset,
+                                    FileRecordSize,
+                                    (*File)->Data);
+    }
+
+    else
+    {
+        /* All other files are found by querying the MFT file or if that fails
+         * and the file is in $MFTMirr, the MFTMirr file.
+         */
+
+        if (!MFTFile)
+        {
+            Status = GetFileRecord(_MFT, &MFTFile);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("Failed to get $MFT File!\n");
+                goto FileCheckFailed;
+            }
+        }
+
+        Status = MFTFile->CopyData(TypeData,
+                                   NULL,
+                                   (*File)->Data,
+                                   &BytesToRead,
+                                   FileRecordOffset(FileRecordNumber));
+    }
+
+FileCheckFailed:
+    if (!NT_SUCCESS(Status) ||
+        !(RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) == 4))
+    {
+        DPRINT1("Failed to get file %ld from MFT!\n", FileRecordNumber);
+
+        // Check if we can get the file from MFTMirr
+        if (IsFileRecordInMFTMirr(FileRecordNumber))
+        {
+            if (!MFTMirrFile)
+            {
+                Status = GetFileRecord(_MFTMirr, &MFTMirrFile);
+                if (!NT_SUCCESS(Status))
+                {
+                    DPRINT1("Failed to get file from MFT Mirror!\n");
+                    goto Failed;
+                }
+            }
+
+            // File is in MFTMirr. Let's try to get it from there.
+            BytesToRead = FileRecordSize;
+            Status = MFTMirrFile->CopyData(TypeData,
+                                           NULL,
+                                           (*File)->Data,
+                                           &BytesToRead,
+                                           FileRecordOffset(FileRecordNumber));
+            if (!NT_SUCCESS(Status) ||
+                !(RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) == 4))
+            {
+                DPRINT1("Failed to get file from MFT Mirror!\n");
+                goto Failed;
+            }
+
+            /* If we're here, that means we were able to get the file from
+             * $MFTMirr. Proceed as normal.
+             */
+            DPRINT1("Got file from $MFTMirr!\n");
+        }
+
+        else
+        {
+            // File is not in MFTMirr.
+            DPRINT1("File is not in the MFT Mirror!\n");
+            goto Failed;
+        }
+    }
+
+    // Apply fixup for the file.
+    Status = (*File)->ApplyFixup();
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("File corruption detected!\n");
+        goto Failed;
+    }
+
     return Status;
+
+Failed:
+    __debugbreak();
+    delete *File;
+    return NT_SUCCESS(Status) ? STATUS_FILE_CORRUPT_ERROR : Status;
 }
 
 // TODO: Handle wildcards and comparators

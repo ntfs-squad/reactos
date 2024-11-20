@@ -87,7 +87,6 @@ public:
     // ./filerecord.cpp
     FileRecord(_In_ PNTFSVolume Volume);
     ~FileRecord();
-    NTSTATUS LoadFileRecordFromDisk(_In_ ULONGLONG FileRecordNumber);
 
     // ./find.cpp
     PAttribute GetAttribute(_In_     AttributeType Type,
@@ -122,7 +121,6 @@ public:
 
 private:
     PNTFSVolume Volume;
-    MasterFileTable* MFT;
 
     // ./write.cpp
     NTSTATUS

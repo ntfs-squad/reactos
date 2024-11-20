@@ -33,7 +33,6 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-close
      */
 
-    // TODO: make this actually work
     PIO_STACK_LOCATION IrpSp;
     PFileContextBlock FileCB;
 

@@ -41,7 +41,7 @@ FileRecord::WriteFileData(_In_     AttributeType AttrType,
                                  *Length);
 
     // Write the file record to disk
-    Status = MFT->WriteFileRecordToMFT(this);
+    Status = Volume->MFT->WriteFileRecordToMFT(this);
 
     return Status;
 }
