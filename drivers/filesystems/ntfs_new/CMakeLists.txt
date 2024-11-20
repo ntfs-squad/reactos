@@ -28,6 +28,7 @@ list(APPEND SOURCE
      btree/directory/dbg.cpp
      btree/directory/get.cpp
      btree/directory/find.cpp
+     mft/get.cpp
      mft/mft.cpp)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)

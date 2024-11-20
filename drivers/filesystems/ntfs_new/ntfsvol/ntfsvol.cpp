@@ -28,8 +28,9 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     ULONG ClusterSize, Size;
     USHORT i;
     BootSector* PartBootSector;
-    PFileRecord VolumeFile = NULL;
+    PFileRecord VolumeFile;
     PVolumeInformationEx VolumeInfo;
+    PAttribute VolumeInfoAttribute;
 
     PartDeviceObj = DeviceToMount;
 
@@ -154,18 +155,20 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
 
     // Get the NTFS Major and Minor versions from $Volume.
-    Status = MFT->GetFileRecord(_Volume, &VolumeFile);
-
+    Status = MFT->GetFileAttributeFromFileRecordNumber(TypeVolumeInformation,
+                                                       NULL,
+                                                       _Volume,
+                                                       &VolumeFile,
+                                                       &VolumeInfoAttribute);
     if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to get $Volume file!\n");
-        Status = STATUS_DISK_CORRUPT_ERROR;
         goto Cleanup;
-    }
 
-    VolumeInfo = (PVolumeInformationEx)GetResidentDataPointer(VolumeFile->GetAttribute(TypeVolumeInformation, NULL));
+    VolumeInfo = (PVolumeInformationEx)GetResidentDataPointer(VolumeInfoAttribute);
+
+    // Set NTFS major and minor versions
     NtfsMajorVersion = VolumeInfo->MajorVersion;
     NtfsMinorVersion = VolumeInfo->MinorVersion;
+
     DPRINT1("NTFS Version %ld.%ld\n", VolumeInfo->MajorVersion, VolumeInfo->MinorVersion);
 
 Cleanup:
@@ -179,32 +182,19 @@ NTSTATUS
 NTFSVolume::GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
                            _Inout_ PUSHORT Length)
 {
-    NTSTATUS Status = STATUS_SUCCESS;
-    PFileRecord VolumeFileRecord;
+    NTSTATUS Status;
+    PFileRecord VolumeFile;
     PAttribute VolumeNameAttr;
     UINT32 AttrLength;
 
     // Allocate memory for $Volume file record and retrieve the file record.
-    Status = MFT->GetFileRecord(_Volume, &VolumeFileRecord);
-
-    // Clean up if failed.
+    Status = MFT->GetFileAttributeFromFileRecordNumber(TypeVolumeName,
+                                                       NULL,
+                                                       _Volume,
+                                                       &VolumeFile,
+                                                       &VolumeNameAttr);
     if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to find $Volume file\n");
-        return STATUS_NOT_FOUND;
-    }
-
-    // Get pointer for the VolumeName attribute.
-    VolumeNameAttr = VolumeFileRecord->GetAttribute(TypeVolumeName, NULL);
-
-    if (!VolumeNameAttr)
-    {
-        // We didn't find the attribute. Abort.
-        // TODO: Check the backup $Volume file record.
-        DPRINT1("Failed to find $VOLUME_NAME attribute\n");
-        Status = STATUS_NOT_FOUND;
-        goto cleanup;
-    }
+        return Status;
 
     AttrLength = VolumeNameAttr->Resident.DataLength;
 
@@ -219,9 +209,8 @@ NTFSVolume::GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
     // Set length to attribute length.
     *Length = AttrLength;
 
-cleanup:
-    if (VolumeFileRecord)
-        delete VolumeFileRecord;
+    if (VolumeFile)
+        delete VolumeFile;
     return Status;
 }
 
@@ -230,21 +219,20 @@ NTFSVolume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
                            _In_ USHORT Length)
 {
     NTSTATUS Status;
-    FileRecord* VolumeFileRecord;
+    FileRecord* VolumeFile;
     PAttribute VolumeNameAttr;
 
-    // Allocate memory for $Volume file record and retrieve the file record.
-    Status = MFT->GetFileRecord(_Volume, &VolumeFileRecord);
+    /* Allocate memory for $Volume file record, retrieve the file record, and
+     * get a pointer to the $VOLUME_NAME attribute.
+     */
+    Status = MFT->GetFileAttributeFromFileRecordNumber(TypeVolumeName,
+                                                       NULL,
+                                                       _Volume,
+                                                       &VolumeFile,
+                                                       &VolumeNameAttr);
 
-    // Clean up if failed.
     if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to find $Volume file!\n");
-        goto cleanup;
-    }
-
-    // Get pointer for $VolumeName attribute.
-    VolumeNameAttr = VolumeFileRecord->GetAttribute(TypeVolumeName, NULL);
+        return Status;
 
 #if 0
     VolumeFileRecord->Header->ActualSize -= VolumeNameAttr->Length;
@@ -270,7 +258,7 @@ NTFSVolume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
     // Status = WriteFileRecord(_Volume, VolumeFileRecord);
 
 cleanup:
-    delete VolumeFileRecord;
+    delete VolumeFile;
     return Status;
 }
 
@@ -279,28 +267,20 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 {
     // Note: $Bitmap is *always* non-resident on Windows.
     NTSTATUS Status;
-    FileRecord* BitmapFileRecord;
+    PFileRecord BitmapFile;
     PAttribute BitmapData;
     ULONG BytesToRead;
     PUCHAR BitmapBuffer;
 
-    // Get file record for $Bitmap
-    Status = MFT->GetFileRecord(_Bitmap, &BitmapFileRecord);
+    // Get file record for $Bitmap and $DATA attribute.
+    Status = MFT->GetFileAttributeFromFileRecordNumber(TypeData,
+                                                       NULL,
+                                                       _Bitmap,
+                                                       &BitmapFile,
+                                                       &BitmapData);
 
-    if (!BitmapFileRecord)
-    {
-        DPRINT1("Failed to get $Bitmap file!\n");
-        goto cleanup;
-    }
-
-    // Get pointer for $Bitmap::$DATA.
-    BitmapData = BitmapFileRecord->GetAttribute(TypeData, NULL);
-
-    if (!BitmapData)
-    {
-        Status = STATUS_NOT_FOUND;
-        goto cleanup;
-    }
+    if (!NT_SUCCESS(Status))
+        return Status;
 
     // Get the size of $Bitmap
     BytesToRead = GetAttributeDataSize(BitmapData);
@@ -309,9 +289,9 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     BitmapBuffer = new(NonPagedPool) UCHAR[BytesToRead];
 
     // Copy attribute data into this buffer.
-    BitmapFileRecord->CopyData(BitmapData,
-                               BitmapBuffer,
-                               &BytesToRead);
+    BitmapFile->CopyData(BitmapData,
+                         BitmapBuffer,
+                         &BytesToRead);
 
     BytesToRead = GetAttributeDataSize(BitmapData) - BytesToRead;
 
@@ -327,7 +307,7 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 // We're done! Time to cleanup.
 cleanup:
     delete BitmapBuffer;
-    delete BitmapFileRecord;
+    delete BitmapFile;
     return Status;
 }
 
@@ -419,19 +399,23 @@ NTFSVolume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
     ULONG AttrDefEntryIndex, AttrDefDataSize, MaxIndex, NameCompareLength;
     PUCHAR Buffer;
 
-    // NOTE: Lookup should be case-insensitive.
+    // NOTE: Lookup is case-insensitive.
 
-    // Get the $AttrDef file.
-    Status = MFT->GetFileRecord(_AttrDef, &AttrDefFile);
+    // Get file record for $Bitmap and $DATA attribute.
+    Status = MFT->GetFileAttributeFromFileRecordNumber(TypeData,
+                                                       NULL,
+                                                       _AttrDef,
+                                                       &AttrDefFile,
+                                                       &DataAttr);
 
-    // If this fails, there's something seriously wrong with this drive.
-    ASSERT(NT_SUCCESS(Status));
+    // If this fails, there's something majorly wrong with this drive.
+    if (!NT_SUCCESS(Status))
+        return Status;
 
 #ifdef NTFS_DEBUG
     PrintAttrDefTable(AttrDefFile);
 #endif
 
-    DataAttr = AttrDefFile->GetAttribute(TypeData, NULL);
     AttrDefDataSize = DataAttr->NonResident.DataSize;
     Buffer = new(NonPagedPool) UCHAR[DataAttr->NonResident.DataSize];
     AttrDefFile->CopyData(DataAttr,

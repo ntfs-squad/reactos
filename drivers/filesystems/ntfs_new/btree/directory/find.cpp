@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-/* INCLUDES *****************************************************************/
 #include "ntfspch.h"
 
 #define PathElementLength(FileName) \

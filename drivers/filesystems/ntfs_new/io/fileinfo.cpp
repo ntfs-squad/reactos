@@ -6,8 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-/* INCLUDES *****************************************************************/
-
 #include "fileinfo.h"
 #include "filebothdir.h"
 
