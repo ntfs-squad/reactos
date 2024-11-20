@@ -28,6 +28,10 @@ public:
     NTSTATUS
     WriteFileRecordToMFT(_In_ PFileRecord File);
 
+    NTSTATUS
+    IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
+                            _Out_ PBOOLEAN InUse);
+
 private:
     PNTFSVolume Volume;
     UINT64 MFTLCN;

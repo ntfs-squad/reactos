@@ -58,6 +58,7 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
     PAGED_CODE();
     NTSTATUS Status;
     ULONG BytesToRead;
+    BOOLEAN IsRecordInUse;
 
     *File = new(PagedPool, TAG_MFT) FileRecord(Volume);
     BytesToRead = FileRecordSize;
@@ -84,14 +85,31 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
          * and the file is in $MFTMirr, the MFTMirr file.
          */
 
+        // Initialize MFT file if it isn't already.
         if (!MFTFile)
         {
             Status = GetFileRecord(_MFT, &MFTFile);
             if (!NT_SUCCESS(Status))
             {
                 DPRINT1("Failed to get $MFT File!\n");
-                goto FileCheckFailed;
+                goto MFTFailed;
             }
+        }
+
+        // If the file record is not in use, fail.
+        Status = IsFileRecordNumberInUse(FileRecordNumber,
+                                         &IsRecordInUse);
+
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to determine if file record number is in use!\n");
+            goto Failed;
+        }
+
+        if (!IsRecordInUse)
+        {
+            DPRINT1("File record is not in use!\n");
+            goto Failed;
         }
 
         Status = MFTFile->CopyData(TypeData,
@@ -101,7 +119,7 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
                                    FileRecordOffset(FileRecordNumber));
     }
 
-FileCheckFailed:
+MFTFailed:
     if (!NT_SUCCESS(Status) ||
         !(RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) == 4))
     {
@@ -110,6 +128,7 @@ FileCheckFailed:
         // Check if we can get the file from MFTMirr
         if (IsFileRecordInMFTMirr(FileRecordNumber))
         {
+            // Initialize MFTMirr file if it isn't already.
             if (!MFTMirrFile)
             {
                 Status = GetFileRecord(_MFTMirr, &MFTMirrFile);
@@ -324,6 +343,42 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
         return Status;
     }
 
-
     return Status;
+}
+
+NTSTATUS
+MasterFileTable::IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
+                                         _Out_ PBOOLEAN InUse)
+{
+#if 0
+    NTSTATUS Status;
+    USHORT Bitmask;
+    UCHAR BitmapSection;
+    ULONG Size;
+
+    /* This code consistently fails an assertion:
+     * .\drivers\storage\class\disk\disk.c(589): residualOffset == 0
+     */
+
+    Size = 1;
+    Status = MFTFile->CopyData(TypeBitmap,
+                               NULL,
+                               &BitmapSection,
+                               &Size,
+                               FileRecordNumber >> 3);
+
+    Bitmask = 1 << (FileRecordNumber % 8);
+
+    if(!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to get bitmap!\n");
+        return Status;
+    }
+
+    *InUse = !!(BitmapSection & Bitmask);
+    return STATUS_SUCCESS;
+#else
+    *InUse = TRUE;
+    return STATUS_SUCCESS;
+#endif
 }
