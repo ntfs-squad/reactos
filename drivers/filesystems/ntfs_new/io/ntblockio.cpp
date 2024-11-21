@@ -43,8 +43,8 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
 
     if (Status == STATUS_PENDING)
     {
-        DPRINT1("Status is pending!!\n");
-        DPRINT1("Length: %ld, Offset: 0x%X\n", Length, Offset);
+        DPRINT1("Status is pending!\n");
+        // DPRINT1("Length: %ld, Offset: 0x%X\n", Length, Offset);
 
         KeWaitForSingleObject(&Event,
                               Executive,

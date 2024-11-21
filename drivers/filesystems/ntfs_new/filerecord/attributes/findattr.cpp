@@ -55,6 +55,8 @@ FileRecord::GetAttribute(_In_     AttributeType Type,
         {
             /* Attributes are stored in ascending order according to its attribute type.
              * If we passed the attribute type, it's not going to show up. Fail early.
+             *
+             * TODO: Search $ATTRIBUTE_LIST (0x20) if we can't find it.
              */
             return NULL;
         }
@@ -93,8 +95,6 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
     LONGLONG TestOffset = 0;
     ULONGLONG AllocatedSize = DataAttr->NonResident.AllocatedSize;
     ULONGLONG ReadSize = 0;
-
-    DPRINT1("Called FileRecord::FindNonResidentData()!\n");
 
     ASSERT(DataAttr->IsNonResident);
 

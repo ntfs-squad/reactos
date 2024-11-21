@@ -40,8 +40,6 @@ NtfsFsdFileSystemControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-    DPRINT1("NtfsFsdFileSystemControl Called!\n");
-
     if ((IrpSp->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL) &&
         (IrpSp->MinorFunction == IRP_MN_USER_FS_REQUEST) &&
         (IrpSp->Parameters.FileSystemControl.FsControlCode == FSCTL_INVALIDATE_VOLUMES))

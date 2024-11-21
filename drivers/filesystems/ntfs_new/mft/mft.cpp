@@ -40,16 +40,12 @@ MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
     // Initialize $MFT
     Status = GetFileRecord(_MFT, &MFTFile);
     if (!NT_SUCCESS(Status))
-    {
         DPRINT1("Failed to get $MFT!\n");
-    }
 
     // Initialize $MFTMirr
     Status = GetFileRecord(_MFTMirr, &MFTMirrFile);
     if (!NT_SUCCESS(Status))
-    {
         DPRINT1("Failed to get $MFTMirr!\n");
-    }
 }
 
 NTSTATUS

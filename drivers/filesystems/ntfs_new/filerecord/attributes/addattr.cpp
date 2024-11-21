@@ -19,6 +19,8 @@ ROUND_UP(OldSize - OldAttribute->Length + UpdatedAttributeSize(OldAttribute, New
 
 #define EndOfAttributesMarker 0xFFFFFFFF
 
+#define FILE_OFFSET_EOF ~0
+
 
 // NOTE: ATTRIBUTES ARE ALIGNED TO 8-BYTE BOUNDARIES!!!
 
@@ -27,7 +29,7 @@ FileRecord::UpdateAttributeData(_In_     AttributeType Type,
                                 _In_opt_ PWSTR AttributeName,
                                 _In_     PUCHAR Buffer,
                                 _In_     ULONG Length,
-                                _In_     ULONG Offset)
+                                _In_     PULONGLONG Offset)
 {
     PAttribute CurrentAttribute;
     PUCHAR EndOfFileRecord;
@@ -38,12 +40,10 @@ FileRecord::UpdateAttributeData(_In_     AttributeType Type,
     if (!CurrentAttribute)
         return STATUS_NOT_FOUND;
 
-    // Find the end of the file record.
-    // TODO: Do this better.
-    EndOfFileRecord = (PUCHAR)GetAttribute(TypeAttributeEndMarker, NULL);
-    if (!EndOfFileRecord)
-        return STATUS_FILE_CORRUPT_ERROR;
-    EndOfFileRecord += sizeof(UINT32);
+    if (*Offset == FILE_OFFSET_EOF)
+    {
+        *Offset = GetAttributeDataSize(CurrentAttribute);
+    }
 
     /* TODO: Determine if the attribute needs to be made non-resident.
      *
@@ -63,10 +63,10 @@ FileRecord::UpdateAttributeData(_In_     AttributeType Type,
 
         while(CurrentDR && Length)
         {
-            if (Offset >= (CurrentDR->Length * BytesPerCluster(Volume)))
+            if (*Offset >= (CurrentDR->Length * BytesPerCluster(Volume)))
             {
                 // We need to move onto the next data run.
-                Offset -= (CurrentDR->Length * BytesPerCluster(Volume));
+                *Offset -= (CurrentDR->Length * BytesPerCluster(Volume));
             }
 
             else
@@ -96,7 +96,10 @@ FileRecord::UpdateAttributeData(_In_     AttributeType Type,
         // The attribute is resident.
 
         // TODO: Implement offsets
-        ASSERT(Offset == 0);
+        ASSERT(*Offset == 0);
+
+        // Find the end of the file record.
+        EndOfFileRecord = Data + Header->ActualSize;
 
         // Move the attribute data after the target attribute to where it needs to go
         RtlMoveMemory(NewAttributeEndPtr(CurrentAttribute, Length),

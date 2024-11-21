@@ -112,7 +112,7 @@ public:
                   _In_opt_ PWSTR StreamName,
                   _In_     PUCHAR Buffer,
                   _Inout_  PULONG Length,
-                  _In_     ULONGLONG Offset = 0);
+                  _In_     PULONGLONG Offset);
 
     // ./ fixup.cpp
     NTSTATUS
@@ -132,5 +132,5 @@ private:
                         _In_opt_ PWSTR AttributeName,
                         _In_     PUCHAR Buffer,
                         _In_     ULONG Length,
-                        _In_     ULONG Offset = 0);
+                        _In_     PULONGLONG Offset);
 } *PFileRecord;

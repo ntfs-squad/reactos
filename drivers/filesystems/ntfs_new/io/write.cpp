@@ -30,25 +30,35 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PIO_STACK_LOCATION IrpSp;
     PUCHAR Buffer;
     ULONGLONG ByteOffset;
-    ULONG Length;
+    ULONG Length, ReturnedWriteLength;
     PFileContextBlock FileCB;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     Buffer = (PUCHAR)(GetBuffer(Irp));
     ByteOffset = IrpSp->Parameters.Write.ByteOffset.QuadPart;
     Length = IrpSp->Parameters.Write.Length;
+    ReturnedWriteLength = Length;
     FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
 
     Status = FileCB->FileRec->WriteFileData(FileCB->RequestedType,
                                             FileCB->RequestedStream,
                                             Buffer,
                                             &Length,
-                                            ByteOffset);
+                                            &ByteOffset);
+
+    ReturnedWriteLength -= Length;
 
     if (NT_SUCCESS(Status))
     {
-        // I don't know yet what to do here...
-        __debugbreak();
+        // TODO: Update timestamps
+
+        if (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO)
+        {
+            // Advance file pointer
+            IrpSp->FileObject->CurrentByteOffset.QuadPart = ByteOffset + ReturnedWriteLength;
+        }
+
+        Irp->IoStatus.Information = ReturnedWriteLength;
     }
 
     else

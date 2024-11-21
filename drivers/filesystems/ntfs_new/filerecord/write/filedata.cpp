@@ -8,37 +8,32 @@
 
 #include "ntfspch.h"
 
-#define ResidentAttributeHeaderSize 0xC0
+// #define CalculateNewRecordSize(OldAttribute, NewDataLength) \
+// ((Header->ActualSize) - (OldAttribute->Resident.DataLength) + (NewDataLength))
 
-#define CalculateNewRecordSize(OldAttribute, NewDataLength) \
-((Header->ActualSize) - (OldAttribute->Resident.DataLength) + (NewDataLength))
+// #define MustPromoteAttribute(OldAttribute, NewDataLength) \
+// (CalculateNewRecordSize(OldAttribute, NewDataLength) > (Header->AllocatedSize))
 
-#define MustPromoteAttribute(OldAttribute, NewDataLength) \
-(CalculateNewRecordSize(OldAttribute, NewDataLength) > (Header->AllocatedSize))
+// #define CanDemoteAttribute(OldAttribute, NewDataLength) \
+// !MustPromoteAttribute(OldAttribute, NewDataLength)
 
-#define CanDemoteAttribute(OldAttribute, NewDataLength) \
-!MustPromoteAttribute(OldAttribute, NewDataLength)
-
-#define MustBeNonResident(Length) \
-((Header->ActualSize + Length + ResidentAttributeHeaderSize) > Header->AllocatedSize)
-
-#define WriteToEOF(Offset) Offset == ~0
+// #define MustBeNonResident(Length) \
+// ((Header->ActualSize + Length + ResidentAttributeHeaderSize) > Header->AllocatedSize)
 
 NTSTATUS
 FileRecord::WriteFileData(_In_     AttributeType AttrType,
                           _In_opt_ PWSTR StreamName,
                           _In_     PUCHAR Buffer,
                           _Inout_  PULONG Length,
-                          _In_     ULONGLONG Offset)
+                          _In_     PULONGLONG Offset)
 {
     NTSTATUS Status;
-
-    DPRINT1("Called FileRecord::WriteData()!\n");
 
     Status = UpdateAttributeData(AttrType,
                                  StreamName,
                                  Buffer,
-                                 *Length);
+                                 *Length,
+                                 Offset);
 
     // Write the file record to disk
     Status = Volume->MFT->WriteFileRecordToMFT(this);

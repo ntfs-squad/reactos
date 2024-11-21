@@ -28,7 +28,7 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     ULONG ClusterSize, Size;
     USHORT i;
     BootSector* PartBootSector;
-    PFileRecord VolumeFile;
+    PFileRecord VolumeFile = NULL;
     PVolumeInformationEx VolumeInfo;
     PAttribute VolumeInfoAttribute;
 
@@ -257,7 +257,6 @@ NTFSVolume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
     // Overwrite the file record.
     // Status = WriteFileRecord(_Volume, VolumeFileRecord);
 
-cleanup:
     delete VolumeFile;
     return Status;
 }
@@ -305,7 +304,6 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     Status = STATUS_SUCCESS;
 
 // We're done! Time to cleanup.
-cleanup:
     delete BitmapBuffer;
     delete BitmapFile;
     return Status;

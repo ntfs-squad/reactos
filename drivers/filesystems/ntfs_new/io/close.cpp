@@ -68,6 +68,5 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     Irp->IoStatus.Information = STATUS_SUCCESS;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-    DPRINT1("File closed!\n");
     return STATUS_SUCCESS;
 }

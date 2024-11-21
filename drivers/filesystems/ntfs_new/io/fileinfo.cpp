@@ -69,7 +69,6 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                                              &BufferLength);
             break;
         case FileStandardInformation:
-            DPRINT1("File standard information requested!\n");
             Status = GetFileStandardInformation(FileCB,
                                                 (PFILE_STANDARD_INFORMATION)SystemBuffer,
                                                 &BufferLength);
@@ -153,8 +152,6 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PVOID SystemBuffer;
     ULONG BufferLength;
 
-    DPRINT1("NtfsDirectoryControl() called\n");
-
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     FileCB = (PFileContextBlock)(IrpSp->FileObject->FsContext);
     VolCB = (PVolumeContextBlock)(VolumeDeviceObject->DeviceExtension);
@@ -224,9 +221,6 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (NT_SUCCESS(Status))
     {
         Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - BufferLength;
-        DPRINT1("Buffer Length: %lu\nRemaining Buffer Length: %lu\nI/O Status Info: %lu\n",
-                IrpSp->Parameters.QueryDirectory.Length,
-                BufferLength, Irp->IoStatus.Information);
     }
     else
     {

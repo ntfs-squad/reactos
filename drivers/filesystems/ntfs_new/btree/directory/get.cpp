@@ -118,8 +118,6 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
     PFILE_BOTH_DIR_INFORMATION PreviousBuffer;
     BOOLEAN ShowMetadataFiles;
 
-    DPRINT1("Called Directory::GetFileBothDirInfo()\n");
-
     EntrySize = 0;
     PreviousBuffer = NULL;
 

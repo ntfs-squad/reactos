@@ -223,7 +223,7 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
     PFileRecord CurrentFile;
     ULONGLONG CurrentFRN;
 
-    DPRINT1("Looking for file: \"%S\"\n", Query);
+    // DPRINT1("Looking for file: \"%S\"\n", Query);
 
     // Let's start with the root directory, which is hardcoded.
     if (IsRootFile(Query))

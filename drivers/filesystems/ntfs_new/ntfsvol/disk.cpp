@@ -20,8 +20,6 @@ NTFSVolume::ReadVolume(_In_    ULONGLONG Offset,
 
     ASSERT(Length);
 
-    DPRINT1("ReadVolume() called!\n");
-
     if (LengthSectorAligned != Length)
     {
         DPRINT1("LengthSectorAligned != Length (%ld != %ld)\n", LengthSectorAligned, Length);

@@ -268,8 +268,6 @@ Directory::LoadDirectory(_In_ PFileRecord File)
     PBTreeKey SearchKey, ShortNameKey;
     // PAttribute BitmapAttribute;
 
-    DPRINT1("Called Directory::LoadDirectory()\n");
-
     // This only works on files that are directories.
     ASSERT(File->Header->Flags & FR_IS_DIRECTORY);
 
