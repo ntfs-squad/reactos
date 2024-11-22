@@ -85,7 +85,10 @@ FileCheck:
     {
         DPRINT1("Failed to get file %ld from MFT!\n", FileRecordNumber);
         delete *File;
-        return GetFileRecordFromMFTMirr(FileRecordNumber, File);
+        if (FileRecordNumber != _MFT && FileRecordNumber != _MFTMirr)
+            return GetFileRecordFromMFTMirr(FileRecordNumber, File);
+        else
+            return STATUS_NOT_FOUND;
     }
 
     // Apply fixup for the file.

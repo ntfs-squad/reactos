@@ -6,6 +6,9 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
+#define GetOffset(LCN) (LCN * BytesPerCluster(Volume))
+#define GetRunSize(Run) (Run->Length * BytesPerCluster(Volume))
+
 /* NTFS file record numbers */
 enum FileRecordNumbers
 {
@@ -130,4 +133,9 @@ private:
                        _In_ PUCHAR Buffer,
                        _In_ PULONG Length,
                        _In_ ULONGLONG Offset = 0);
+    NTSTATUS
+    UpdateNonResidentData(_In_ PAttribute TargetAttribute,
+                          _In_ PUCHAR Buffer,
+                          _In_ PULONG Length,
+                          _In_ ULONGLONG Offset = 0);
 } *PFileRecord;

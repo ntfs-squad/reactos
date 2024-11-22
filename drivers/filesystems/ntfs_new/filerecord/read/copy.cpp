@@ -8,9 +8,6 @@
 
 #include "ntfspch.h"
 
-#define GetOffset(LCN) (LCN * BytesPerCluster(Volume))
-#define GetRunSize(Run) (Run->Length * BytesPerCluster(Volume))
-
 NTSTATUS
 FileRecord::CopyData(_In_    AttributeType Type,
                      _In_    PWSTR Name,
