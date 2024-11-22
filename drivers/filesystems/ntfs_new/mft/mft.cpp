@@ -52,7 +52,7 @@ NTSTATUS
 MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
 {
     NTSTATUS Status;
-    ULONGLONG FileRecordDiskOffset;
+    LARGE_INTEGER FileRecordOffset;
 
     // TODO: Add logging here
 
@@ -65,15 +65,15 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
         return Status;
     }
 
-    // HACK! Use VCN-to-LCN mapping (needed for fragmented MFTs).
-    FileRecordDiskOffset = (MFTLCN * BytesPerCluster(Volume))
-                           + (File->Header->MFTRecordNumber * FileRecordSize);
+    ULONG FRSize = FileRecordSize;
+    FileRecordOffset.QuadPart = (File->Header->MFTRecordNumber * FileRecordSize);
 
-    // Write to disk.
-    Status = WriteDisk(Volume->PartDeviceObj,
-                       FileRecordDiskOffset,
-                       FileRecordSize,
-                       File->Data);
+    // Write file record to $MFT.
+    Status = MFTFile->WriteFileData(TypeData,
+                                    NULL,
+                                    File->Data,
+                                    &FRSize,
+                                    &FileRecordOffset);
 
     if (!NT_SUCCESS(Status))
     {
@@ -83,17 +83,12 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
 
     if (IsFileRecordInMFTMirr(File->Header->MFTRecordNumber))
     {
-        /* TODO: Is it even possible that an MFT mirror can become fragmented?
-         * Very rarely would it ever be larger than one cluster.
-         */
-        FileRecordDiskOffset = (MFTMirrLCN * BytesPerCluster(Volume))
-                               + (File->Header->MFTRecordNumber * FileRecordSize);
-
-        // Write to disk.
-        Status = WriteDisk(Volume->PartDeviceObj,
-                           FileRecordDiskOffset,
-                           FileRecordSize,
-                           File->Data);
+        // Write file record to $MFTMirr.
+        Status = MFTMirrFile->WriteFileData(TypeData,
+                                            NULL,
+                                            File->Data,
+                                            &FRSize,
+                                            &FileRecordOffset);
 
         if (!NT_SUCCESS(Status))
         {

@@ -77,10 +77,17 @@ FileRecord::WriteFileData(_In_     AttributeType AttrType,
          * if small enough. Note: MS NTFS does not appear to do this.
          */
 
-        // Call to UpdateNonResidentData here.
+        Status = UpdateNonResidentData(TargetAttribute,
+                                       Buffer,
+                                       Length,
+                                       Offset->QuadPart);
 
-        DPRINT1("Non-resident writes are not supported yet!\n");
-        return STATUS_NOT_IMPLEMENTED;
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to write to non resident data!\n");
+            __debugbreak();
+            return Status;
+        }
     }
 
     return Status;
