@@ -46,34 +46,44 @@ public:
     UINT64 SerialNumber;
     USHORT NtfsMajorVersion;
     USHORT NtfsMinorVersion;
-
-    PDEVICE_OBJECT StorageDevice;
-    PFILE_OBJECT StreamFileObject;
-
     ULONG Flags;
     ULONG OpenHandleCount;
-
+    PDEVICE_OBJECT StorageDevice;
+    PFILE_OBJECT StreamFileObject;
     PVPB VolParamBlock;
-
+    PFILE_OBJECT PubFileObject;
+    PDEVICE_OBJECT PartDeviceObj;
     class MasterFileTable* MFT;
     class LogFileService* LFS;
 
-    NTSTATUS LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
-    NTSTATUS GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
-                            _Inout_ PUSHORT Length);
-    NTSTATUS SetVolumeLabel(_In_ PWSTR VolumeLabel,
-                            _In_ ULONG Length);
-    NTSTATUS GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
-    void RunSanityChecks();
-    void SanityCheckBlockIO();
+    // ./disk.cpp
     NTSTATUS ReadVolume(_In_    ULONGLONG Offset,
                         _In_    ULONG Length,
                         _Inout_ PUCHAR Buffer);
     NTSTATUS WriteVolume(_In_    ULONGLONG Offset,
                          _In_    ULONG Length,
                          _Inout_ PUCHAR Buffer);
-    NTSTATUS GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
-                                      _Out_ AttributeType* Type);
-    PFILE_OBJECT PubFileObject;
-    PDEVICE_OBJECT PartDeviceObj;
+
+    // ./metadata.cpp
+    NTSTATUS
+    UpcaseUnicodeString(_Inout_ PWSTR UnicodeString,
+                        _In_    ULONG Length);
+    NTSTATUS
+    GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
+                             _Out_ AttributeType* Type);
+    NTSTATUS
+    GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
+    NTSTATUS
+    GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
+                   _Inout_ PUSHORT Length);
+    NTSTATUS
+    SetVolumeLabel(_In_ PWSTR VolumeLabel,
+                   _In_ ULONG Length);
+
+    // ./ntfsvol.cpp
+    NTSTATUS
+    LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
+    void RunSanityChecks();
+    void SanityCheckBlockIO();
+
 } *PNTFSVolume;
