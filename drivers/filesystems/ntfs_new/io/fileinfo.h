@@ -91,7 +91,7 @@ GetFileStandardInformation(_In_ PFileContextBlock FileCB,
     Buffer->NumberOfLinks = File->Header->HardLinkCount;
 
     // Information from file context block
-    Buffer->DeletePending = FileCB->DeletePending;
+    Buffer->DeletePending = !!(FileCB->CreateOptions & FILE_DELETE_ON_CLOSE);
 
     *Length -= FileInfoSize;
 

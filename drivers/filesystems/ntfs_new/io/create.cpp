@@ -199,6 +199,12 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     // Add pointer for file record
     FileCB->FileRec = CurrentFile;
 
+    // Set CreateOptions for the file context block
+    FileCB->CreateOptions = CreateOptions;
+
+    // Set DesiredAccess for the file context block
+    FileCB->DesiredAccess = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+
     /* Assume that this is the first file stream request.
      * For more details see:
      * https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_section_object_pointers

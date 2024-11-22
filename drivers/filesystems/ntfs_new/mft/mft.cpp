@@ -111,6 +111,8 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
         return Status;
     }
 
+    // TODO: Update file timestamps
+
     return Status;
 }
 

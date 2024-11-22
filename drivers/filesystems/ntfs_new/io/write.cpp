@@ -29,16 +29,22 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     NTSTATUS Status;
     PIO_STACK_LOCATION IrpSp;
     PUCHAR Buffer;
-    ULONGLONG ByteOffset;
-    ULONG Length, ReturnedWriteLength;
+    LARGE_INTEGER ByteOffset;
+    ULONG Length;
     PFileContextBlock FileCB;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     Buffer = (PUCHAR)(GetBuffer(Irp));
-    ByteOffset = IrpSp->Parameters.Write.ByteOffset.QuadPart;
+    ByteOffset = IrpSp->Parameters.Write.ByteOffset;
     Length = IrpSp->Parameters.Write.Length;
-    ReturnedWriteLength = Length;
     FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
+
+    // Set the offset to end of file if FILE_APPEND_DATA is set
+    if (FileCB->DesiredAccess == FILE_APPEND_DATA)
+    {
+        ByteOffset.HighPart = -1;
+        ByteOffset.LowPart = FILE_WRITE_TO_END_OF_FILE;
+    }
 
     Status = FileCB->FileRec->WriteFileData(FileCB->RequestedType,
                                             FileCB->RequestedStream,
@@ -46,19 +52,15 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                                             &Length,
                                             &ByteOffset);
 
-    ReturnedWriteLength -= Length;
-
     if (NT_SUCCESS(Status))
     {
-        // TODO: Update timestamps
-
         if (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO)
         {
             // Advance file pointer
-            IrpSp->FileObject->CurrentByteOffset.QuadPart = ByteOffset + ReturnedWriteLength;
+            IrpSp->FileObject->CurrentByteOffset.QuadPart = ByteOffset.QuadPart + Length;
         }
 
-        Irp->IoStatus.Information = ReturnedWriteLength;
+        Irp->IoStatus.Information = Length;
     }
 
     else

@@ -112,7 +112,7 @@ public:
                   _In_opt_ PWSTR StreamName,
                   _In_     PUCHAR Buffer,
                   _Inout_  PULONG Length,
-                  _In_     PULONGLONG Offset);
+                  _In_     PLARGE_INTEGER Offset);
 
     // ./ fixup.cpp
     NTSTATUS
@@ -126,11 +126,8 @@ private:
 
     // ./write.cpp
     NTSTATUS
-    InsertAttribute(_In_ PAttribute AttributeToInsert);\
-    NTSTATUS
-    UpdateAttributeData(_In_     AttributeType Type,
-                        _In_opt_ PWSTR AttributeName,
-                        _In_     PUCHAR Buffer,
-                        _In_     ULONG Length,
-                        _In_     PULONGLONG Offset);
+    UpdateResidentData(_In_ PAttribute TargetAttribute,
+                       _In_ PUCHAR Buffer,
+                       _In_ PULONG Length,
+                       _In_ ULONGLONG Offset = 0);
 } *PFileRecord;
