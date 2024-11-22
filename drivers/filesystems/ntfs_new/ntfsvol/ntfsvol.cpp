@@ -216,7 +216,7 @@ NTFSVolume::GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
 
 NTSTATUS
 NTFSVolume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
-                           _In_ USHORT Length)
+                           _In_ ULONG Length)
 {
     NTSTATUS Status;
     FileRecord* VolumeFile;
@@ -234,29 +234,21 @@ NTFSVolume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
     if (!NT_SUCCESS(Status))
         return Status;
 
-#if 0
-    VolumeFileRecord->Header->ActualSize -= VolumeNameAttr->Length;
+    // Update the resident data attribute for volume name
+    Status = VolumeFile->UpdateResidentData(VolumeNameAttr,
+                                            (PUCHAR)VolumeLabel,
+                                            &Length);
 
-    VolumeNameAttr->AttributeLength = Length;
-    VolumeNameAttr->Length = Length + sizeof(ResidentAttribute);
+    if (!NT_SUCCESS(Status))
+        goto Done;
 
-    VolumeFileRecord->Header->ActualSize += VolumeNameAttr->Length;
+    // Write the volume file to disk.
+    Status = MFT->WriteFileRecordToMFT(VolumeFile);
 
-    DPRINT1("Let's look at the label we just copied: \"%S\"\n", GetResidentDataPointer(VolumeNameAttr));
+    if (!NT_SUCCESS(Status))
+        goto Done;
 
-    VolumeFileRecord->UpdateResidentAttribute(VolumeNameAttr);
-#else
-    // Copy new volume label into the $VolumeName attribute.
-    // HACK! We don't move around the data structure yet.
-    ASSERT(Length <= VolumeNameAttr->Resident.DataLength);
-    RtlCopyMemory(GetResidentDataPointer(VolumeNameAttr),
-                  VolumeLabel,
-                  Length);
-#endif
-
-    // Overwrite the file record.
-    // Status = WriteFileRecord(_Volume, VolumeFileRecord);
-
+Done:
     delete VolumeFile;
     return Status;
 }

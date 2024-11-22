@@ -117,6 +117,12 @@ public:
                   _Inout_  PULONG Length,
                   _In_     PLARGE_INTEGER Offset);
 
+    NTSTATUS
+    UpdateResidentData(_In_ PAttribute TargetAttribute,
+                       _In_ PUCHAR Buffer,
+                       _In_ PULONG Length,
+                       _In_ ULONGLONG Offset = 0);
+
     // ./ fixup.cpp
     NTSTATUS
     CommitFixup();
@@ -128,11 +134,6 @@ private:
     PNTFSVolume Volume;
 
     // ./write.cpp
-    NTSTATUS
-    UpdateResidentData(_In_ PAttribute TargetAttribute,
-                       _In_ PUCHAR Buffer,
-                       _In_ PULONG Length,
-                       _In_ ULONGLONG Offset = 0);
     NTSTATUS
     UpdateNonResidentData(_In_ PAttribute TargetAttribute,
                           _In_ PUCHAR Buffer,

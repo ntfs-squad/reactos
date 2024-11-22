@@ -62,7 +62,7 @@ public:
     NTSTATUS GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
                             _Inout_ PUSHORT Length);
     NTSTATUS SetVolumeLabel(_In_ PWSTR VolumeLabel,
-                            _In_ USHORT Length);
+                            _In_ ULONG Length);
     NTSTATUS GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
     void RunSanityChecks();
     void SanityCheckBlockIO();
