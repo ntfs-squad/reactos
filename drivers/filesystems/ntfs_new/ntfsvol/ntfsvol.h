@@ -74,7 +74,7 @@ public:
     NTSTATUS
     GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
     NTSTATUS
-    GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
+    GetVolumeLabel(_Inout_ PWSTR   VolumeLabel,
                    _Inout_ PUSHORT Length);
     NTSTATUS
     SetVolumeLabel(_In_ PWSTR VolumeLabel,

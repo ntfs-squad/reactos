@@ -337,6 +337,8 @@ Directory::DoesFileNameMatch(PUNICODE_STRING NameFilter,
          *
          * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtlisnameinexpression
         */
+
+        // TODO: Should this be replaced with Volume->UpcaseWideString()?
         NTSTATUS Status = RtlUpcaseUnicodeString(NameFilter, NameFilter, FALSE);
         if (!NT_SUCCESS(Status))
         {

@@ -204,7 +204,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
 
     // Get volume label.
     Status = Volume->GetVolumeLabel(FSDeviceObject->Vpb->VolumeLabel,
-                                      &FSDeviceObject->Vpb->VolumeLabelLength);
+                                    &FSDeviceObject->Vpb->VolumeLabelLength);
 
     // Mount volume.
     FsRtlNotifyVolumeEvent(VolCB->StreamFileObject, FSRTL_VOLUME_MOUNT);

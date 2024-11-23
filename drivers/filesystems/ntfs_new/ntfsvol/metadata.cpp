@@ -164,15 +164,15 @@ NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 }
 
 NTSTATUS
-NTFSVolume::GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
+NTFSVolume::GetVolumeLabel(_Inout_ PWSTR   VolumeLabel,
                            _Inout_ PUSHORT Length)
 {
     NTSTATUS Status;
     PFileRecord VolumeFile;
     PAttribute VolumeNameAttr;
-    UINT32 AttrLength;
+    ULONG LabelLength;
 
-    // Allocate memory for $Volume file record and retrieve the file record.
+    // Retrieve the $Volume file record and $VOLUME_NAME attribute
     Status = MFT->GetFileAttributeFromFileRecordNumber(TypeVolumeName,
                                                        NULL,
                                                        _Volume,
@@ -181,21 +181,18 @@ NTFSVolume::GetVolumeLabel(_Inout_ PWSTR VolumeLabel,
     if (!NT_SUCCESS(Status))
         return Status;
 
-    AttrLength = VolumeNameAttr->Resident.DataLength;
+    LabelLength = GetAttributeDataSize(VolumeNameAttr);
+    *Length = LabelLength;
 
-    // Copy volume name into VolumeLabel.
-    RtlCopyMemory(VolumeLabel,
-                  GetResidentDataPointer(VolumeNameAttr),
-                  AttrLength);
+    // Get the data from the attribute
+    Status = VolumeFile->CopyData(VolumeNameAttr,
+                                  (PUCHAR)VolumeLabel,
+                                  &LabelLength);
 
-    // Add null-terminator.
-    VolumeLabel[AttrLength / sizeof(WCHAR)] = '\0';
+    if (!NT_SUCCESS(Status) || LabelLength != 0)
+        *Length = 0;
 
-    // Set length to attribute length.
-    *Length = AttrLength;
-
-    if (VolumeFile)
-        delete VolumeFile;
+    delete VolumeFile;
     return Status;
 }
 
