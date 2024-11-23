@@ -296,6 +296,16 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 DbgPrint("    %s\n", FlagName); \
 /* Debug print functions. REMOVE WHEN DONE. */
 
+static inline void PrintUpCaseTable(PUCHAR UpCaseData,
+                                    ULONG Length)
+{
+    DbgPrint("Offset | Value\n");
+    for (int i = 0; i < Length; i += 2)
+    {
+        DbgPrint("0x%2X   | %C\n", i, ((WCHAR)(UpCaseData[i])));
+    }
+}
+
 static inline void PrintAttrDefTable(PFileRecord AttrDef)
 {
     PAttrDefEntry TableEntry;
@@ -497,6 +507,8 @@ static inline void PrintFileCreateOptions(UINT8 Disposition, ULONG CreateOptions
     // PrintFlag(CreateOptions, FILE_OPEN_REQUIRING_OPLOCK, "FILE_OPEN_REQUIRING_OPLOCK");
     PrintFlag(CreateOptions, FILE_RESERVE_OPFILTER, "FILE_RESERVE_OPFILTER");
 }
+
+
 #endif
 
 #endif // _NTFSPROCS_

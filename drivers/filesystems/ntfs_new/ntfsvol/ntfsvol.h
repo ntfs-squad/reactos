@@ -66,8 +66,8 @@ public:
 
     // ./metadata.cpp
     NTSTATUS
-    UpcaseUnicodeString(_Inout_ PWSTR UnicodeString,
-                        _In_    ULONG Length);
+    UpcaseWideString(_Inout_ PWSTR WideString,
+                     _In_    ULONG Length);
     NTSTATUS
     GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
                              _Out_ AttributeType* Type);

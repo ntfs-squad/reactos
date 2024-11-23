@@ -14,16 +14,42 @@ const UINT8 Zeros[16] = { 4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0 };
 #define GetZerosFromByte(x) GetZerosFromNibble(x & 0xF) + GetZerosFromNibble(x >> 4)
 
 NTSTATUS
-NTFSVolume::UpcaseUnicodeString(_Inout_ PWSTR UnicodeString,
-                                _In_    ULONG Length)
+NTFSVolume::UpcaseWideString(_Inout_ PWSTR WideString,
+                             _In_    ULONG Length)
 {
-    // HACK: Uppercase the AttributeTypeName for case-insensitive matching
+    NTSTATUS Status;
+    PWSTR UpCaseBuffer;
+    PFileRecord UpCaseFile;
+    PAttribute UpCaseData;
+    ULONG UpCaseDataLength;
+
+    // Get $UpCase file
+    Status = MFT->GetFileAttributeFromFileRecordNumber(TypeData,
+                                                       NULL,
+                                                       _UpCase,
+                                                       &UpCaseFile,
+                                                       &UpCaseData);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    // Get $DATA attribute contents from $UpCase
+    UpCaseDataLength = GetAttributeDataSize(UpCaseData);
+    UpCaseBuffer = new(NonPagedPool) WCHAR[UpCaseDataLength / sizeof(WCHAR)];
+    Status = UpCaseFile->CopyData(UpCaseData,
+                                  (PUCHAR)UpCaseBuffer,
+                                  &UpCaseDataLength);
+
+    if (!NT_SUCCESS(Status))
+        goto Done;
+
+    // Update each character according to its entry in the $UpCase table
     for (int i = 0; i < Length; i++)
-        UnicodeString[i] = RtlUpcaseUnicodeChar(UnicodeString[i]);
+        WideString[i] = UpCaseBuffer[WideString[i]];
 
-    return STATUS_SUCCESS;
-
-    // Proper way is to use the $UpCase file
+Done:
+    delete UpCaseFile;
+    delete UpCaseBuffer;
+    return Status;
 }
 
 NTSTATUS
@@ -50,7 +76,7 @@ NTFSVolume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
     if (!NT_SUCCESS(Status))
         return Status;
 
-    Status = UpcaseUnicodeString(AttributeTypeName, wcslen(AttributeTypeName));
+    Status = UpcaseWideString(AttributeTypeName, wcslen(AttributeTypeName));
     if (!NT_SUCCESS(Status))
         goto Done;
 
