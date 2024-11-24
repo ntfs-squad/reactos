@@ -72,9 +72,6 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     if (NT_SUCCESS(Status))
     {
-        DPRINT1("RequestedLength: %ld\n", RequestedLength);
-        DPRINT1("IrpSp->Parameters.Read.Length: %ld\n", IrpSp->Parameters.Read.Length);
-
         if (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO)
         {
             IrpSp->FileObject->CurrentByteOffset.QuadPart =
@@ -82,7 +79,6 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         }
 
         Irp->IoStatus.Information = IrpSp->Parameters.Read.Length - RequestedLength;
-        DPRINT1("Irp->IoStatus.Information: %ld\n", Irp->IoStatus.Information);
     }
 
     else

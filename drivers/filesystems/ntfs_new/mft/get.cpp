@@ -253,17 +253,15 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
 
     QueryElementPtr = Query;
     QueryElementPtr = wcschr(QueryElementPtr, L'\\');
-    QueryElementPtr = &QueryElementPtr[1];
+    QueryElementPtr++;
 
     while(QueryElementPtr)
     {
-        DPRINT1("Searching for: \"%S\"\n", QueryElementPtr);
         // Find the directory pointed to by the path
         Status = CurrentDirectory->FindNextFile(QueryElementPtr,
                                                 &CurrentFRN);
         if (!NT_SUCCESS(Status))
         {
-            DPRINT1("Failed to find \"%S\"!\n", QueryElementPtr);
             delete CurrentDirectory;
             delete CurrentFile;
             return STATUS_NOT_FOUND;
@@ -297,7 +295,7 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
 
             // Set up next file
             QueryElementPtr = wcschr(QueryElementPtr, L'\\');
-            QueryElementPtr = &QueryElementPtr[1];
+            QueryElementPtr++;
         }
 
         else

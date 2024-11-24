@@ -156,7 +156,6 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     // Set NTFS major and minor versions
     NtfsMajorVersion = VolumeInfo->MajorVersion;
     NtfsMinorVersion = VolumeInfo->MinorVersion;
-
     DPRINT1("NTFS Version %ld.%ld\n", VolumeInfo->MajorVersion, VolumeInfo->MinorVersion);
 
     // Determine whether or not to show metadata files.

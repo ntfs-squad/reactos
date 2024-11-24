@@ -194,10 +194,7 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
 done:
     // Go back to previous entry and terminate it.
     if (PreviousBuffer)
-    {
-        DPRINT1("Terminating last entry!\n");
         PreviousBuffer->NextEntryOffset = 0;
-    }
 
     return Status;
 }

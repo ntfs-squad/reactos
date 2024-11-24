@@ -22,7 +22,7 @@ NTFSVolume::ReadVolume(_In_    ULONGLONG Offset,
 
     if (LengthSectorAligned != Length)
     {
-        DPRINT1("LengthSectorAligned != Length (%ld != %ld)\n", LengthSectorAligned, Length);
+        DPRINT1("Performing unaligned read (%ld != %ld)\n", LengthSectorAligned, Length);
         RaggedEdgeSize = Length - LengthSectorAligned;
         SectorAlignmentBuffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, BytesPerSector, TAG_NTFS);
     }

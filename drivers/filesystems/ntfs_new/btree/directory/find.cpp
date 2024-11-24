@@ -89,10 +89,7 @@ Directory::FindNextFile(_In_  PWCHAR FileName,
     FoundKey = FindKeyInNode(&FileNameString, RootNode->FirstKey);
 
     if (!FoundKey)
-    {
-        DPRINT1("Failed to find file!\n");
         return STATUS_NOT_FOUND;
-    }
 
     CurrentKey = FoundKey;
     *FileRecordNumber = GetFRNFromFileRef(FoundKey->Entry->Data.Directory.IndexedFile);

@@ -24,7 +24,7 @@ _Function_class_(DRIVER_DISPATCH)
 EXTERN_C
 NTSTATUS
 NTAPI
-NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                         _Inout_ PIRP Irp)
 {
 
@@ -51,9 +51,9 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     FileCB = (PFileContextBlock)FileObject->FsContext;
     if (!FileCB)
     {
-        DPRINT1("File not found!\n");
+        DPRINT1("NtfsFsdQueryInformation() called with NULL file context block!\n");
         Status = STATUS_NOT_FOUND;
-        goto done;
+        goto Done;
     }
 
     FileObject->SectionObjectPointer = &(FileCB->StreamCB->SectionObjectPointers);
@@ -93,7 +93,8 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             Status = STATUS_INVALID_DEVICE_REQUEST;
             break;
     }
-done:
+
+Done:
     if (NT_SUCCESS(Status))
     {
         Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -154,9 +155,6 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     VolCB = (PVolumeContextBlock)(VolumeDeviceObject->DeviceExtension);
     SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
     BufferLength = IrpSp->Parameters.QueryDirectory.Length;
-
-    if (IrpSp->Parameters.QueryDirectory.FileName)
-        DPRINT1("FileName: %wZ\n", IrpSp->Parameters.QueryDirectory.FileName);
 
     ASSERT(SystemBuffer);
 
