@@ -24,7 +24,7 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
     //  Initialize the event we're going to use
     KeInitializeEvent(&Event, NotificationEvent, FALSE);
 
-    //  Build the irp for the operation
+    //  Build the IRP for the operation
     Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ,
                                        DeviceToRead,
                                        Buffer,
@@ -34,18 +34,13 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
                                        &Iosb);
 
     ASSERT(Irp);
-
     SetFlag(IoGetNextIrpStackLocation(Irp)->Flags, SL_OVERRIDE_VERIFY_VOLUME);
-
 
     //  Call the device to do the read and wait for it to finish.
     Status = IoCallDriver(DeviceToRead, Irp);
 
     if (Status == STATUS_PENDING)
     {
-        DPRINT1("Status is pending!\n");
-        // DPRINT1("Length: %ld, Offset: 0x%X\n", Length, Offset);
-
         KeWaitForSingleObject(&Event,
                               Executive,
                               KernelMode,
@@ -70,6 +65,12 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
 
     //  And return to our caller.
     return Status;
+}
+
+NTSTATUS
+ReadDiskAsync()
+{
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 // You might notice Carl this looks exactly like ReadDisk, So let's go over WHY...
@@ -134,6 +135,12 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
 
     //  And return to our caller.
     return Status;
+}
+
+NTSTATUS
+WriteDiskAsync()
+{
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 NTSTATUS

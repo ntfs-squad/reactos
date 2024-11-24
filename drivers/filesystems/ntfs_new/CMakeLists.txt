@@ -22,8 +22,12 @@ list(APPEND SOURCE
      filerecord/fixup.cpp
      lfs/lfs.cpp
      ntfsvol/disk.cpp
-     ntfsvol/metadata.cpp
+     ntfsvol/metadata/attrdef.cpp
+     ntfsvol/metadata/bitmap.cpp
+     ntfsvol/metadata/upcase.cpp
+     ntfsvol/metadata/volume.cpp
      ntfsvol/ntfsvol.cpp
+     ntfsvol/sanity.cpp
      btree/btree.cpp
      btree/directory/directory.cpp
      btree/directory/dbg.cpp

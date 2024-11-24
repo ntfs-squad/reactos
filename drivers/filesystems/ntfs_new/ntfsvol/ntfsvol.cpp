@@ -8,13 +8,6 @@
 
 #include "ntfspch.h"
 
-// Min and max cluster sizes
-#define MIN_CLUSTER_SIZE 512
-#define MAX_CLUSTER_SIZE 65536
-
-// Buffer used to read from disk
-UCHAR DiskBuffer[MAX_CLUSTER_SIZE];
-
 NTSTATUS
 NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 {
@@ -166,6 +159,9 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 
     DPRINT1("NTFS Version %ld.%ld\n", VolumeInfo->MajorVersion, VolumeInfo->MinorVersion);
 
+    // Determine whether or not to show metadata files.
+    ShowMetadataFiles = QueryBooleanRegistryValue(L"NtfsShowMetadataFiles");
+
 Cleanup:
     delete PartBootSector;
     if (VolumeFile)
@@ -173,79 +169,3 @@ Cleanup:
     return Status;
 }
 
-/* SEPARATING OUT FOR SANITY */
-void
-NTFSVolume::SanityCheckBlockIO()
-{
-
-    DPRINT1("Running a very close sanity check by reading one block, writing one block and re reading\n\n\n\n");
-    UCHAR ReadBuffer[512] = {0};
-    UCHAR PostWriteBuffer[512] = {0};
-    UCHAR ZeroOutBuffer[512] = {0};
-
-    // Save disk
-    ReadVolume(BytesPerSector,
-               BytesPerSector,
-               ReadBuffer);
-
-    // Erase disk
-    WriteVolume(BytesPerSector,
-                BytesPerSector,
-                ZeroOutBuffer);
-
-    KeStallExecutionProcessor(100);
-
-    // Recover disk
-    WriteVolume(BytesPerSector,
-                BytesPerSector,
-                ReadBuffer);
-
-    // Verify disk
-    ReadVolume(BytesPerSector,
-               BytesPerSector,
-               PostWriteBuffer);
-
-    for (int i = 0; i < 512; i++)
-    {
-        DPRINT1("ReadBuffer at Location %d, is value: %X\n", i, ReadBuffer[i]);
-        DPRINT1("PostWriteBuffer at Location %d, is value: %X\n", i, PostWriteBuffer[i]);
-
-        if (ReadBuffer[i] == PostWriteBuffer[i])
-        {
-            DPRINT1("Sanity Check passed for iteration %d\n", i);
-        }
-        else
-        {
-            __debugbreak();
-        }
-    }
-}
-void
-NTFSVolume::RunSanityChecks()
-{
-    PAGED_CODE();
-
-    DPRINT1("RunSanityChecks() called\n");
-    // SanityCheckBlockIO();
-
-// Wipe drive
-#if 0
-
-    WARNING THIS CODE INTENTIONALLY CORRUPTS THE HARDDRIVE
-    UCHAR Buffer[512] = {0};
-
-    for(int i = 0; i < 64; i ++)
-    {
-        DPRINT1("Erasing block\n");
-   NTSTATUS Status =  WriteBlock(PartDeviceObj,
-          i,
-          1,
-          512,
-          Buffer);
-          DPRINT1("Write block Status %X\n", Status);
-    }
-#endif
-
-//SanityCheck IO calls
-
-}

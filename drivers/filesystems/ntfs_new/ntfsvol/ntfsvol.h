@@ -55,34 +55,118 @@ public:
     PDEVICE_OBJECT PartDeviceObj;
     class MasterFileTable* MFT;
     class LogFileService* LFS;
+    BOOLEAN ShowMetadataFiles;
 
-    // ./disk.cpp
-    NTSTATUS ReadVolume(_In_    ULONGLONG Offset,
-                        _In_    ULONG Length,
-                        _Inout_ PUCHAR Buffer);
-    NTSTATUS WriteVolume(_In_    ULONGLONG Offset,
-                         _In_    ULONG Length,
-                         _Inout_ PUCHAR Buffer);
-
-    // ./metadata.cpp
-    NTSTATUS
-    UpcaseWideString(_Inout_ PWSTR WideString,
-                     _In_    ULONG Length);
+    /**
+     * Gets an attribute type value from the name of the attribute. This
+     * performs a lookup against the $AttrDef metadata file on the volume.
+     *
+     * @return
+     * STATUS_SUCCESS if successful.
+     */
     NTSTATUS
     GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
                              _Out_ AttributeType* Type);
+
+    /**
+     * Gets the number of free clusters in the volume. This reads from the
+     * $Bitmap metadata file on the volume.
+     *
+     * @return
+     * STATUS_SUCCESS if successful.
+     */
     NTSTATUS
     GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
+
+    /**
+     * Converts a null-terminated 16-bit string to uppercase using the
+     * code page stored on the volume. This reads from the $UpCase metadata
+     * file on the volume.
+     *
+     * @return
+     * STATUS_SUCCESS if successful.
+     */
+    NTSTATUS
+    UpcaseWideString(_Inout_ PWSTR WideString,
+                     _In_    ULONG Length);
+
+    /**
+     * Gets the volume label as a 16-bit string and its length in bytes.
+     * This reads from the $Volume metadata file on the volume.
+     *
+     * @return
+     * STATUS_SUCCESS if successful.
+     */
     NTSTATUS
     GetVolumeLabel(_Inout_ PWSTR   VolumeLabel,
                    _Inout_ PUSHORT Length);
+
+    /**
+     * Sets the volume label from a 16-bit string and its length in bytes.
+     * This writes to the $Volume metadata file on the volume.
+     *
+     * @return
+     * STATUS_SUCCESS if successful.
+     */
     NTSTATUS
     SetVolumeLabel(_In_ PWSTR VolumeLabel,
                    _In_ ULONG Length);
 
-    // ./ntfsvol.cpp
+    /**
+     * Copies a specified number of bytes into a buffer from the volume at a
+     * given offset. The offset and length do not have to be sector aligned.
+     *
+     * @param Offset
+     * The offset, in bytes, to begin copying data from the volume.
+     *
+     * @param Length
+     * The number of bytes to copy from the volume.
+     *
+     * @param Buffer
+     * The buffer to copy data from the volume into.
+     *
+     * @return
+     * STATUS_SUCCESS if successful.
+     */
+    NTSTATUS ReadVolume(_In_    ULONGLONG Offset,
+                        _In_    ULONG Length,
+                        _Inout_ PUCHAR Buffer);
+
+    /**
+     * Writes a specified number of bytes to the volume at a given offset. The
+     * offset and length do not have to be sector aligned.
+     *
+     * @param Offset
+     * The offset, in bytes, to begin writing data to the volume.
+     *
+     * @param Length
+     * The number of bytes to write to the volume.
+     *
+     * @param Buffer
+     * The buffer containing the data to write to the volume.
+     *
+     * @return
+     * STATUS_SUCCESS if successful.
+     */
+    NTSTATUS WriteVolume(_In_    ULONGLONG Offset,
+                         _In_    ULONG Length,
+                         _Inout_ PUCHAR Buffer);
+
+    /**
+     * Loads a partition as an NTFS Volume.
+     *
+     * @param DeviceToMount
+     * The partition to load as an NTFS Volume.
+     *
+     * @return
+     * STATUS_SUCCESS if the volume is NTFS and is successfully loaded.
+     * STATUS_UNRECOGNIZED_VOLUME if the volume is not NTFS.
+     */
     NTSTATUS
     LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
+
+    // ./sanity.cpp
+    // These functions will likely be removed before the driver is released.
     void RunSanityChecks();
     void SanityCheckBlockIO();
 

@@ -112,7 +112,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     }
 
     // Create file context block.
-    FileCB = new(PagedPool) FileContextBlock();
+    FileCB = new(NonPagedPool) FileContextBlock();
     RtlZeroMemory(FileCB, sizeof(FileContextBlock));
 
     // Set file name

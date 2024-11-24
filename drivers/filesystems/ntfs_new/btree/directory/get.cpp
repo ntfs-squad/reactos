@@ -82,8 +82,7 @@ AddKeyToBothDirInfo(_In_     PBTreeKey Key,
 
 BOOLEAN
 Directory::IsEligibleForFileDir(PBTreeKey Key,
-                                PUNICODE_STRING FileNameFilter,
-                                BOOLEAN MetadataFilesAllowed)
+                                PUNICODE_STRING FileNameFilter)
 {
     // Is this a dummy key?
     if (IsLastEntry(Key))
@@ -96,7 +95,7 @@ Directory::IsEligibleForFileDir(PBTreeKey Key,
 
     // Is this a super hidden metadata file (MFT file records 0-26)?
     if (GetFRNFromFileRef(FileRef(Key)) <= 26
-        && !MetadataFilesAllowed) // QueryBooleanRegistryValue(L"NtfsShowMetadataFiles"))
+        && !Volume->ShowMetadataFiles)
         return FALSE;
 
     // Is this a duplicated short name?
@@ -116,7 +115,6 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
     NTSTATUS Status;
     ULONG EntrySize, TotalBufferLength;
     PFILE_BOTH_DIR_INFORMATION PreviousBuffer;
-    BOOLEAN ShowMetadataFiles;
 
     EntrySize = 0;
     PreviousBuffer = NULL;
@@ -133,13 +131,11 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
         ResetCurrentKey();
 
     TotalBufferLength = *BufferLength;
-    ShowMetadataFiles = QueryBooleanRegistryValue(L"NtfsShowMetadataFiles");
 
     while (CurrentKey)
     {
         if (IsEligibleForFileDir(CurrentKey,
-                                 FileNameFilter,
-                                 ShowMetadataFiles))
+                                 FileNameFilter))
         {
             // Add key to buffer
             Status = AddKeyToBothDirInfo(CurrentKey,

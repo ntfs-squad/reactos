@@ -74,19 +74,16 @@ NtfsFsdQueryInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                                                 &BufferLength);
             break;
         case FileInternalInformation:
-            DPRINT1("File internal information requested!\n");
             Status = GetFileInternalInformation(FileCB,
                                                 (PFILE_INTERNAL_INFORMATION)SystemBuffer,
                                                 &BufferLength);
             break;
         case FileNameInformation:
-            DPRINT1("File name information requested!\n");
             Status = GetFileNameInformation(FileCB,
                                             (PFILE_NAME_INFORMATION)SystemBuffer,
                                             &BufferLength);
             break;
         case FileNetworkOpenInformation:
-            DPRINT1("FileNetworkOpenInformation requested!\n");
             Status = GetFileNetworkOpenInformation(FileCB,
                                                    (PFILE_NETWORK_OPEN_INFORMATION)SystemBuffer,
                                                    &BufferLength);

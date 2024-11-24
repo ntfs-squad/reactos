@@ -96,6 +96,5 @@ private:
     // ./get.cpp
     BOOLEAN
     IsEligibleForFileDir(PBTreeKey Key,
-                         PUNICODE_STRING FileNameFilter,
-                         BOOLEAN MetadataFilesAllowed);
+                         PUNICODE_STRING FileNameFilter);
 };
