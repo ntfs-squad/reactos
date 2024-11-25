@@ -34,12 +34,14 @@ typedef struct
     IndexNodeHeader IndexHeader;
 } IndexBuffer, *PIndexBuffer;
 
-class BTree
+typedef class BTree
 {
 public:
     NTSTATUS ResetCurrentKey();
+    // Hack:
+    // TODO: Make private when we abandon oldbtreefuncs
+    PBTreeNode RootNode;
 protected:
     ~BTree();
-    PBTreeNode RootNode;
     PBTreeKey CurrentKey;
-};
+} *PBTree;

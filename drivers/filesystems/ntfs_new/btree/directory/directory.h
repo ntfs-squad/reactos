@@ -107,11 +107,24 @@ private:
     IsLegal8Dot3ShortName(_In_ PWSTR Buffer,
                           _In_ USHORT Length);
 
-    // These functions were ported from the other driver. Will probably be reworked.
+    // These functions were ported from the other driver. Will get reworked.
+    // ./oldbtreefuncs.cpp
     PBTreeKey
     CreateDummyKey(BOOLEAN HasChildNode);
+    NTSTATUS
+    CreateEmptyBTree(PBTree* NewTree);
+    PBTreeKey
+    CreateBTreeKeyFromFilename(ULONGLONG FileReference,
+                               PFileNameEx FileNameAttribute);
+    NTSTATUS
+    CreateIndexBufferFromBTreeNode(PBTreeNode Node,
+                                   ULONG BufferSize,
+                                   BOOLEAN HasChildren,
+                                   PIndexBuffer TargetIndexBuffer);
     ULONG
     GetSizeOfIndexEntries(PBTreeNode Node);
     VOID
     SetIndexEntryVCN(PIndexEntry IndexEntry, ULONGLONG VCN);
+    LONG
+    CompareTreeKeys(PBTreeKey Key1, PBTreeKey Key2, BOOLEAN CaseSensitive);
 };
