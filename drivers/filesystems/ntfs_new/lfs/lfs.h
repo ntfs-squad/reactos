@@ -6,6 +6,15 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
+typedef class RestartPage
+{
+    PLfsRestartPage Header;
+    PLfsRestartArea Foo;
+
+    // The head for an array of clients for the log file (usually just NTFS itself)
+    PLfsClientRecord ClientArrayHead;
+} *PRestartPage;
+
 typedef class LogFileService
 {
 public:
@@ -17,6 +26,9 @@ private:
     PFileRecord LogFile;
     ULONG ClientMajorVersion;
     ULONG ClientMinorVersion;
+
+    PRestartPage RestartPage1;
+    PRestartPage RestartPage2;
 
     // Call when creating LFS Object
     NTSTATUS PerformFileSystemRecovery();

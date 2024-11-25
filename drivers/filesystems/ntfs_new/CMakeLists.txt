@@ -1,5 +1,18 @@
 list(APPEND SOURCE
      ntfspch.h
+     btree/btree.cpp
+     btree/directory/create.cpp
+     btree/directory/dbg.cpp
+     btree/directory/directory.cpp
+     btree/directory/find.cpp
+     btree/directory/get.cpp
+     btree/directory/util.cpp
+     filerecord/attributes/addattr.cpp
+     filerecord/attributes/findattr.cpp
+     filerecord/read/copy.cpp
+     filerecord/write/filedata.cpp
+     filerecord/filerecord.cpp
+     filerecord/fixup.cpp
      io/ntfsinit.cpp
      io/util.cpp
      io/fastio.cpp
@@ -14,27 +27,16 @@ list(APPEND SOURCE
      io/ntblockio.cpp
      io/fsctrl.cpp
      io/registry.cpp
-     filerecord/attributes/addattr.cpp
-     filerecord/attributes/findattr.cpp
-     filerecord/read/copy.cpp
-     filerecord/write/filedata.cpp
-     filerecord/filerecord.cpp
-     filerecord/fixup.cpp
      lfs/lfs.cpp
+     mft/get.cpp
+     mft/mft.cpp
      ntfsvol/disk.cpp
      ntfsvol/metadata/attrdef.cpp
      ntfsvol/metadata/bitmap.cpp
      ntfsvol/metadata/upcase.cpp
      ntfsvol/metadata/volume.cpp
      ntfsvol/ntfsvol.cpp
-     ntfsvol/sanity.cpp
-     btree/btree.cpp
-     btree/directory/directory.cpp
-     btree/directory/dbg.cpp
-     btree/directory/get.cpp
-     btree/directory/find.cpp
-     mft/get.cpp
-     mft/mft.cpp)
+     ntfsvol/sanity.cpp)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
 set_module_type(ntfs kernelmodedriver)

@@ -67,12 +67,6 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
     return Status;
 }
 
-NTSTATUS
-ReadDiskAsync()
-{
-    return STATUS_NOT_IMPLEMENTED;
-}
-
 // You might notice Carl this looks exactly like ReadDisk, So let's go over WHY...
 NTSTATUS
 WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
@@ -135,12 +129,6 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
 
     //  And return to our caller.
     return Status;
-}
-
-NTSTATUS
-WriteDiskAsync()
-{
-    return STATUS_NOT_IMPLEMENTED;
 }
 
 NTSTATUS

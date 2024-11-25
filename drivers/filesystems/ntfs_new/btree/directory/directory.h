@@ -9,6 +9,18 @@
 #define GetFileName(Key) \
 ((PFileNameEx)((Key)->Entry->IndexStream))
 
+#define GetVCN(NodeKey) \
+(PULONGLONG)(NodeKey->Entry + NodeKey->Entry->EntryLength - sizeof(ULONGLONG))
+
+// Hack for now so I know what maps to what
+#define GetIndexEntryVCN(IndexEntry) GetVCN(IndexEntry)
+
+// Calculates start of Index Buffer relative to the index allocation, given the node's VCN
+#define GetAllocationOffsetFromVCN(VCN) \
+(BytesPerIndexRecord(Volume) < BytesPerCluster(Volume)) ? \
+(VCN * (Volume->BytesPerSector)) : \
+(VCN * BytesPerCluster(Volume))
+
 #define IsLastEntry(Key) !!((Key)->Entry->Flags & INDEX_ENTRY_END)
 
 #define IsIndexNode(Key) !!((Key)->Entry->Flags & INDEX_ENTRY_NODE)
@@ -35,8 +47,6 @@ public:
     Directory(_In_ PNTFSVolume Volume);
     Directory(_In_ PFileRecord File,
               _In_ PNTFSVolume Volume);
-
-    // ~Directory();
     NTSTATUS
     LoadDirectory(_In_ PFileRecord File);
 
@@ -52,38 +62,30 @@ public:
                        _In_    PUNICODE_STRING FileNameFilter,
                        _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
                        _Inout_ PULONG BufferLength);
+    NTSTATUS
+    AddFileToDirectory(_In_ PFileNameEx FileToAdd);
 
     // ./dbg.cpp
     void
     DumpFileTree();
+
 private:
     PNTFSVolume Volume;
 
     // ./directory.cpp
     NTSTATUS
     VerifyUpdateSequenceArray(PNTFSRecordHeader Record);
-
     NTSTATUS
     CreateNode(_In_    PFileRecord File,
                _In_    PAttribute  IndexAllocationAttribute,
                _Inout_ PBTreeKey   ParentNodeKey);
-
     NTSTATUS
     CreateRootNode(_In_  PFileRecord File,
                    _Out_ PBTreeNode *NewRootNode);
-
     BOOLEAN
     DoesFileNameMatch(PUNICODE_STRING NameFilter,
                       PBTreeKey Key,
                       BOOLEAN IgnoreCase = TRUE);
-
-    BOOLEAN
-    IsLegalShortNameCharacterW(_In_ WCHAR Char);
-
-    BOOLEAN
-    IsLegal8Dot3ShortName(_In_ PWSTR Buffer,
-                          _In_ USHORT Length);
-
     PBTreeKey
     GetShortNameKey(_In_ PBTreeKey Key,
                     _In_ BOOLEAN SkipNonShortNames = TRUE);
@@ -97,4 +99,19 @@ private:
     BOOLEAN
     IsEligibleForFileDir(PBTreeKey Key,
                          PUNICODE_STRING FileNameFilter);
+
+    // ./util.cpp
+    BOOLEAN
+    IsLegalShortNameCharacterW(_In_ WCHAR Char);
+    BOOLEAN
+    IsLegal8Dot3ShortName(_In_ PWSTR Buffer,
+                          _In_ USHORT Length);
+
+    // These functions were ported from the other driver. Will probably be reworked.
+    PBTreeKey
+    CreateDummyKey(BOOLEAN HasChildNode);
+    ULONG
+    GetSizeOfIndexEntries(PBTreeNode Node);
+    VOID
+    SetIndexEntryVCN(PIndexEntry IndexEntry, ULONGLONG VCN);
 };
