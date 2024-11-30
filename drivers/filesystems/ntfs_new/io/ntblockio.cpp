@@ -8,6 +8,29 @@
 
 #include "ntfspch.h"
 
+//TODO: This shouldn't really be needed. Honestly there's something wrong with this.
+NTSTATUS
+NTAPI
+ByPasscompletion (
+    PDEVICE_OBJECT DeviceObject,
+    PIRP Irp,
+    PVOID Context
+    )
+{ 
+    if (!NT_SUCCESS( Irp->IoStatus.Status )) {
+
+        Irp->IoStatus.Information = 0;
+    }
+
+    KeSetEvent( (KEVENT*)Context, 0, FALSE );
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    return STATUS_MORE_PROCESSING_REQUIRED;
+
+    UNREFERENCED_PARAMETER( DeviceObject );
+    UNREFERENCED_PARAMETER( Irp );
+}
+
+
 NTSTATUS
 ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
          _In_    ULONGLONG Offset,
@@ -36,6 +59,15 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
     ASSERT(Irp);
     SetFlag(IoGetNextIrpStackLocation(Irp)->Flags, SL_OVERRIDE_VERIFY_VOLUME);
 
+
+    //TODO: There's something SERIOUSLY wrong with completetion.
+    IoSetCompletionRoutine( Irp,
+                            ByPasscompletion,
+                            &Event,
+                            TRUE,
+                            TRUE,
+                            TRUE );
+
     //  Call the device to do the read and wait for it to finish.
     Status = IoCallDriver(DeviceToRead, Irp);
 
@@ -46,7 +78,7 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
                               KernelMode,
                               FALSE,
                               NULL);
-        Status = Iosb.Status;
+        // Status = Iosb.Status; ???
     }
 
     NT_ASSERT(Status != STATUS_VERIFY_REQUIRED);
@@ -101,6 +133,13 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
     }
 
     SetFlag(IoGetNextIrpStackLocation( Irp )->Flags, SL_OVERRIDE_VERIFY_VOLUME); // override this because it causes problems
+    //TODO: There's something SERIOUSLY wrong with completetion.
+    IoSetCompletionRoutine( Irp,
+                            ByPasscompletion,
+                            &Event,
+                            TRUE,
+                            TRUE,
+                            TRUE );
 
     //  Call the device to do the write and wait for it to finish.
     Status = IoCallDriver(DeviceToWrite, Irp); // DO DE WRITE
@@ -109,7 +148,7 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
     {
         // Infinitely stall the OS until this kernel mode executive event completes
         (VOID)KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL);
-        Status = Iosb.Status;
+       // Status = Iosb.Status; ???
     }
 
     NT_ASSERT(Status != STATUS_VERIFY_REQUIRED);
