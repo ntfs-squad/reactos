@@ -14,49 +14,50 @@ NTFSVolume::ReadVolume(_In_    ULONGLONG Offset,
                        _Inout_ PUCHAR Buffer)
 {
     NTSTATUS Status;
-    PUCHAR SectorAlignmentBuffer = NULL;
-    USHORT RaggedEdgeSize = 0;
-    ULONG LengthSectorAligned = ALIGN_DOWN_BY(Length, BytesPerSector);
+    PUCHAR ReadBuffer;
+    ULONGLONG SectorAlignedOffset;
+    ULONG SectorAlignedLength;
 
     ASSERT(Length);
 
-    if (LengthSectorAligned != Length)
-    {
-        DPRINT1("Performing unaligned read (%ld != %ld)\n", LengthSectorAligned, Length);
-        RaggedEdgeSize = Length - LengthSectorAligned;
-        SectorAlignmentBuffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, BytesPerSector, TAG_NTFS);
-    }
+    SectorAlignedOffset = Offset - (Offset % BytesPerSector);
+    SectorAlignedLength = ALIGN_UP_BY(Length, BytesPerSector);
 
-    if (LengthSectorAligned)
+    if (SectorAlignedOffset == Offset
+        && SectorAlignedLength == Length)
     {
-        // Note: LengthSectorAligned will equal 0 if we only need to read 1 sector.
+        // Read directly to the supplied buffer.
         Status = ReadDisk(PartDeviceObj,
-                          Offset,
-                          LengthSectorAligned,
+                          SectorAlignedOffset,
+                          SectorAlignedLength,
                           Buffer);
-
-        // TODO: Replace with DPRINT and fail
-        ASSERT(NT_SUCCESS(Status));
     }
 
-    if (SectorAlignmentBuffer)
+    else
     {
-        // Get the last sector of data
+        // Read an extra sector if needed.
+        if (SectorAlignedOffset != Offset)
+            SectorAlignedLength += BytesPerSector;
+
+        // Create the read buffer
+        ReadBuffer = new(NonPagedPool) UCHAR[SectorAlignedLength];
+
+        // Fill the read buffer.
         Status = ReadDisk(PartDeviceObj,
-                          (Offset + LengthSectorAligned),
-                          BytesPerSector,
-                          SectorAlignmentBuffer);
+                          SectorAlignedOffset,
+                          SectorAlignedLength,
+                          ReadBuffer);
 
-        // TODO: Replace with DPRINT and fail
-        ASSERT(NT_SUCCESS(Status));
+        if (NT_SUCCESS(Status))
+        {
+            // Copy the contents we need into the supplied buffer.
+            RtlCopyMemory(Buffer,
+                          ReadBuffer + (Offset % BytesPerSector),
+                          Length);
+        }
 
-        // Copy what we need into the buffer
-        RtlCopyMemory(Buffer + LengthSectorAligned,
-                      SectorAlignmentBuffer,
-                      RaggedEdgeSize);
-
-        // Free page alignment buffer
-        delete SectorAlignmentBuffer;
+        // Free read buffer
+        delete ReadBuffer;
     }
 
     return Status;
