@@ -14,20 +14,20 @@ list(APPEND SOURCE
      filerecord/write/filedata.cpp
      filerecord/filerecord.cpp
      filerecord/fixup.cpp
-     io/ntfsinit.cpp
-     io/util.cpp
-     io/fastio.cpp
-     io/read.cpp
-     io/ea.cpp
-     io/write.cpp
-     io/vol.cpp
-     io/pnp.cpp
-     io/create.cpp
      io/close.cpp
+     io/create.cpp
+     io/ea.cpp
+     io/fastio.cpp
      io/fileinfo.cpp
-     io/ntblockio.cpp
      io/fsctrl.cpp
+     io/ntblockio.cpp
+     io/ntfsinit.cpp
+     io/pnp.cpp
+     io/read.cpp
      io/registry.cpp
+     io/util.cpp
+     io/vol.cpp
+     io/write.cpp
      lfs/lfs.cpp
      mft/get.cpp
      mft/mft.cpp

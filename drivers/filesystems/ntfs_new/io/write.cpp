@@ -24,20 +24,34 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Handles write requests.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-write
      */
-    UNREFERENCED_PARAMETER(VolumeDeviceObject);
-
     NTSTATUS Status;
+    PVolumeContextBlock VolCB;
     PIO_STACK_LOCATION IrpSp;
     PUCHAR Buffer;
     LARGE_INTEGER ByteOffset;
     ULONG Length;
     PFileContextBlock FileCB;
+    PFILE_OBJECT FileObj;
+    PNTFSVolume Volume;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     Buffer = (PUCHAR)(GetBuffer(Irp));
     ByteOffset = IrpSp->Parameters.Write.ByteOffset;
     Length = IrpSp->Parameters.Write.Length;
+    FileObj = IrpSp->FileObject;
     FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
+    VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
+    Volume = VolCB->Volume;
+
+    DPRINT1("NtfsFsdWrite() called!\n");
+
+    // Sometimes the file context block is still available, and sometimes it's not.
+    if (!FileCB)
+    {
+        DPRINT1("FileCB not available!\n");
+        return STATUS_INVALID_PARAMETER;
+        // TODO: Do we need to free this or will IRP_MJ_CLOSE be called on this?
+    }
 
     // Set the offset to end of file if FILE_APPEND_DATA is set
     if (FileCB->DesiredAccess == FILE_APPEND_DATA)
@@ -45,6 +59,9 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         ByteOffset.HighPart = -1;
         ByteOffset.LowPart = FILE_WRITE_TO_END_OF_FILE;
     }
+
+    DPRINT1("Set offset!\n");
+    __debugbreak();
 
     Status = FileCB->FileRec->WriteFileData(FileCB->RequestedType,
                                             FileCB->RequestedStream,

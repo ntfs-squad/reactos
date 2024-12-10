@@ -165,6 +165,11 @@ public:
     NTSTATUS
     LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
 
+    NTSTATUS
+    GetADSPreference(_In_  PFILE_OBJECT FileObj,
+                     _Out_ AttributeType* RequestedType,
+                     _Out_ PWSTR* RequestedStream);
+
     // ./sanity.cpp
     // These functions will likely be removed before the driver is released.
     void RunSanityChecks();

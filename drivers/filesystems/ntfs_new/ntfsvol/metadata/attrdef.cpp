@@ -73,3 +73,99 @@ Done:
         delete Buffer;
     return Status;
 }
+
+NTSTATUS
+NTFSVolume::GetADSPreference(_In_  PFILE_OBJECT FileObj,
+                             _Out_ AttributeType* RequestedType,
+                             _Out_ PWSTR* RequestedStream)
+{
+    NTSTATUS Status;
+    PWSTR FileNameQuery, ADSPtr, ADSTypePtr;
+    ULONG StreamNameLength;
+
+    ASSERT(FileObj);
+
+    FileNameQuery = FileObj->FileName.Buffer;
+
+    if (!FileNameQuery)
+    {
+        DPRINT1("FileNameQuery is NULL!\n");
+        return STATUS_NOT_FOUND;
+    }
+
+    // Check for alternate data stream
+    ADSPtr = wcschr(FileNameQuery, L':');
+
+    if (ADSPtr)
+    {
+        /* This file request is for an alternate data stream.
+         * Format:
+         *     filename.ext:AttributeName:$AttributeType
+         * If the last element is missing, it is equivalent to
+         *     filename.ext:AttributeName:$DATA
+         */
+
+        // Go to the next character after the colon
+        ADSPtr++;
+        ADSTypePtr = wcschr(ADSPtr, L':');
+
+        if (ADSTypePtr)
+        {
+            ADSTypePtr++;
+
+            if (ADSPtr[0] == L':')
+            {
+                /* File requested is in this format:
+                 *     filename.ext::$ATTRIBUTE_NAME
+                 * Requested stream is NULL.
+                 */
+                RequestedStream = NULL;
+            }
+
+            else
+            {
+                // Copy the requested stream name.
+                StreamNameLength = ADSTypePtr - ADSPtr - 1;
+                *RequestedStream = new(NonPagedPool) WCHAR[StreamNameLength + 1];
+                RtlCopyMemory(*RequestedStream,
+                              ADSPtr,
+                              StreamNameLength * sizeof(WCHAR));
+                (*RequestedStream)[StreamNameLength] = L'\0';
+            }
+
+            // Stream name is copied, get the attribute type
+            Status = GetAttributeTypeFromName(ADSTypePtr, RequestedType);
+
+            if (!NT_SUCCESS(Status))
+            {
+                // If we fail to find the attribute type, the name was invalid.
+                DPRINT1("Failed to find ADS attribute type!\n");
+                delete *RequestedStream;
+                return STATUS_OBJECT_NAME_INVALID;
+            }
+        }
+
+        else
+        {
+            // Copy the stream name
+            StreamNameLength = wcslen(ADSPtr);
+            *RequestedStream = new(NonPagedPool) WCHAR[StreamNameLength + 1];
+            RtlCopyMemory(*RequestedStream,
+                          ADSPtr,
+                          wcslen(ADSPtr) * sizeof(WCHAR));
+            (*RequestedStream)[StreamNameLength] = L'\0';
+
+            // No type specified, use $DATA
+            *RequestedType = TypeData;
+        }
+    }
+
+    else
+    {
+        // This is a normal file.
+        *RequestedType = TypeData;
+        *RequestedStream = NULL;
+    }
+
+    return STATUS_SUCCESS;
+}

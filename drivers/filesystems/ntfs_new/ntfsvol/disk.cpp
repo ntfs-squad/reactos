@@ -63,12 +63,6 @@ NTFSVolume::ReadVolume(_In_    ULONGLONG Offset,
     return Status;
 }
 
-// NTSTATUS
-// NTFSVolume::ReadVolumeAsync()
-// {
-//     return STATUS_NOT_IMPLEMENTED;
-// }
-
 NTSTATUS
 NTFSVolume::WriteVolume(_In_    ULONGLONG Offset,
                         _In_    ULONG Length,
@@ -88,9 +82,3 @@ NTFSVolume::WriteVolume(_In_    ULONGLONG Offset,
                      Length,
                      Buffer);
 }
-
-// NTSTATUS
-// NTFSVolume::WriteVolumeAsync()
-// {
-//     return STATUS_NOT_IMPLEMENTED;
-// }

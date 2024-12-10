@@ -39,12 +39,11 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     NTSTATUS Status;
     PFILE_OBJECT FileObject;
     BOOLEAN PerformAccessChecks;
-    PWSTR FileNameQuery, ADSPtr, ADSTypePtr;
+    PWSTR FileNameQuery;
     FileRecord* CurrentFile;
     UINT8 Disposition;
     ULONG CreateOptions;
     PNTFSVolume Volume;
-    ULONG StreamNameLength;
 
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
     {
@@ -84,6 +83,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
         /* Algorithm will probably be something like:
          *     - Call MFT to allocate a new file record
+         *     - Add $FILE_NAME attribute to parent directory tree
          *     - Open the newly created file.
          * MFT will handle finding a free RecordID and calling LFS.
          */
@@ -121,80 +121,12 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                   IrpSp->FileObject->FileName.Buffer,
                   IrpSp->FileObject->FileName.Length);
 
-    ADSPtr = wcschr(FileNameQuery, L':');
+    // Get ADS Preference for the file.
+    Status = Volume->GetADSPreference(FileObject,
+                                      &FileCB->RequestedType,
+                                      &FileCB->RequestedStream);
 
-    if (ADSPtr)
-    {
-        /* This file request is for an alternate data stream.
-         * Format:
-         *     filename.ext:AttributeName:$AttributeType
-         * If the last element is missing, it is equivalent to
-         *     filename.ext:AttributeName:$DATA
-         */
-        DPRINT1("Asking for alternate data stream!\n");
-
-        // Go to the next character after the colon
-        ADSPtr++;
-        ADSTypePtr = wcschr(ADSPtr, L':');
-
-        if (ADSTypePtr)
-        {
-            ADSTypePtr++;
-            DPRINT1("ADSType is \"%S\"\n", ADSTypePtr);
-
-            if (ADSPtr[0] == L':')
-            {
-                /* File requested is in this format:
-                 *     filename.ext::$ATTRIBUTE_NAME
-                 * Requested stream is NULL.
-                 */
-                FileCB->RequestedStream = NULL;
-            }
-
-            else
-            {
-                // Copy the requested stream name.
-                StreamNameLength = ADSTypePtr - ADSPtr - 1;
-                FileCB->RequestedStream = new(NonPagedPool) WCHAR[StreamNameLength + 1];
-                RtlCopyMemory(FileCB->RequestedStream,
-                              ADSPtr,
-                              StreamNameLength * sizeof(WCHAR));
-                FileCB->RequestedStream[StreamNameLength] = L'\0';
-            }
-
-            // Stream name is copied, get the attribute type
-            Status = Volume->GetAttributeTypeFromName(ADSTypePtr, &FileCB->RequestedType);
-
-            if (!NT_SUCCESS(Status))
-            {
-                // If we fail to find the attribute type, the name was invalid.
-                __debugbreak();
-                delete FileCB;
-                Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-                return STATUS_OBJECT_NAME_INVALID;
-            }
-        }
-
-        else
-        {
-            // Copy the stream name
-            FileCB->RequestedStream = new(NonPagedPool) WCHAR[wcslen(ADSPtr) + 1];
-            RtlCopyMemory(FileCB->RequestedStream,
-                          ADSPtr,
-                          wcslen(ADSPtr) * sizeof(WCHAR));
-            FileCB->RequestedStream[wcslen(ADSPtr)] = L'\0';
-
-            // No type specified, use $DATA
-            FileCB->RequestedType = TypeData;
-        }
-    }
-
-    else
-    {
-        // This is a normal file.
-        FileCB->RequestedType = TypeData;
-        FileCB->RequestedStream = NULL;
-    }
+    ASSERT(NT_SUCCESS(Status));
 
     // Add pointer for file record
     FileCB->FileRec = CurrentFile;
