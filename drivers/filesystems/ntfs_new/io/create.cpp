@@ -14,9 +14,6 @@
 #pragma alloc_text(PAGE, NtfsFsdCreate)
 #endif
 
-#define GetDisposition(x) ((x >> 24) & 0xFF)
-#define GetCreateOptions(x) (x & 0xFFFFFF)
-
 /* FUNCTIONS ****************************************************************/
 extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 
@@ -34,15 +31,12 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      */
 
     PIO_STACK_LOCATION IrpSp;
-    PVolumeContextBlock VolCB;
     PFileContextBlock FileCB;
     NTSTATUS Status;
     PFILE_OBJECT FileObject;
     BOOLEAN PerformAccessChecks;
-    PWSTR FileNameQuery;
     FileRecord* CurrentFile;
     UINT8 Disposition;
-    ULONG CreateOptions;
     PNTFSVolume Volume;
 
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
@@ -56,59 +50,68 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     // Investigate file request
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     FileObject = IrpSp->FileObject;
-    VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
-    FileNameQuery = IrpSp->FileObject->FileName.Buffer;
     Disposition = GetDisposition(IrpSp->Parameters.Create.Options);
-    CreateOptions = GetCreateOptions(IrpSp->Parameters.Create.Options);
-    Volume = VolCB->Volume;
+    Volume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->Volume;
 
     // Determine if we should check access rights
     PerformAccessChecks = (Irp->RequestorMode == UserMode) ||
                           (IrpSp->Flags & SL_FORCE_ACCESS_CHECK);
 
-    // Hack: Fail certain requests we aren't ready for
-    if (Disposition == FILE_SUPERSEDE ||
-        Disposition == FILE_OVERWRITE ||
-        Disposition == FILE_OVERWRITE_IF)
+    // TODO: Check if we have rights to access file.
+
+    // Try to find the requested file record.
+    Status = Volume->MFT->GetFileRecordFromQuery(FileObject->FileName.Buffer,
+                                                 &CurrentFile);
+
+    /* What we do here depends on the CreateDisposition value.
+     * See https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntcreatefile
+     */
+
+    if (NT_SUCCESS(Status))
     {
-        DPRINT1("Rejecting file open!\n");
-        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-        return STATUS_NOT_IMPLEMENTED;
+        // The file was found.
+
+        // In this case, return an error.
+        if (Disposition == FILE_CREATE)
+        {
+            Irp->IoStatus.Information = FILE_EXISTS;
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        // In every other case, we should continue to open the file.
     }
 
-    if (Disposition == FILE_CREATE)
+    else
     {
-        DPRINT1("Creating new file not implemented!\n");
-        __debugbreak();
+        // The file was not found.
 
-        /* Algorithm will probably be something like:
-         *     - Call MFT to allocate a new file record
-         *     - Add $FILE_NAME attribute to parent directory tree
-         *     - Open the newly created file.
-         * MFT will handle finding a free RecordID and calling LFS.
-         */
+        switch (Disposition)
+        {
+            case FILE_SUPERSEDE:
+            case FILE_CREATE:
+            case FILE_OPEN_IF:
+            case FILE_OVERWRITE_IF:
+                /* In these cases, create the file and open it.
+                 * Algorithm will probably be something like:
+                 *     - Call MFT to allocate a new file record
+                 *     - Add $FILE_NAME attribute to parent directory tree
+                 *     - Open the newly created file.
+                 * MFT will handle finding a free RecordID and calling LFS.
+                 */
+                DPRINT1("File creation not implemented! File: \"%S\"\n",
+                        FileObject->FileName.Buffer);
+                Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                return STATUS_NOT_IMPLEMENTED;
+                break;
+            case FILE_OPEN:
+            case FILE_OVERWRITE:
+            default:
+                // In these cases, return an error.
+                Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                return STATUS_INVALID_PARAMETER;
+                break;
+        }
 
-        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-        return STATUS_NOT_IMPLEMENTED;
-    }
-
-    if (!FileNameQuery)
-    {
-        DPRINT1("FileNameQuery is NULL! This should never happen!\n");
-        __debugbreak();
-        return STATUS_NOT_FOUND;
-    }
-
-    Status = Volume->MFT->GetFileRecordFromQuery(FileNameQuery, &CurrentFile);
-
-    // TODO: Check if we have rights to access file here.
-
-    if (!NT_SUCCESS(Status))
-    {
-        // This isn't always an issue, but it isn't implemented yet.
-        DPRINT1("File not found! File: \"%S\"\n", FileNameQuery);
-        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-        return Status;
     }
 
     // Create file context block.
@@ -121,20 +124,21 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                   IrpSp->FileObject->FileName.Buffer,
                   IrpSp->FileObject->FileName.Length);
 
-    // Get ADS Preference for the file.
+    // Get ADS Preferences for the file.
     Status = Volume->GetADSPreference(FileObject,
                                       &FileCB->RequestedType,
                                       &FileCB->RequestedStream);
 
-    ASSERT(NT_SUCCESS(Status));
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to get ADS preference! Aborting...\n");
+        delete FileCB;
+        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+        return Status;
+    }
 
-    // Add pointer for file record
     FileCB->FileRec = CurrentFile;
-
-    // Set CreateOptions for the file context block
-    FileCB->CreateOptions = CreateOptions;
-
-    // Set DesiredAccess for the file context block
+    FileCB->CreateOptions = IrpSp->Parameters.Create.Options;
     FileCB->DesiredAccess = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
 
     /* Assume that this is the first file stream request.

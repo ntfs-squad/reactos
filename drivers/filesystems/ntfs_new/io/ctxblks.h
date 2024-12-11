@@ -15,6 +15,8 @@
 #ifndef MAX_PATH
 #define MAX_PATH 260
 #endif //MAX_PATH
+#define GetDisposition(x) ((x >> 24) & 0xFF)
+#define GetCreateOptions(x) (x & 0xFFFFFF)
 
 class NTFSVolume;
 class FileRecord;

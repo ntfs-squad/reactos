@@ -68,17 +68,56 @@ NTFSVolume::WriteVolume(_In_    ULONGLONG Offset,
                         _In_    ULONG Length,
                         _Inout_ PUCHAR Buffer)
 {
-    ULONG LengthSectorAligned = ALIGN_DOWN_BY(Length, BytesPerSector);
+    NTSTATUS Status;
+    PUCHAR WriteBuffer;
+    ULONGLONG SectorAlignedOffset;
+    ULONG SectorAlignedLength;
 
-    if (LengthSectorAligned != Length)
+    SectorAlignedOffset = Offset - (Offset % BytesPerSector);
+    SectorAlignedLength = ALIGN_UP_BY(Length, BytesPerSector);
+
+    if (SectorAlignedOffset == Offset
+        && SectorAlignedLength == Length)
     {
-        DPRINT1("LengthSectorAligned != Length (%ld != %ld)\n", LengthSectorAligned, Length);
-        __debugbreak();
-        return STATUS_NOT_IMPLEMENTED;
+        // Write directly to the disk using the supplied buffer.
+        Status = WriteDisk(PartDeviceObj,
+                           SectorAlignedOffset,
+                           SectorAlignedLength,
+                           Buffer);
     }
 
-    return WriteDisk(PartDeviceObj,
-                     Offset,
-                     Length,
-                     Buffer);
+    else
+    {
+        // Write an extra sector if needed.
+        if (SectorAlignedOffset != Offset)
+            SectorAlignedLength += BytesPerSector;
+
+        // Create the write buffer
+        WriteBuffer = new(NonPagedPool) UCHAR[SectorAlignedLength];
+
+        // Fill the write buffer with what's on disk.
+        Status = ReadDisk(PartDeviceObj,
+                          SectorAlignedOffset,
+                          SectorAlignedLength,
+                          WriteBuffer);
+
+        if (NT_SUCCESS(Status))
+        {
+            // Copy the buffer contents we want to write into the write buffer.
+            RtlCopyMemory(WriteBuffer + (Offset % BytesPerSector),
+                          Buffer,
+                          Length);
+
+            // Write to the disk.
+            Status = WriteDisk(PartDeviceObj,
+                               SectorAlignedOffset,
+                               SectorAlignedLength,
+                               WriteBuffer);
+        }
+
+        // Free write buffer
+        delete WriteBuffer;
+    }
+
+    return Status;
 }

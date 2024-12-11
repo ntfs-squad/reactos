@@ -25,7 +25,6 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-write
      */
     NTSTATUS Status;
-    PVolumeContextBlock VolCB;
     PIO_STACK_LOCATION IrpSp;
     PUCHAR Buffer;
     LARGE_INTEGER ByteOffset;
@@ -33,41 +32,63 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PFileContextBlock FileCB;
     PFILE_OBJECT FileObj;
     PNTFSVolume Volume;
+    PFileRecord FileRec;
+    AttributeType RequestedType;
+    PWSTR RequestedStream;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     Buffer = (PUCHAR)(GetBuffer(Irp));
     ByteOffset = IrpSp->Parameters.Write.ByteOffset;
     Length = IrpSp->Parameters.Write.Length;
     FileObj = IrpSp->FileObject;
-    FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
-    VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
-    Volume = VolCB->Volume;
+    FileCB = (PFileContextBlock)FileObj->FsContext;
+    Volume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->Volume;
 
     DPRINT1("NtfsFsdWrite() called!\n");
 
     // Sometimes the file context block is still available, and sometimes it's not.
-    if (!FileCB)
+    if (FileCB)
     {
-        DPRINT1("FileCB not available!\n");
-        return STATUS_INVALID_PARAMETER;
-        // TODO: Do we need to free this or will IRP_MJ_CLOSE be called on this?
+        FileRec = FileCB->FileRec;
+        RequestedType = FileCB->RequestedType;
+        RequestedStream = FileCB->RequestedStream;
+
+        // Set the offset to end of file if FILE_APPEND_DATA is set
+        if (FileCB->DesiredAccess == FILE_APPEND_DATA)
+        {
+            ByteOffset.HighPart = -1;
+            ByteOffset.LowPart = FILE_WRITE_TO_END_OF_FILE;
+        }
     }
 
-    // Set the offset to end of file if FILE_APPEND_DATA is set
-    if (FileCB->DesiredAccess == FILE_APPEND_DATA)
+    else
     {
-        ByteOffset.HighPart = -1;
-        ByteOffset.LowPart = FILE_WRITE_TO_END_OF_FILE;
+        Status = Volume->MFT->GetFileRecordFromQuery(FileObj->FileName.Buffer,
+                                                     &FileRec);
+
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Unable to find file record!\n");
+            return STATUS_INVALID_PARAMETER;
+        }
+
+        Status = Volume->GetADSPreference(FileObj,
+                                          &RequestedType,
+                                          &RequestedStream);
+
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Unable to find ADS preferences!\n");
+            delete FileRec;
+            return STATUS_INVALID_PARAMETER;
+        }
     }
 
-    DPRINT1("Set offset!\n");
-    __debugbreak();
-
-    Status = FileCB->FileRec->WriteFileData(FileCB->RequestedType,
-                                            FileCB->RequestedStream,
-                                            Buffer,
-                                            &Length,
-                                            &ByteOffset);
+    Status = FileRec->WriteFileData(RequestedType,
+                                    RequestedStream,
+                                    Buffer,
+                                    &Length,
+                                    &ByteOffset);
 
     if (NT_SUCCESS(Status))
     {
