@@ -93,9 +93,9 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             case FILE_OVERWRITE_IF:
                 /* In these cases, create the file and open it.
                  * Algorithm will probably be something like:
-                 *     - Call MFT to allocate a new file record
-                 *     - Add $FILE_NAME attribute to parent directory tree
-                 *     - Open the newly created file.
+                 *     - Call MFT to allocate a new file record.
+                 *     - Add $FILE_NAME attribute to parent directory tree.
+                 *     - Set new file record to CurrentFile to open it.
                  * MFT will handle finding a free RecordID and calling LFS.
                  */
                 DPRINT1("File creation not implemented! File: \"%S\"\n",

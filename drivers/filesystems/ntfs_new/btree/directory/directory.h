@@ -13,7 +13,7 @@
 (PULONGLONG)(NodeKey->Entry + NodeKey->Entry->EntryLength - sizeof(ULONGLONG))
 
 // Hack for now so I know what maps to what
-#define GetIndexEntryVCN(IndexEntry) GetVCN(IndexEntry)
+#define GetIndexEntryVCN(IndexEntry) *GetVCN(IndexEntry)
 
 // Calculates start of Index Buffer relative to the index allocation, given the node's VCN
 #define GetAllocationOffsetFromVCN(VCN) \
@@ -127,4 +127,24 @@ private:
     SetIndexEntryVCN(PIndexEntry IndexEntry, ULONGLONG VCN);
     LONG
     CompareTreeKeys(PBTreeKey Key1, PBTreeKey Key2, BOOLEAN CaseSensitive);
+    NTSTATUS
+    DemoteBTreeRoot();
+    NTSTATUS
+    SplitBTreeNode(PBTreeNode Node,
+                   PBTreeKey *MedianKey,
+                   PBTreeNode *NewRightHandSibling,
+                   BOOLEAN CaseSensitive);
+    NTSTATUS
+    NtfsInsertKey(ULONGLONG FileReference,
+                  PFileNameEx FileNameAttribute,
+                  PBTreeNode Node,
+                  BOOLEAN CaseSensitive,
+                  ULONG MaxIndexRootSize,
+                  ULONG IndexRecordSize,
+                  PBTreeKey *MedianKey,
+                  PBTreeNode *NewRightHandSibling);
+    NTSTATUS
+    CreateIndexRootFromBTree(ULONG MaxIndexSize,
+                             PIndexRootEx *IndexRoot,
+                             ULONG *Length);
 };
