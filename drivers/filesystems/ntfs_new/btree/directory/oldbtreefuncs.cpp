@@ -755,6 +755,301 @@ Directory::CreateIndexRootFromBTree(ULONG MaxIndexSize,
 
 #if 0
 NTSTATUS
+Directory::AllocateIndexNode(PDEVICE_EXTENSION DeviceExt,
+                  PFILE_RECORD_HEADER FileRecord,
+                  ULONG IndexBufferSize,
+                  PNTFS_ATTR_CONTEXT IndexAllocationCtx,
+                  ULONG IndexAllocationOffset,
+                  PULONGLONG NewVCN)
+{
+    NTSTATUS Status;
+    PNTFS_ATTR_CONTEXT BitmapCtx;
+    ULONGLONG IndexAllocationLength, BitmapLength;
+    ULONG BitmapOffset;
+    ULONGLONG NextNodeNumber;
+    PCHAR *BitmapMem;
+    ULONG *BitmapPtr;
+    RTL_BITMAP Bitmap;
+    ULONG BytesWritten;
+    ULONG BytesNeeded;
+    LARGE_INTEGER DataSize;
+
+    DPRINT1("AllocateIndexNode(%p, %p, %lu, %p, %lu, %p) called.\n", DeviceExt,
+            FileRecord,
+            IndexBufferSize,
+            IndexAllocationCtx,
+            IndexAllocationOffset,
+            NewVCN);
+
+    // Get the length of the attribute allocation
+    IndexAllocationLength = AttributeDataLength(IndexAllocationCtx->pRecord);
+
+    // Find the bitmap attribute for the index
+    Status = FindAttribute(DeviceExt,
+                           FileRecord,
+                           AttributeBitmap,
+                           L"$I30",
+                           4,
+                           &BitmapCtx,
+                           &BitmapOffset);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("FIXME: Need to add bitmap attribute!\n");
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    // Get the length of the bitmap attribute
+    BitmapLength = AttributeDataLength(BitmapCtx->pRecord);
+
+    NextNodeNumber = IndexAllocationLength / DeviceExt->NtfsInfo.BytesPerIndexRecord;
+
+    // TODO: Find unused allocation in bitmap and use that space first
+
+    // Add another bit to bitmap
+
+    // See how many bytes we need to store the amount of bits we'll have
+    BytesNeeded = NextNodeNumber / 8;
+    BytesNeeded++;
+
+    // Windows seems to allocate the bitmap in 8-byte chunks to keep any bytes from being wasted on padding
+    BytesNeeded = ALIGN_UP(BytesNeeded, ATTR_RECORD_ALIGNMENT);
+
+    // Allocate memory for the bitmap, including some padding; RtlInitializeBitmap() wants a pointer
+    // that's ULONG-aligned, and it wants the size of the memory allocated for it to be a ULONG-multiple.
+    BitmapMem = ExAllocatePoolWithTag(NonPagedPool, BytesNeeded + sizeof(ULONG), TAG_NTFS);
+    if (!BitmapMem)
+    {
+        DPRINT1("Error: failed to allocate bitmap!");
+        ReleaseAttributeContext(BitmapCtx);
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    // RtlInitializeBitmap() wants a pointer that's ULONG-aligned.
+    BitmapPtr = (PULONG)ALIGN_UP_BY((ULONG_PTR)BitmapMem, sizeof(ULONG));
+
+    RtlZeroMemory(BitmapPtr, BytesNeeded);
+
+    // Read the existing bitmap data
+    Status = ReadAttribute(DeviceExt, BitmapCtx, 0, (PCHAR)BitmapPtr, BitmapLength);
+
+    // Initialize bitmap
+    RtlInitializeBitMap(&Bitmap, BitmapPtr, NextNodeNumber);
+
+    // Do we need to enlarge the bitmap?
+    if (BytesNeeded > BitmapLength)
+    {
+        // TODO: handle synchronization issues that could occur from changing the directory's file record
+        // Change bitmap size
+        DataSize.QuadPart = BytesNeeded;
+        if (BitmapCtx->pRecord->IsNonResident)
+        {
+            Status = SetNonResidentAttributeDataLength(DeviceExt,
+                                                       BitmapCtx,
+                                                       BitmapOffset,
+                                                       FileRecord,
+                                                       &DataSize);
+        }
+        else
+        {
+            Status = SetResidentAttributeDataLength(DeviceExt,
+                                                    BitmapCtx,
+                                                    BitmapOffset,
+                                                    FileRecord,
+                                                    &DataSize);
+        }
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("ERROR: Failed to set length of bitmap attribute!\n");
+            ReleaseAttributeContext(BitmapCtx);
+            return Status;
+        }
+    }
+
+    // Enlarge Index Allocation attribute
+    DataSize.QuadPart = IndexAllocationLength + IndexBufferSize;
+    Status = SetNonResidentAttributeDataLength(DeviceExt,
+                                               IndexAllocationCtx,
+                                               IndexAllocationOffset,
+                                               FileRecord,
+                                               &DataSize);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("ERROR: Failed to set length of index allocation!\n");
+        ReleaseAttributeContext(BitmapCtx);
+        return Status;
+    }
+
+    // Update file record on disk
+    Status = UpdateFileRecord(DeviceExt, IndexAllocationCtx->FileMFTIndex, FileRecord);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("ERROR: Failed to update file record!\n");
+        ReleaseAttributeContext(BitmapCtx);
+        return Status;
+    }
+
+    // Set the bit for the new index record
+    RtlSetBits(&Bitmap, NextNodeNumber, 1);
+
+    // Write the new bitmap attribute
+    Status = WriteAttribute(DeviceExt,
+                            BitmapCtx,
+                            0,
+                            (const PUCHAR)BitmapPtr,
+                            BytesNeeded,
+                            &BytesWritten,
+                            FileRecord);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("ERROR: Unable to write to $I30 bitmap attribute!\n");
+    }
+
+    // Calculate VCN of new node number
+    *NewVCN = NextNodeNumber * (IndexBufferSize / DeviceExt->NtfsInfo.BytesPerCluster);
+
+    DPRINT("New VCN: %I64u\n", *NewVCN);
+
+    ExFreePoolWithTag(BitmapMem, TAG_NTFS);
+    ReleaseAttributeContext(BitmapCtx);
+
+    return Status;
+}
+
+NTSTATUS
+Directory::UpdateIndexAllocation(ULONG IndexBufferSize,
+                                 PFileRecord FileRecord)
+{
+    // Find the index allocation and bitmap
+    PNTFS_ATTR_CONTEXT IndexAllocationContext;
+    PBTreeKey CurrentKey;
+    NTSTATUS Status;
+    BOOLEAN HasIndexAllocation = FALSE;
+    ULONG i;
+    ULONG IndexAllocationOffset;
+
+    DPRINT("UpdateIndexAllocation() called.\n");
+
+    Status = FindAttribute(DeviceExt, FileRecord, AttributeIndexAllocation, L"$I30", 4, &IndexAllocationContext, &IndexAllocationOffset);
+    if (NT_SUCCESS(Status))
+    {
+        HasIndexAllocation = TRUE;
+
+#ifndef NDEBUG
+        PrintAllVCNs(DeviceExt,
+                     IndexAllocationContext,
+                     IndexBufferSize);
+#endif
+    }
+    // Walk through the root node and update all the sub-nodes
+    CurrentKey = RootNode->FirstKey;
+    while (CurrentKey)
+    {
+        if (CurrentKey->ChildNode)
+        {
+            if (!HasIndexAllocation)
+            {
+                // We need to add an index allocation to the file record
+                PNTFS_ATTR_RECORD EndMarker = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->BytesInUse - (sizeof(ULONG) * 2));
+                DPRINT1("Adding index allocation...\n");
+
+                // Add index allocation to the very end of the file record
+                Status = AddIndexAllocation(DeviceExt,
+                                            FileRecord,
+                                            EndMarker,
+                                            L"$I30",
+                                            4);
+                if (!NT_SUCCESS(Status))
+                {
+                    DPRINT1("ERROR: Failed to add index allocation!\n");
+                    return Status;
+                }
+
+                // Find the new attribute
+                Status = FindAttribute(DeviceExt, FileRecord, AttributeIndexAllocation, L"$I30", 4, &IndexAllocationContext, &IndexAllocationOffset);
+                if (!NT_SUCCESS(Status))
+                {
+                    DPRINT1("ERROR: Couldn't find newly-created index allocation!\n");
+                    return Status;
+                }
+
+                // Advance end marker
+                EndMarker = (PNTFS_ATTR_RECORD)((ULONG_PTR)EndMarker + EndMarker->Length);
+
+                // Add index bitmap to the very end of the file record
+                Status = AddBitmap(DeviceExt,
+                                   FileRecord,
+                                   EndMarker,
+                                   L"$I30",
+                                   4);
+                if (!NT_SUCCESS(Status))
+                {
+                    DPRINT1("ERROR: Failed to add index bitmap!\n");
+                    ReleaseAttributeContext(IndexAllocationContext);
+                    return Status;
+                }
+
+                HasIndexAllocation = TRUE;
+            }
+
+            // Is the Index Entry large enough to store the VCN?
+            if (!BooleanFlagOn(CurrentKey->IndexEntry->Flags, INDEX_ENTRY_NODE))
+            {
+                // Allocate memory for the larger index entry
+                PIndexEntry NewEntry = (PIndexEntry)ExAllocatePoolWithTag(NonPagedPool,
+                                                                          CurrentKey->Entry->EntryLength + sizeof(ULONGLONG),
+                                                                          TAG_NTFS);
+                if (!NewEntry)
+                {
+                    DPRINT1("ERROR: Unable to allocate memory for new index entry!\n");
+                    if (HasIndexAllocation)
+                        ReleaseAttributeContext(IndexAllocationContext);
+                    return STATUS_INSUFFICIENT_RESOURCES;
+                }
+
+                // Copy the old entry to the new one
+                RtlCopyMemory(NewEntry, CurrentKey->Entry, CurrentKey->Entry->EntryLength);
+
+                NewEntry->EntryLength += sizeof(ULONGLONG);
+
+                // Free the old memory
+                delete CurrentKey->Entry;
+
+                CurrentKey->Entry = NewEntry;
+                CurrentKey->Entry->Flags |= INDEX_ENTRY_NODE;
+            }
+
+            // Update the sub-node
+            Status = UpdateIndexNode(DeviceExt, FileRecord, CurrentKey->ChildNode, IndexBufferSize, IndexAllocationContext, IndexAllocationOffset);
+            if (!NT_SUCCESS(Status))
+            {
+                DPRINT1("ERROR: Failed to update index node!\n");
+                ReleaseAttributeContext(IndexAllocationContext);
+                return Status;
+            }
+
+            // Update the VCN stored in the index entry of CurrentKey
+            SetIndexEntryVCN(CurrentKey->Entry, CurrentKey->ChildNode->VCN);
+        }
+        CurrentKey = CurrentKey->NextKey;
+    }
+
+#ifndef NDEBUG
+    DumpFileTree();
+#endif
+
+    if (HasIndexAllocation)
+    {
+#ifndef NDEBUG
+        PrintAllVCNs(DeviceExt,
+                     IndexAllocationContext,
+                     IndexBufferSize);
+#endif
+        ReleaseAttributeContext(IndexAllocationContext);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
 Directory::UpdateIndexNode(PDEVICE_EXTENSION DeviceExt,
                            PFILE_RECORD_HEADER FileRecord,
                            PB_TREE_FILENAME_NODE Node,
