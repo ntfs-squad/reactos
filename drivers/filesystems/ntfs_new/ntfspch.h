@@ -287,6 +287,12 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 #include "lfs/logfile.h"
 #include "lfs/usnjrnl.h"
 #include "lfs/lfs.h"
+#include <ntstrsafe.h>
+
+// Global variables
+extern BOOLEAN gShowMetadataFiles;
+extern BOOLEAN gShowVersionInfo;
+extern BOOLEAN gBugCheckOnCorrupt;
 
 #include <debug.h>
 

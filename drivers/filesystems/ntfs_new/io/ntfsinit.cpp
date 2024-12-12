@@ -34,6 +34,10 @@ NPAGED_LOOKASIDE_LIST AttrCtxtLookasideList;
 PDRIVER_OBJECT NtfsDriverObject;
 /* FUNCTIONS ****************************************************************/
 
+BOOLEAN gShowMetadataFiles;
+BOOLEAN gShowVersionInfo;
+BOOLEAN gBugCheckOnCorrupt;
+
 EXTERN_C
 NTSTATUS
 NTAPI
@@ -79,7 +83,12 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
 
     NtfsDiskFileSystemDeviceObject->Flags |= DO_DIRECT_IO;
 
-    /* Register file system */
+    // Set global variables
+    gShowMetadataFiles = QueryBooleanRegistryValue(L"NtfsShowMetadataFiles");
+    gShowVersionInfo = QueryBooleanRegistryValue(L"NtfsShowVersionInfo");
+    gBugCheckOnCorrupt = QueryBooleanRegistryValue(L"NtfsBugCheckOnCorrupt");
+
+    // Register file system
     IoRegisterFileSystem(NtfsDiskFileSystemDeviceObject);
     ObReferenceObject(NtfsDiskFileSystemDeviceObject);
 

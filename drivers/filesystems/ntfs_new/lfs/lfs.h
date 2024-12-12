@@ -18,24 +18,25 @@ typedef class RestartPage
 typedef class LogFileService
 {
 public:
+    ULONG ClientMajorVersion;
+    ULONG ClientMinorVersion;
+
     LogFileService(_In_ PNTFSVolume TargetVolume);
+    ~LogFileService();
+    NTSTATUS InitializeLFS();
     NTSTATUS LogTransaction();
     NTSTATUS CommitTransaction();
 private:
     PNTFSVolume Volume;
     PFileRecord LogFile;
-    ULONG ClientMajorVersion;
-    ULONG ClientMinorVersion;
+    PUCHAR LogFileData;
 
-    PRestartPage RestartPage1;
-    PRestartPage RestartPage2;
+    PLfsRestartPage RestartPage1;
+    PLfsRestartPage RestartPage2;
 
     // Call when creating LFS Object
     NTSTATUS PerformFileSystemRecovery();
 
     // Call every 5 seconds
     NTSTATUS WriteCheckpointRecord();
-
-    // Set in registry with fsutil
-    BOOLEAN BugCheckOnCorrupt;
 } *PLogFileService;

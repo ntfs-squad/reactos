@@ -95,7 +95,7 @@ Directory::IsEligibleForFileDir(PBTreeKey Key,
 
     // Is this a super hidden metadata file (MFT file records 0-26)?
     if (GetFRNFromFileRef(FileRef(Key)) <= 26
-        && !Volume->ShowMetadataFiles)
+        && !gShowMetadataFiles)
         return FALSE;
 
     // Is this a duplicated short name?

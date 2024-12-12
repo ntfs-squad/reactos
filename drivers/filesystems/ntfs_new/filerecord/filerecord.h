@@ -97,6 +97,8 @@ public:
     PAttribute GetAttribute(_In_     AttributeType Type,
                             _In_opt_ PWSTR Name);
     PDataRun FindNonResidentData(_In_ PAttribute DataAttr);
+    PDataRun FindNonResidentData(_In_     AttributeType Type,
+                                 _In_opt_ PWSTR Name);
 
     // ./copy.cpp
     NTSTATUS CopyData(_In_ AttributeType Type,

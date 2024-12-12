@@ -55,7 +55,6 @@ public:
     PDEVICE_OBJECT PartDeviceObj;
     class MasterFileTable* MFT;
     class LogFileService* LFS;
-    BOOLEAN ShowMetadataFiles;
 
     /**
      * Gets an attribute type value from the name of the attribute. This

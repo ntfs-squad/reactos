@@ -6,6 +6,9 @@ FIELD_OFFSET(FileNameEx, Name) + (FileNameAttribute->NameLength * sizeof(WCHAR))
 #define INDEX_NODE_SMALL 0x0
 #define INDEX_NODE_LARGE 0x1
 
+#define INDEX_ROOT_SMALL 0x0
+#define INDEX_ROOT_LARGE 0x1
+
 PBTreeKey
 Directory::CreateDummyKey(BOOLEAN HasChildNode)
 {
@@ -656,9 +659,6 @@ Directory::NtfsInsertKey(ULONGLONG FileReference,
 
     return Status;
 }
-
-#define INDEX_ROOT_SMALL 0x0
-#define INDEX_ROOT_LARGE 0x1
 
 NTSTATUS
 Directory::CreateIndexRootFromBTree(ULONG MaxIndexSize,

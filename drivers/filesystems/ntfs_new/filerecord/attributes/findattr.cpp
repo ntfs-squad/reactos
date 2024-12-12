@@ -96,7 +96,8 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
     ULONGLONG AllocatedSize = DataAttr->NonResident.AllocatedSize;
     ULONGLONG ReadSize = 0;
 
-    ASSERT(DataAttr->IsNonResident);
+    if (!DataAttr || !DataAttr->IsNonResident)
+        return NULL;
 
     // Get pointer to data run.
     DataRunPtr = (PUCHAR)DataAttr + DataAttr->NonResident.DataRunsOffset;
@@ -170,4 +171,11 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
 
     // The caller is responsible for freeing the linked list.
     return Head;
+}
+
+PDataRun
+FileRecord::FindNonResidentData(_In_     AttributeType Type,
+                                _In_opt_ PWSTR Name)
+{
+    return FindNonResidentData(GetAttribute(Type, Name));
 }

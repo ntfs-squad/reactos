@@ -54,7 +54,8 @@ NtfsFsdQueryVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                                      &BufferLength);
             break;
         case FileFsAttributeInformation:
-            Status = NtfsGetAttributeInfo((PFILE_FS_ATTRIBUTE_INFORMATION)SystemBuffer,
+            Status = NtfsGetAttributeInfo(VolCB->Volume,
+                                          (PFILE_FS_ATTRIBUTE_INFORMATION)SystemBuffer,
                                           &BufferLength);
             break;
         case FileFsControlInformation:

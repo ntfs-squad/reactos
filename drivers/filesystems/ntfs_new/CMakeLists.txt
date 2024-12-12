@@ -4,6 +4,7 @@ list(APPEND SOURCE
      btree/directory/create.cpp
      btree/directory/dbg.cpp
      btree/directory/directory.cpp
+     btree/directory/editdir.cpp
      btree/directory/find.cpp
      btree/directory/get.cpp
      btree/directory/oldbtreefuncs.cpp

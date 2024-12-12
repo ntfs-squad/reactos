@@ -139,7 +139,7 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
                                                   PartBootSector->MFTMirrLCN,
                                                   PartBootSector->ClustersPerFileRecord);
 
-    // Initialize Log File Service
+    // Allocate Log File Service Object
     LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
 
     // Get the NTFS Major and Minor versions from $Volume.
@@ -158,8 +158,8 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     NtfsMinorVersion = VolumeInfo->MinorVersion;
     DPRINT1("NTFS Version %ld.%ld\n", VolumeInfo->MajorVersion, VolumeInfo->MinorVersion);
 
-    // Determine whether or not to show metadata files.
-    ShowMetadataFiles = QueryBooleanRegistryValue(L"NtfsShowMetadataFiles");
+    // Initialize LFS
+    Status = LFS->InitializeLFS();
 
 Cleanup:
     delete PartBootSector;

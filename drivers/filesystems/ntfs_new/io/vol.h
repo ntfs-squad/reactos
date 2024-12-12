@@ -67,20 +67,57 @@ NtfsGetSizeInfo(PDEVICE_OBJECT DeviceObject,
 
 static
 NTSTATUS
-NtfsGetAttributeInfo(PFILE_FS_ATTRIBUTE_INFORMATION Buffer,
+NtfsGetAttributeInfo(PNTFSVolume Volume,
+                     PFILE_FS_ATTRIBUTE_INFORMATION Buffer,
                      PULONG Length)
 {
-    size_t BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 8;
+    NTSTATUS Status;
+    size_t BytesToWrite;
+    LPCWSTR NTFSVerFormat;
+    UNICODE_STRING NTFSVer;
 
-    if (*Length < BytesToWrite)
-        return STATUS_BUFFER_TOO_SMALL;
+    if (gShowVersionInfo)
+    {
+        // Report "NTFS x.x, Client x.x"
+        BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 38;
+        if (*Length < BytesToWrite)
+            goto fallback;
+        Buffer->FileSystemNameLength = 40;
+        NTFSVerFormat = L"NTFS %1ld.%1ld, Client %1ld.%1ld";
+        RtlInitEmptyUnicodeString(&NTFSVer,
+                                  Buffer->FileSystemName,
+                                  40);
+        Status = RtlUnicodeStringPrintf(&NTFSVer,
+                                        NTFSVerFormat,
+                                        Volume->NtfsMajorVersion,
+                                        Volume->NtfsMinorVersion,
+                                        Volume->LFS->ClientMajorVersion,
+                                        Volume->LFS->ClientMinorVersion);
+        if (!NT_SUCCESS(Status))
+            goto fallback;
+    }
 
-    Buffer->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_UNICODE_ON_DISK |
-                                   FILE_READ_ONLY_VOLUME;
+    else
+    {
+fallback:
+        // Report "NTFS"
+        BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 6;
+        if (*Length < BytesToWrite)
+            return STATUS_BUFFER_TOO_SMALL;
+        Buffer->FileSystemNameLength = 8;
+        RtlCopyMemory(Buffer->FileSystemName, L"NTFS", 8);
+        *Length -= BytesToWrite;
+    }
+
+    /* For more information on FileSystemAttributes:
+     * https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb/3065351b-0b78-4976-9a5a-11657d8857c7
+     *
+     * TODO: Add attributes as needed.
+     */
+    Buffer->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES
+                                   | FILE_UNICODE_ON_DISK
+                                   | FILE_NAMED_STREAMS;
     Buffer->MaximumComponentNameLength = 255;
-    Buffer->FileSystemNameLength = 8;
-
-    RtlCopyMemory(Buffer->FileSystemName, L"NTFS", 8);
 
     *Length -= BytesToWrite;
 

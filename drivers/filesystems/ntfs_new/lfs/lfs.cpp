@@ -13,3 +13,73 @@ LogFileService::LogFileService(_In_ PNTFSVolume TargetVolume)
     // Store volume pointer
     Volume = TargetVolume;
 }
+
+LogFileService::~LogFileService()
+{
+    delete LogFileData;
+}
+
+NTSTATUS
+LogFileService::InitializeLFS()
+{
+    NTSTATUS Status;
+    PAttribute FileDataAttr;
+    ULONG LogFileSize;
+
+    // Find the Log File.
+    Status = Volume->MFT->GetFileRecord(_LogFile, &LogFile);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to find $LogFile!\n");
+        return Status;
+    }
+
+    // Initialize the logfile data buffer
+    FileDataAttr = LogFile->GetAttribute(TypeData, NULL);
+    if (!FileDataAttr)
+    {
+        DPRINT1("Failed to find $DATA attribute!\n");
+        delete LogFile;
+        return STATUS_NOT_FOUND;
+    }
+
+    LogFileSize = GetAttributeDataSize(FileDataAttr);
+    LogFileData = new(PagedPool) UCHAR[LogFileSize];
+
+    // Copy the data from the log file
+    Status = LogFile->CopyData(FileDataAttr,
+                               LogFileData,
+                               &LogFileSize);
+
+    // Set the restart page pointers.
+    RestartPage1 = (PLfsRestartPage)LogFileData;
+    RestartPage2 = (PLfsRestartPage)(LogFileData + 4096);
+
+    ClientMajorVersion = RestartPage1->MajorVersion;
+    ClientMinorVersion = RestartPage1->MinorVersion;
+
+    DPRINT1("Client Version: %ld.%ld\n", ClientMajorVersion, ClientMinorVersion);
+
+    // Perform file system recovery.
+    Status = PerformFileSystemRecovery();
+
+    if (!NT_SUCCESS(Status))
+        DPRINT1("Failed to perform self-healing!\n");
+
+    return Status;
+}
+
+NTSTATUS
+LogFileService::PerformFileSystemRecovery()
+{
+    /* Scan the file system for issues.
+     *     - If gBugCheckOnCorrupt is FALSE (default):
+     *         Fix found issues.
+     *     - If gBugCheckOnCorrupt is TRUE:
+     *         Bugcheck on found issues.
+     */
+
+    DPRINT1("PerformFileSystemRecovery() is a STUB!\n");
+    return STATUS_SUCCESS;
+}

@@ -62,8 +62,13 @@ public:
                        _In_    PUNICODE_STRING FileNameFilter,
                        _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
                        _Inout_ PULONG BufferLength);
+
+    // ./editdir.cpp
     NTSTATUS
     AddFileToDirectory(_In_ PFileNameEx FileToAdd);
+
+    NTSTATUS
+    RemoveFileFromDirectory(_In_ PBTreeKey FileToRemove);
 
     // ./dbg.cpp
     void
