@@ -105,7 +105,7 @@ typedef struct LfsRecord
 
 typedef struct LfsRestartPage
 {
-    WCHAR  Signature[4];               // Offset 0x00, Size 8
+    UCHAR  Signature[8];               // Offset 0x00, Size 8
     UINT64 ChkDskLsn;                  // Offset 0x08, Size 8
     UINT32 SystemPageSize;             // Offset 0x10, Size 4
     UINT32 LogPageSize;                // Offset 0x14, Size 4

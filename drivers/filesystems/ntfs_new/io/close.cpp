@@ -32,41 +32,20 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-close
      */
 
-    PIO_STACK_LOCATION IrpSp;
-    PFileContextBlock FileCB;
-
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
     {
         /* DeviceObject represents FileSystem */
-        DPRINT1("Closing file system!\n");
+        DPRINT1("Closing global NTFS!\n");
         Irp->IoStatus.Information = STATUS_SUCCESS;
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
         return STATUS_SUCCESS;
     }
 
-    IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
-
-    if (FileCB)
-    {
-        // Free BTree
-        if (FileCB->FileDir)
-            delete FileCB->FileDir;
-
-        // Free file record
-        if (FileCB->FileRec)
-            delete FileCB->FileRec;
-
-        // Free the stream context block
-        if (FileCB->StreamCB)
-            delete FileCB->StreamCB;
-
-        // Free the file context block
-        delete FileCB;
-    }
+    /* TODO: If cleanup frees memory for the file and flushes everything
+     * to disk, what else do we need to do here?
+     */
 
     Irp->IoStatus.Information = STATUS_SUCCESS;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
     return STATUS_SUCCESS;
 }

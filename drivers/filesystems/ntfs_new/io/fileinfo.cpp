@@ -52,12 +52,11 @@ NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
     if (!FileCB)
     {
         DPRINT1("NtfsFsdQueryInformation() called with NULL file context block!\n");
-        Status = STATUS_NOT_FOUND;
+        Status = STATUS_INVALID_DEVICE_REQUEST;
         goto Done;
     }
 
     FileObject->SectionObjectPointer = &(FileCB->StreamCB->SectionObjectPointers);
-
     SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
     BufferLength = IoStack->Parameters.QueryFile.Length;
 
@@ -100,9 +99,11 @@ Done:
         Irp->IoStatus.Status = STATUS_SUCCESS;
         Irp->IoStatus.Information = IoStack->Parameters.QueryFile.Length - BufferLength;
 
-        // HACK!!! Why is this still needed?
+#ifdef __REACTOS__
+        // HACK!!! Driver should not have to edit UserIosb.
         Irp->UserIosb->Status = Irp->IoStatus.Status;
         Irp->UserIosb->Information = Irp->IoStatus.Information;
+#endif
     }
     else
     {

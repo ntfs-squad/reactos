@@ -25,6 +25,7 @@ PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 #define TAG_ATT_CTXT 'aftN'
 #define TAG_FILE_REC 'rftN'
 #define TAG_FCB 'FftN'
+#define InvalidMftZoneReservation(Num) Num < 1 || Num > 4
 
 CACHE_MANAGER_CALLBACKS CacheMgrCallbacks;
 FAST_IO_DISPATCH FastIoDispatch;
@@ -37,6 +38,8 @@ PDRIVER_OBJECT NtfsDriverObject;
 BOOLEAN gShowMetadataFiles;
 BOOLEAN gShowVersionInfo;
 BOOLEAN gBugCheckOnCorrupt;
+BOOLEAN gDisableLfsUpgrade;
+INT gMftZoneReservation;
 
 EXTERN_C
 NTSTATUS
@@ -46,6 +49,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
 {
     NTSTATUS Status;
     UNICODE_STRING UnicodeString;
+    HANDLE RegistryKey;
     NtfsDriverObject = DriverObject;
     UNREFERENCED_PARAMETER(RegistryPath);
     RtlInitUnicodeString(&UnicodeString, L"\\Ntfs");
@@ -84,9 +88,26 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
     NtfsDiskFileSystemDeviceObject->Flags |= DO_DIRECT_IO;
 
     // Set global variables
-    gShowMetadataFiles = QueryBooleanRegistryValue(L"NtfsShowMetadataFiles");
-    gShowVersionInfo = QueryBooleanRegistryValue(L"NtfsShowVersionInfo");
-    gBugCheckOnCorrupt = QueryBooleanRegistryValue(L"NtfsBugCheckOnCorrupt");
+    RegistryKey = OpenRegistryKey();
+    gShowMetadataFiles = QueryBooleanRegistryValue(RegistryKey,
+                                                   L"NtfsShowMetadataFiles");
+    gShowVersionInfo = QueryBooleanRegistryValue(RegistryKey,
+                                                 L"NtfsShowVersionInfo");
+    gBugCheckOnCorrupt = QueryBooleanRegistryValue(RegistryKey,
+                                                   L"NtfsBugCheckOnCorrupt");
+    gDisableLfsUpgrade = QueryBooleanRegistryValue(RegistryKey,
+                                                   L"NtfsDisableLfsUpgrade");
+    // Valid MftZoneReservation values are between 1 and 4.
+    gMftZoneReservation = QueryDwordRegistryValue(RegistryKey,
+                                                  L"NtfsMftZoneReservation",
+                                                  1);
+    if (InvalidMftZoneReservation(gMftZoneReservation))
+    {
+        // We don't care if this fails or not, just give it a try.
+        SetDwordRegistryValue(RegistryKey, L"NtfsMftZoneReservation", 1);
+        gMftZoneReservation = 1;
+    }
+    CloseRegistryKey(RegistryKey);
 
     // Register file system
     IoRegisterFileSystem(NtfsDiskFileSystemDeviceObject);
@@ -182,6 +203,42 @@ NtfsFsdCleanup(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Otherwise, perform any cleanup as needed.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-cleanup
      */
-    DPRINT1("NtfsFsdCleanup: called\n");
-    return 0;
+    PIO_STACK_LOCATION IrpSp;
+    PFileContextBlock FileCB;
+
+    if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
+    {
+        // DeviceObject represents FileSystem
+        DPRINT1("Cleaning up global NTFS!\n");
+        Irp->IoStatus.Information = STATUS_SUCCESS;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_SUCCESS;
+    }
+
+    IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
+
+    if (FileCB)
+    {
+        // Free BTree
+        if (FileCB->FileDir)
+            delete FileCB->FileDir;
+
+        // Free file record
+        if (FileCB->FileRec)
+            delete FileCB->FileRec;
+
+        // Free the stream context block
+        if (FileCB->StreamCB)
+            delete FileCB->StreamCB;
+
+        // Free the file context block
+        delete FileCB;
+    }
+
+    // TODO: How do we determine when the volume needs to get cleaned up?
+
+    Irp->IoStatus.Information = STATUS_SUCCESS;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return STATUS_SUCCESS;
 }

@@ -8,6 +8,8 @@
 
 #include "ntfspch.h"
 
+#define RESTART_PAGE_2_OFFSET 4096
+
 LogFileService::LogFileService(_In_ PNTFSVolume TargetVolume)
 {
     // Store volume pointer
@@ -54,7 +56,7 @@ LogFileService::InitializeLFS()
 
     // Set the restart page pointers.
     RestartPage1 = (PLfsRestartPage)LogFileData;
-    RestartPage2 = (PLfsRestartPage)(LogFileData + 4096);
+    RestartPage2 = (PLfsRestartPage)(LogFileData + RESTART_PAGE_2_OFFSET);
 
     ClientMajorVersion = RestartPage1->MajorVersion;
     ClientMinorVersion = RestartPage1->MinorVersion;
@@ -73,13 +75,26 @@ LogFileService::InitializeLFS()
 NTSTATUS
 LogFileService::PerformFileSystemRecovery()
 {
-    /* Scan the file system for issues.
+    /* Scan $LogFile and the file system for issues.
      *     - If gBugCheckOnCorrupt is FALSE (default):
-     *         Fix found issues.
+     *         Fix found issues, if possible.
      *     - If gBugCheckOnCorrupt is TRUE:
      *         Bugcheck on found issues.
      */
 
     DPRINT1("PerformFileSystemRecovery() is a STUB!\n");
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+LogFileService::ShutdownLFS()
+{
+    /* Perform any cleanup necessary before shutting down LFS.
+     * MS NTFS does at least these things:
+     *     - Ensure RestartPage1 and RestartPage2 are identical.
+     *     - Convert client version back from 2.0 to 1.1
+     */
+
+    DPRINT1("ShutdownLFS() is a STUB!\n");
     return STATUS_SUCCESS;
 }

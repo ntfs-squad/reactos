@@ -264,13 +264,37 @@ DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
                 _In_    BOOLEAN Override);
 
 // io/registry.cpp
-BOOLEAN
-QueryBooleanRegistryValue(_In_ PWCHAR Name,
-                          _In_ BOOLEAN Default = FALSE);
+HANDLE
+OpenRegistryKey();
+
+#define CloseRegistryKey(Key) ZwClose(Key)
+
+INT
+QueryDwordRegistryValue(_In_ HANDLE RegistryKey,
+                        _In_ PWCHAR Name,
+                        _In_ INT Default = 0);
 
 INT
 QueryDwordRegistryValue(_In_ PWCHAR Name,
                         _In_ INT Default = 0);
+
+BOOLEAN
+QueryBooleanRegistryValue(_In_ HANDLE RegistryKey,
+                          _In_ PWCHAR Name,
+                          _In_ BOOLEAN Default = FALSE);
+BOOLEAN
+QueryBooleanRegistryValue(_In_ PWCHAR Name,
+                          _In_ BOOLEAN Default = FALSE);
+
+NTSTATUS
+SetDwordRegistryValue(_In_ HANDLE RegistryKey,
+                      _In_ PWCHAR Name,
+                      _In_ INT Data);
+
+NTSTATUS
+SetBooleanRegistryValue(_In_ HANDLE RegistryKey,
+                        _In_ PWCHAR Name,
+                        _In_ BOOLEAN Data);
 
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
@@ -293,6 +317,8 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 extern BOOLEAN gShowMetadataFiles;
 extern BOOLEAN gShowVersionInfo;
 extern BOOLEAN gBugCheckOnCorrupt;
+extern BOOLEAN gDisableLfsUpgrade;
+extern INT gMftZoneReservation;
 
 #include <debug.h>
 

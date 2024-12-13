@@ -8,18 +8,13 @@
 
 #include "ntfspch.h"
 
-INT
-QueryDwordRegistryValue(_In_ PWCHAR Name,
-                        _In_ INT Default)
+HANDLE
+OpenRegistryKey()
 {
     NTSTATUS Status;
     HANDLE hRegistryKey;
-    UNICODE_STRING RegistryPath, ValueName;
+    UNICODE_STRING RegistryPath;
     OBJECT_ATTRIBUTES Attributes;
-    const UINT BufferSize = ROUND_UP(sizeof(KeyValuePartialInformation) + sizeof(ULONG), 0x10);
-    UCHAR Buffer[BufferSize];
-    ULONG DataLength;
-    INT Result;
 
     // Set up registry path
     RtlInitUnicodeString(&RegistryPath,
@@ -35,13 +30,31 @@ QueryDwordRegistryValue(_In_ PWCHAR Name,
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to open registry key!\n");
-        return Default;
+        return NULL;
     }
+
+    // Caller must close this registry key.
+    return hRegistryKey;
+}
+
+INT
+QueryDwordRegistryValue(_In_ HANDLE RegistryKey,
+                        _In_ PWCHAR Name,
+                        _In_ INT Default)
+{
+    NTSTATUS Status;
+    UNICODE_STRING ValueName;
+    const UINT BufferSize = ROUND_UP(sizeof(KeyValuePartialInformation) + sizeof(ULONG), 0x10);
+    UCHAR Buffer[BufferSize];
+    ULONG DataLength;
+
+    if (!RegistryKey)
+        return Default;
 
     // Set up registry value
     RtlInitUnicodeString(&ValueName, Name);
 
-    Status = ZwQueryValueKey(hRegistryKey,
+    Status = ZwQueryValueKey(RegistryKey,
                              &ValueName,
                              KeyValuePartialInformation,
                              Buffer,
@@ -54,10 +67,27 @@ QueryDwordRegistryValue(_In_ PWCHAR Name,
         return Default;
     }
 
-    Result = *((INT*)(((PKEY_VALUE_PARTIAL_INFORMATION)Buffer)->Data));
+    return *((INT*)(((PKEY_VALUE_PARTIAL_INFORMATION)Buffer)->Data));
+}
 
-    ZwClose(hRegistryKey);
-    return Result;
+INT
+QueryDwordRegistryValue(_In_ PWCHAR Name,
+                        _In_ INT Default)
+{
+    HANDLE RegistryKey;
+
+    RegistryKey = OpenRegistryKey();
+    if (!RegistryKey)
+        return Default;
+    return QueryDwordRegistryValue(RegistryKey, Name, Default);
+}
+
+BOOLEAN
+QueryBooleanRegistryValue(_In_ HANDLE RegistryKey,
+                          _In_ PWCHAR Name,
+                          _In_ BOOLEAN Default)
+{
+    return !!QueryDwordRegistryValue(RegistryKey, Name, Default ? 1 : 0);
 }
 
 BOOLEAN
@@ -65,4 +95,33 @@ QueryBooleanRegistryValue(_In_ PWCHAR Name,
                           _In_ BOOLEAN Default)
 {
     return !!QueryDwordRegistryValue(Name, Default ? 1 : 0);
+}
+
+NTSTATUS
+SetDwordRegistryValue(_In_ HANDLE RegistryKey,
+                      _In_ PWCHAR Name,
+                      _In_ INT Data)
+{
+    UNICODE_STRING ValueName;
+
+    if (!RegistryKey)
+        return STATUS_INVALID_PARAMETER;
+
+    // Set up registry value
+    RtlInitUnicodeString(&ValueName, Name);
+
+    return ZwSetValueKey(RegistryKey,
+                         &ValueName,
+                         0,
+                         REG_DWORD,
+                         &Data,
+                         sizeof(INT));
+}
+
+NTSTATUS
+SetBooleanRegistryValue(_In_ HANDLE RegistryKey,
+                        _In_ PWCHAR Name,
+                        _In_ BOOLEAN Data)
+{
+    return SetDwordRegistryValue(RegistryKey, Name, Data ? 1 : 0);
 }

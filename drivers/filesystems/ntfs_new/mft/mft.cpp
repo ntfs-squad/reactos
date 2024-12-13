@@ -8,8 +8,6 @@
 
 #include "ntfspch.h"
 
-#define InvalidMftZoneReservation(Num) Num < 1 || Num > 4
-
 MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
                                  _In_ UINT64 MFTLCN,
                                  _In_ UINT64 MFTMirrLCN,
@@ -28,14 +26,6 @@ MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
     FileRecordSize = ClustersPerFileRecord < 0 ?
                      1 << (-(ClustersPerFileRecord))
                      : ClustersPerFileRecord * BytesPerCluster(Volume);
-
-    /* Get the MftReservationZone registry value.
-     * Per Microsoft Learn: This value should be between 1 and 4. 1 is the default.
-     * TODO: Actually use it for MFT Zone reservations.
-     */
-    MftZoneReservation = QueryDwordRegistryValue(L"NtfsMftZoneReservation", 1);
-    if (InvalidMftZoneReservation(MftZoneReservation))
-        MftZoneReservation = 1;
 
     // Initialize $MFT
     Status = GetFileRecord(_MFT, &MFTFile);

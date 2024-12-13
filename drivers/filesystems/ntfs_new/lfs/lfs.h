@@ -26,6 +26,7 @@ public:
     NTSTATUS InitializeLFS();
     NTSTATUS LogTransaction();
     NTSTATUS CommitTransaction();
+    NTSTATUS ShutdownLFS();
 private:
     PNTFSVolume Volume;
     PFileRecord LogFile;
