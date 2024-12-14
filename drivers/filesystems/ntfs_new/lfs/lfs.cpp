@@ -58,10 +58,19 @@ LogFileService::InitializeLFS()
     RestartPage1 = (PLfsRestartPage)LogFileData;
     RestartPage2 = (PLfsRestartPage)(LogFileData + RESTART_PAGE_2_OFFSET);
 
+    // TODO: Pick a best restart page based on corruption and recency.
     ClientMajorVersion = RestartPage1->MajorVersion;
     ClientMinorVersion = RestartPage1->MinorVersion;
 
-    DPRINT1("Client Version: %ld.%ld\n", ClientMajorVersion, ClientMinorVersion);
+    if (!IsSupportedClientVersion())
+    {
+        DPRINT1("Client version not supported! (%ld.%ld)\n", ClientMajorVersion, ClientMinorVersion);
+        RestartPage1 = NULL;
+        RestartPage2 = NULL;
+        delete LogFileData;
+        Status = STATUS_LOG_BLOCK_VERSION;
+        goto Done;
+    }
 
     // Perform file system recovery.
     Status = PerformFileSystemRecovery();
@@ -69,6 +78,8 @@ LogFileService::InitializeLFS()
     if (!NT_SUCCESS(Status))
         DPRINT1("Failed to perform self-healing!\n");
 
+Done:
+    delete LogFile;
     return Status;
 }
 

@@ -55,6 +55,7 @@ public:
     PDEVICE_OBJECT PartDeviceObj;
     class MasterFileTable* MFT;
     class LogFileService* LFS;
+    BOOLEAN IsReadOnly = FALSE;
 
     /**
      * Gets an attribute type value from the name of the attribute. This

@@ -117,10 +117,12 @@ fallback:
     Buffer->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES
                                    | FILE_UNICODE_ON_DISK
                                    | FILE_NAMED_STREAMS;
+
+    if (Volume->IsReadOnly)
+        Buffer->FileSystemAttributes |= FILE_READ_ONLY_VOLUME;
+
     Buffer->MaximumComponentNameLength = 255;
-
     *Length -= BytesToWrite;
-
     return STATUS_SUCCESS;
 }
 

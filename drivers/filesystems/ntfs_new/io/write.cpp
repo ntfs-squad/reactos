@@ -46,6 +46,13 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     DPRINT1("NtfsFsdWrite() called!\n");
 
+    if (Volume->IsReadOnly)
+    {
+        // Disk is read-only. Don't try to write anything.
+        Irp->IoStatus.Information = NULL;
+        return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
     // Sometimes the file context block is still available, and sometimes it's not.
     if (FileCB)
     {

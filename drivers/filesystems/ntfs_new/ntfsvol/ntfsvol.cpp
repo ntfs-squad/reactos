@@ -161,6 +161,16 @@ NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     // Initialize LFS
     Status = LFS->InitializeLFS();
 
+    if (Status == STATUS_LOG_BLOCK_VERSION)
+    {
+        /* The version of LFS is incompatible with our LFS.
+         * Open volume as readonly.
+         */
+        DPRINT1("Opening disk as readonly!\n");
+        IsReadOnly = TRUE;
+        Status = STATUS_SUCCESS;
+    }
+
 Cleanup:
     delete PartBootSector;
     if (VolumeFile)

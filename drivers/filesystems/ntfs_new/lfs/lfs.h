@@ -40,4 +40,21 @@ private:
 
     // Call every 5 seconds
     NTSTATUS WriteCheckpointRecord();
+
+    BOOLEAN IsSupportedClientVersion()
+    {
+        // Supported versions currently include: 0.0, 1.0, 1.1
+        if (ClientMajorVersion == 1)
+        {
+            return ClientMinorVersion == 0
+                   || ClientMinorVersion == 1;
+        }
+
+        else if (ClientMajorVersion = 0)
+        {
+            return ClientMinorVersion == 0;
+        }
+
+        return FALSE;
+    }
 } *PLogFileService;
