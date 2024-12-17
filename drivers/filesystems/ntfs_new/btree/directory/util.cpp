@@ -102,5 +102,4 @@ Directory::IsLegal8Dot3ShortName(_In_ PWSTR Buffer,
 
     // We passed all tests.
     return TRUE;
-
 }

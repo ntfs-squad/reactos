@@ -349,6 +349,9 @@ SetBooleanRegistryValue(_In_ HANDLE RegistryKey,
                         _In_ PWCHAR Name,
                         _In_ BOOLEAN Data);
 
+VOID
+GetGlobalSettingsFromRegistry();
+
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
@@ -367,10 +370,15 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 #include <ntstrsafe.h>
 
 // Global variables
+extern BOOLEAN gAllowExtChar8dot3;
 extern BOOLEAN gShowMetadataFiles;
 extern BOOLEAN gShowVersionInfo;
 extern BOOLEAN gBugCheckOnCorrupt;
+extern BOOLEAN gDisable8dot3NameCreation;
+extern INT gDisableLastAccessUpdate;
+extern BOOLEAN gDisableLfsDowngrade;
 extern BOOLEAN gDisableLfsUpgrade;
+extern BOOLEAN gLongPathsEnabled;
 extern INT gMftZoneReservation;
 
 #include <debug.h>

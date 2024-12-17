@@ -25,7 +25,6 @@ PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 #define TAG_ATT_CTXT 'aftN'
 #define TAG_FILE_REC 'rftN'
 #define TAG_FCB 'FftN'
-#define InvalidMftZoneReservation(Num) Num < 1 || Num > 4
 
 CACHE_MANAGER_CALLBACKS CacheMgrCallbacks;
 FAST_IO_DISPATCH FastIoDispatch;
@@ -34,13 +33,6 @@ NPAGED_LOOKASIDE_LIST FcbLookasideList;
 NPAGED_LOOKASIDE_LIST AttrCtxtLookasideList;
 PDRIVER_OBJECT NtfsDriverObject;
 /* FUNCTIONS ****************************************************************/
-
-BOOLEAN gShowMetadataFiles;
-BOOLEAN gShowVersionInfo;
-BOOLEAN gBugCheckOnCorrupt;
-BOOLEAN gDisableLfsUpgrade;
-INT gMftZoneReservation;
-
 EXTERN_C
 NTSTATUS
 NTAPI
@@ -49,7 +41,6 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
 {
     NTSTATUS Status;
     UNICODE_STRING UnicodeString;
-    HANDLE RegistryKey;
     NtfsDriverObject = DriverObject;
     UNREFERENCED_PARAMETER(RegistryPath);
     RtlInitUnicodeString(&UnicodeString, L"\\Ntfs");
@@ -87,27 +78,8 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
 
     NtfsDiskFileSystemDeviceObject->Flags |= DO_DIRECT_IO;
 
-    // Set global variables
-    RegistryKey = OpenRegistryKey();
-    gShowMetadataFiles = QueryBooleanRegistryValue(RegistryKey,
-                                                   L"NtfsShowMetadataFiles");
-    gShowVersionInfo = QueryBooleanRegistryValue(RegistryKey,
-                                                 L"NtfsShowVersionInfo");
-    gBugCheckOnCorrupt = QueryBooleanRegistryValue(RegistryKey,
-                                                   L"NtfsBugCheckOnCorrupt");
-    gDisableLfsUpgrade = QueryBooleanRegistryValue(RegistryKey,
-                                                   L"NtfsDisableLfsUpgrade");
-    // Valid MftZoneReservation values are between 1 and 4.
-    gMftZoneReservation = QueryDwordRegistryValue(RegistryKey,
-                                                  L"NtfsMftZoneReservation",
-                                                  1);
-    if (InvalidMftZoneReservation(gMftZoneReservation))
-    {
-        // We don't care if this fails or not, just give it a try.
-        SetDwordRegistryValue(RegistryKey, L"NtfsMftZoneReservation", 1);
-        gMftZoneReservation = 1;
-    }
-    CloseRegistryKey(RegistryKey);
+    // Get global driver settings from registry
+    GetGlobalSettingsFromRegistry();
 
     // Register file system
     IoRegisterFileSystem(NtfsDiskFileSystemDeviceObject);
