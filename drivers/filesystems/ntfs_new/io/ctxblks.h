@@ -35,8 +35,6 @@ typedef struct _SCB
 
 typedef struct _FCB
 {
-    WCHAR Stream[MAX_PATH];
-    WCHAR *ObjectName;		   // Point on filename (250 chars max) in PathName
     FileRecord* FileRec;
     ULONG CreateOptions;
     ACCESS_MASK DesiredAccess;
@@ -44,7 +42,7 @@ typedef struct _FCB
     // NOTE: The members below may or may not get included in file record.
 
     // Used for file name information;
-    WCHAR FileName[MAX_PATH];
+    UNICODE_STRING FileName;
 
     // Used for Alternate Data Streams (ADS)
     AttributeType RequestedType;

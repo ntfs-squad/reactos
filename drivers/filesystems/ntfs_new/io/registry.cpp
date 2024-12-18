@@ -187,14 +187,6 @@ GetGlobalSettingsFromRegistry()
     gDisable8dot3NameCreation = QueryBooleanRegistryValue(RegistryKey,
                                                           L"NtfsDisable8dot3NameCreation");
 
-    /* Enables file paths longer than MAX_PATH (260) characters.
-     * Default is OFF (0).
-     *
-     * Note: This option currently has no effect.
-     */
-    gLongPathsEnabled = QueryBooleanRegistryValue(RegistryKey,
-                                                  L"LongPathsEnabled");
-
     /* Enables or disables the last access time on all files and all volumes.
      * Options:
      *     0 - User Managed, Enabled

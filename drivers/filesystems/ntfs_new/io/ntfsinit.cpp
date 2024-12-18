@@ -204,6 +204,10 @@ NtfsFsdCleanup(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         if (FileCB->StreamCB)
             delete FileCB->StreamCB;
 
+        // Free FileNameBuffer
+        if (FileCB->FileName.Buffer)
+            delete FileCB->FileName.Buffer;
+
         // Free the file context block
         delete FileCB;
     }

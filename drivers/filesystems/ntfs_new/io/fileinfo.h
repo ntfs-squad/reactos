@@ -112,15 +112,14 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
         return STATUS_BUFFER_TOO_SMALL;
 
     // Save file name length, and as much file len, as buffer length allows.
-    Buffer->FileNameLength = wcslen(FileCB->FileName) * sizeof(WCHAR);
-
+    Buffer->FileNameLength = FileCB->FileName.Length;
     // Calculate amount of bytes to copy not to overflow the buffer.
     // TODO: Determine if we need this
     if (*Length < Buffer->FileNameLength + FileNameInfoSize)
     {
         // The buffer isn't big enough. Fill what you can.
         BytesToCopy = *Length - FileNameInfoSize;
-        RtlCopyMemory(Buffer->FileName, FileCB->FileName, BytesToCopy);
+        RtlCopyMemory(Buffer->FileName, FileCB->FileName.Buffer, BytesToCopy);
         *Length = 0;
         return STATUS_BUFFER_OVERFLOW;
     }
@@ -129,7 +128,7 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
     {
         // The buffer is big enough. Fill with file name.
         BytesToCopy = Buffer->FileNameLength;
-        RtlCopyMemory(Buffer->FileName, FileCB->FileName, BytesToCopy);
+        RtlCopyMemory(Buffer->FileName, FileCB->FileName.Buffer, BytesToCopy);
         *Length -= FileNameInfoSize + BytesToCopy;
         return STATUS_SUCCESS;
     }

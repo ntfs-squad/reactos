@@ -38,6 +38,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     FileRecord* CurrentFile;
     UINT8 Disposition;
     PNTFSVolume Volume;
+    USHORT FileNameLength;
 
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
     {
@@ -119,10 +120,15 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     RtlZeroMemory(FileCB, sizeof(FileContextBlock));
 
     // Set file name
-    // TODO: Axe?
-    RtlCopyMemory(FileCB->FileName,
+    FileNameLength = IrpSp->FileObject->FileName.Length;
+    PWCHAR FileNameBuffer = new(PagedPool) WCHAR[FileNameLength];
+    RtlCopyMemory(FileNameBuffer,
                   IrpSp->FileObject->FileName.Buffer,
-                  IrpSp->FileObject->FileName.Length);
+                  FileNameLength);
+    FileCB->FileName.Buffer = FileNameBuffer;
+    FileCB->FileName.Length = FileNameLength;
+    FileCB->FileName.MaximumLength = FileNameLength;
+    // NOTE: FileNameBuffer gets freed when the FileCB is cleaned up.
 
     // Get ADS Preferences for the file.
     Status = Volume->GetADSPreference(FileObject,
