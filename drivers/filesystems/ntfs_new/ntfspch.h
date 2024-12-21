@@ -378,7 +378,6 @@ extern BOOLEAN gDisable8dot3NameCreation;
 extern INT gDisableLastAccessUpdate;
 extern BOOLEAN gDisableLfsDowngrade;
 extern BOOLEAN gDisableLfsUpgrade;
-extern BOOLEAN gLongPathsEnabled;
 extern INT gMftZoneReservation;
 
 #include <debug.h>

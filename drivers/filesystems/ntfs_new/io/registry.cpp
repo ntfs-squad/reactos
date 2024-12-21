@@ -19,7 +19,6 @@ BOOLEAN gDisable8dot3NameCreation;
 INT gDisableLastAccessUpdate;
 BOOLEAN gDisableLfsDowngrade;
 BOOLEAN gDisableLfsUpgrade;
-BOOLEAN gLongPathsEnabled;
 INT gMftZoneReservation;
 
 HANDLE
@@ -161,24 +160,6 @@ GetGlobalSettingsFromRegistry()
     gBugCheckOnCorrupt = QueryBooleanRegistryValue(RegistryKey,
                                                    L"NtfsBugCheckOnCorrupt");
 
-    /* Disables LFS upgrade when a volume is mounted. The LFS upgrade can cause
-     * compatibility issues with older versions of Windows when the volume is
-     * not cleanly shut down or dismounted. Default is OFF (0).
-     *
-     * Note: This option currently has no effect.
-     */
-    gDisableLfsUpgrade = QueryBooleanRegistryValue(RegistryKey,
-                                                   L"NtfsDisableLfsUpgrade");
-
-    /* Disables LFS downgrade when a volume is cleanly unmounted. The LFS
-     * downgrade is required for interoperability with older versions of
-     * Windows. Default is OFF (0).
-     *
-     * Note: This option currently has no effect.
-     */
-    gDisableLfsDowngrade = QueryBooleanRegistryValue(RegistryKey,
-                                                     L"NtfsDisableLfsDowngrade");
-
     /* Disables generating an 8.3 compliant name when a file has a
      * non-compliant name. This feature has a significant performance impact,
      * but allows older Windows programs to access these files.
@@ -205,6 +186,24 @@ GetGlobalSettingsFromRegistry()
         gMftZoneReservation = 2;
     }
 
+    /* Disables LFS downgrade when a volume is cleanly unmounted. The LFS
+     * downgrade is required for interoperability with older versions of
+     * Windows. Default is OFF (0).
+     *
+     * Note: This option currently has no effect.
+     */
+    gDisableLfsDowngrade = QueryBooleanRegistryValue(RegistryKey,
+                                                     L"NtfsDisableLfsDowngrade");
+
+    /* Disables LFS upgrade when a volume is mounted. The LFS upgrade can cause
+     * compatibility issues with older versions of Windows when the volume is
+     * not cleanly shut down or dismounted. Default is OFF (0).
+     *
+     * Note: This option currently has no effect.
+     */
+    gDisableLfsUpgrade = QueryBooleanRegistryValue(RegistryKey,
+                                                   L"NtfsDisableLfsUpgrade");
+
     /* Changes the amount of space reserved for the Master File Table (MFT)
      * by default.
      *
@@ -219,12 +218,21 @@ GetGlobalSettingsFromRegistry()
      *
      *     For Windows 8+:
      *     MFT space reserved = 200 MB * max(gMftZoneReservation, 1)
+     *
+     * > I think we should follow the Windows 7 and earlier behavior because it
+     * > seems to work better on spinning disk drives and is better documented.
+     * > - Carl Bialorucki
      */
     gMftZoneReservation = QueryDwordRegistryValue(RegistryKey,
                                                   L"NtfsMftZoneReservation",
                                                   1);
-    if (gMftZoneReservation < 1)
+
+    if (InvalidMftZoneReservation(gMftZoneReservation))
+    {
+        // We don't care if this fails or not, just give it a try.
+        SetDwordRegistryValue(RegistryKey, L"NtfsMftZoneReservation", 2);
         gMftZoneReservation = 1;
+    }
 
     /* *** ReactOS Extended Options *** */
 

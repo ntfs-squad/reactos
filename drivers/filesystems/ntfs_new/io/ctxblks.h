@@ -12,9 +12,6 @@
 #include <pshpack1.h>
 #include <poppack.h>
 
-#ifndef MAX_PATH
-#define MAX_PATH 260
-#endif //MAX_PATH
 #define GetDisposition(x) ((x >> 24) & 0xFF)
 #define GetCreateOptions(x) (x & 0xFFFFFF)
 
@@ -38,8 +35,6 @@ typedef struct _FCB
     FileRecord* FileRec;
     ULONG CreateOptions;
     ACCESS_MASK DesiredAccess;
-
-    // NOTE: The members below may or may not get included in file record.
 
     // Used for file name information;
     UNICODE_STRING FileName;
