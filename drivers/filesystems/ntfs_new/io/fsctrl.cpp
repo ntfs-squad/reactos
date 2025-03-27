@@ -131,7 +131,6 @@ NtfsFsdFlushBuffers(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Write all changes from buffer to disk.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-flush-buffers
      */
-    DPRINT1("NtfsFsdFlushBuffers Called!\n");
-    __debugbreak();
-    return 1;
+    DPRINT1("NtfsFsdFlushBuffers() called, which is a STUB!\n");
+    return STATUS_NOT_IMPLEMENTED;
 }

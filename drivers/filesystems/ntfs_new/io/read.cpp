@@ -39,7 +39,12 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     RequestedLength = IrpSp->Parameters.Read.Length;
     FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
 
-    ASSERT(FileCB);
+    if (!FileCB)
+    {
+        DPRINT1("INVESTIGATE ME: NtfsFsdRead() called with NULL FileCB!\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
     ASSERT(FileCB->FileRec);
 
     // For now until I add support for these

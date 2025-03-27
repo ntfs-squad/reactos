@@ -226,7 +226,11 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
     PFileRecord CurrentFile;
     ULONGLONG CurrentFRN;
 
-    // DPRINT1("Looking for file: \"%S\"\n", Query);
+    if (!Query)
+    {
+        DPRINT1("INVESTIGATE ME: GetFileRecordFromQuery() called with NULL Query!\n");
+        return STATUS_INVALID_PARAMETER;
+    }
 
     // Let's start with the root directory, which is hardcoded.
     if (IsRootFile(Query))
@@ -253,7 +257,10 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
 
     QueryElementPtr = Query;
     QueryElementPtr = wcschr(QueryElementPtr, L'\\');
-    QueryElementPtr++;
+    if (QueryElementPtr)
+        QueryElementPtr++;
+    else
+        QueryElementPtr = Query;
 
     while(QueryElementPtr)
     {

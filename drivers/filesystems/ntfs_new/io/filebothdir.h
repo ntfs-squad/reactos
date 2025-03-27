@@ -36,7 +36,12 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
     Directory* FileDir;
     BOOLEAN ReturnSingleEntry, RestartScan;
 
-    ASSERT(FileCB);
+    if (!FileCB)
+    {
+        DPRINT1("INVESTIGATE ME: GetFileBothDirectoryInformation() called with NULL FileCB!\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
     FileDir = FileCB->FileDir;
     RestartScan = !!(IrpFlags & SL_RESTART_SCAN);
 

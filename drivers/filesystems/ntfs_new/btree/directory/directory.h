@@ -111,45 +111,4 @@ private:
     BOOLEAN
     IsLegal8Dot3ShortName(_In_ PWSTR Buffer,
                           _In_ USHORT Length);
-
-    // These functions were ported from the other driver. Will get reworked.
-    // ./oldbtreefuncs.cpp
-    PBTreeKey
-    CreateDummyKey(BOOLEAN HasChildNode);
-    NTSTATUS
-    CreateEmptyBTree(PBTree* NewTree);
-    PBTreeKey
-    CreateBTreeKeyFromFilename(ULONGLONG FileReference,
-                               PFileNameEx FileNameAttribute);
-    NTSTATUS
-    CreateIndexBufferFromBTreeNode(PBTreeNode Node,
-                                   ULONG BufferSize,
-                                   BOOLEAN HasChildren,
-                                   PIndexBuffer TargetIndexBuffer);
-    ULONG
-    GetSizeOfIndexEntries(PBTreeNode Node);
-    VOID
-    SetIndexEntryVCN(PIndexEntry IndexEntry, ULONGLONG VCN);
-    LONG
-    CompareTreeKeys(PBTreeKey Key1, PBTreeKey Key2, BOOLEAN CaseSensitive);
-    NTSTATUS
-    DemoteBTreeRoot();
-    NTSTATUS
-    SplitBTreeNode(PBTreeNode Node,
-                   PBTreeKey *MedianKey,
-                   PBTreeNode *NewRightHandSibling,
-                   BOOLEAN CaseSensitive);
-    NTSTATUS
-    NtfsInsertKey(ULONGLONG FileReference,
-                  PFileNameEx FileNameAttribute,
-                  PBTreeNode Node,
-                  BOOLEAN CaseSensitive,
-                  ULONG MaxIndexRootSize,
-                  ULONG IndexRecordSize,
-                  PBTreeKey *MedianKey,
-                  PBTreeNode *NewRightHandSibling);
-    NTSTATUS
-    CreateIndexRootFromBTree(ULONG MaxIndexSize,
-                             PIndexRootEx *IndexRoot,
-                             ULONG *Length);
 };

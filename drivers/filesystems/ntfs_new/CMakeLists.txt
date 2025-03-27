@@ -7,7 +7,6 @@ list(APPEND SOURCE
      btree/directory/editdir.cpp
      btree/directory/find.cpp
      btree/directory/get.cpp
-     btree/directory/oldbtreefuncs.cpp
      btree/directory/util.cpp
      filerecord/attributes/addattr.cpp
      filerecord/attributes/findattr.cpp
