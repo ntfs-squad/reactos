@@ -1,0 +1,200 @@
+/*
+ * PROJECT:     ReactOS Kernel
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     NTFS filesystem driver
+ * COPYRIGHT:   Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
+ *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
+ */
+
+#include "ntfspch.h"
+
+static
+NTSTATUS
+AddKeyToBothDirInfo(_In_     PBTreeKey Key,
+                    _In_opt_ PBTreeKey ShortNameKey,
+                    _In_     BOOLEAN IsLastEntry,
+                    _Inout_  PFILE_BOTH_DIR_INFORMATION Buffer,
+                    _Inout_  PULONG BufferLength,
+                    _Out_    PULONG EntryLength = NULL)
+{
+    PFileNameEx FileNameData;
+    ULONG EntrySize;
+
+    // Set the file name data pointer
+    FileNameData = GetFileName(Key);
+    EntrySize = ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) + GetWStrLength(FileNameData->NameLength));
+
+    if (*BufferLength < EntrySize)
+    {
+        // We will overrun the buffer if we continue
+        DPRINT1("Unable to add key to buffer: too small!\n");
+        return STATUS_BUFFER_OVERFLOW;
+    }
+
+    Buffer->FileIndex = 0; // Undefined for NTFS
+    Buffer->CreationTime.QuadPart = FileNameData->CreationTime;
+    Buffer->LastAccessTime.QuadPart = FileNameData->LastAccessTime;
+    Buffer->LastWriteTime.QuadPart = FileNameData->LastWriteTime;
+    Buffer->ChangeTime.QuadPart = FileNameData->ChangeTime;
+    Buffer->EndOfFile.QuadPart = FileNameData->DataSize;
+    Buffer->AllocationSize.QuadPart = FileNameData->AllocatedSize;
+    Buffer->FileAttributes = FileNameData->Flags;
+    Buffer->FileNameLength = GetWStrLength(FileNameData->NameLength);
+    Buffer->EaSize = FileNameData->Extended.EAInfo.PackedEASize;
+    RtlCopyMemory(Buffer->FileName,
+                  FileNameData->Name,
+                  GetWStrLength(FileNameData->NameLength));
+
+    // Mark file as folder if it is a directory
+    if (FileNameData->Flags & FN_DIRECTORY)
+        Buffer->FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+
+    // Let's get the short name
+    RtlZeroMemory(Buffer->ShortName, MAX_SHORTNAME_LENGTH * sizeof(WCHAR));
+
+    if (ShortNameKey)
+    {
+        FileNameData = GetFileName(ShortNameKey);
+        Buffer->ShortNameLength = GetWStrLength(FileNameData->NameLength);
+        RtlCopyMemory(Buffer->ShortName,
+                      FileNameData->Name,
+                      GetWStrLength(FileNameData->NameLength));
+
+    }
+
+    /* Set the entry size.
+     * Note: Entries in the buffer must be aligned to 8-byte boundaries
+     * See: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/270df317-9ba5-4ccb-ba00-8d22be139bc5
+     */
+    *BufferLength -= EntrySize;
+
+    // Set next entry offset
+    if (IsLastEntry)
+        Buffer->NextEntryOffset = 0;
+    else
+        Buffer->NextEntryOffset = EntrySize;
+
+    if (EntryLength)
+        *EntryLength = EntrySize;
+
+    return STATUS_SUCCESS;
+}
+
+BOOLEAN
+Directory::IsEligibleForFileDir(PBTreeKey Key,
+                                PUNICODE_STRING FileNameFilter)
+{
+    // Is this a dummy key?
+    if (IsLastEntry(Key))
+        return FALSE;
+
+    // Does this match the file name filter?
+    if (FileNameFilter
+        && !DoesFileNameMatch(FileNameFilter, Key))
+        return FALSE;
+
+    // Is this a super hidden metadata file (MFT file records 0-26)?
+    if (GetFRNFromFileRef(FileRef(Key)) <= 26
+        && !gShowMetadataFiles)
+        return FALSE;
+
+    // Is this a duplicated short name?
+    if (Key->Flags & DIR_KEY_8DOT3)
+        return FALSE;
+
+    return TRUE;
+}
+
+NTSTATUS
+Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
+                              _In_    BOOLEAN RestartScan,
+                              _In_    PUNICODE_STRING FileNameFilter,
+                              _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
+                              _Inout_ PULONG BufferLength)
+{
+    NTSTATUS Status;
+    ULONG EntrySize, TotalBufferLength;
+    PFILE_BOTH_DIR_INFORMATION PreviousBuffer;
+
+    EntrySize = 0;
+    PreviousBuffer = NULL;
+
+    if (!CurrentKey ||
+        IsEndOfNode(CurrentKey))
+    {
+        // We reached the end of the directory listing.
+        return STATUS_NO_MORE_FILES;
+    }
+
+    // Restart scan if requested.
+    if (RestartScan)
+        ResetCurrentKey();
+
+    TotalBufferLength = *BufferLength;
+
+    while (CurrentKey)
+    {
+        if (IsEligibleForFileDir(CurrentKey,
+                                 FileNameFilter))
+        {
+            // Add key to buffer
+            Status = AddKeyToBothDirInfo(CurrentKey,
+                                         GetShortNameKey(CurrentKey),
+                                         FALSE,
+                                         Buffer,
+                                         BufferLength,
+                                         &EntrySize);
+
+            if (Status == STATUS_BUFFER_OVERFLOW)
+            {
+                /* Writing this key will lead to a buffer overflow.
+                 * Terminate the last entry and return STATUS_SUCCESS.
+                 */
+                Status = STATUS_SUCCESS;
+                goto done;
+            }
+
+            if (!NT_SUCCESS(Status))
+            {
+                // Some other error.
+                DPRINT1("Failed to add key to buffer!\n");
+                __debugbreak();
+                goto done;
+            }
+
+            if (ReturnSingleEntry)
+            {
+                Buffer->NextEntryOffset = 0;
+                CurrentKey = GetNextKey(CurrentKey);
+                break;
+            }
+
+            // Adjust buffer
+            PreviousBuffer = Buffer;
+            Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Buffer + EntrySize);
+        }
+
+        CurrentKey = GetNextKey(CurrentKey);
+
+        if (!CurrentKey)
+        {
+            // TODO: Is there a better way?
+            if (TotalBufferLength == *BufferLength)
+            {
+                /* We've traversed the entire directory and the
+                 * buffer is empty. There are no files to return.
+                 */
+                return STATUS_NO_MORE_FILES;
+            }
+
+            goto done;
+        }
+    }
+
+done:
+    // Go back to previous entry and terminate it.
+    if (PreviousBuffer)
+        PreviousBuffer->NextEntryOffset = 0;
+
+    return Status;
+}

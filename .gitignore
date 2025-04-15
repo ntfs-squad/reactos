@@ -15,3 +15,7 @@ modules/[Aa][Hh][Kk]_[Tt]ests
 sdk/tools/winesync/winesync.cfg
 .cursor/cache/
 .cursor/logs/
+# For testing new NTFS driver against Win2k3 kernel
+modules/system32
+modules/drivers
+modules/config
