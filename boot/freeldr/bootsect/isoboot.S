@@ -138,9 +138,6 @@ relocated:
     cmp ax, HEX(AA55)
     jne .boot_freeldr
 
-    // Jump anyways
-    jmp .boot_setupldr
-
 #ifdef WAIT_FOR_KEY
     // We could either boot from the ReactOS medium or from hard disk. Let the user decide!
     // Display the 'Press key' message.
