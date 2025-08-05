@@ -118,6 +118,11 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     // Create file context block.
     FileCB = new(NonPagedPool) FileContextBlock();
     RtlZeroMemory(FileCB, sizeof(FileContextBlock));
+    
+    // Initialize the NT required FCB header and resources
+    FsRtlInitializeFileLock(&FileCB->FileLock, NULL, NULL);
+    ExInitializeResourceLite(&FileCB->MainResource);
+    ExInitializeResourceLite(&FileCB->PagingIoResource);
 
     // Set file name
     FileNameLength = IrpSp->FileObject->FileName.Length;

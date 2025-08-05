@@ -162,6 +162,159 @@ NtfsAcqReadAhead(PVOID Context,
 VOID NTAPI
 NtfsRelReadAhead(PVOID Context);
 
+// FastIo function declarations
+BOOLEAN NTAPI
+NtfsFastIoCheckIfPossible(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PLARGE_INTEGER FileOffset,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Wait,
+    _In_ ULONG LockKey,
+    _In_ BOOLEAN CheckForReadOperation,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoRead(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PLARGE_INTEGER FileOffset,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Wait,
+    _In_ ULONG LockKey,
+    _Out_ PVOID Buffer,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoWrite(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PLARGE_INTEGER FileOffset,
+    _In_ ULONG Length,
+    _In_ BOOLEAN Wait,
+    _In_ ULONG LockKey,
+    _In_ PVOID Buffer,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoQueryBasicInfo(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ BOOLEAN Wait,
+    _Out_ PFILE_BASIC_INFORMATION Buffer,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoQueryStandardInfo(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ BOOLEAN Wait,
+    _Out_ PFILE_STANDARD_INFORMATION Buffer,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoQueryNetworkOpenInfo(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ BOOLEAN Wait,
+    _Out_ PFILE_NETWORK_OPEN_INFORMATION Buffer,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoQueryDirectory(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ BOOLEAN Wait,
+    _In_ PVOID Buffer,
+    _In_ ULONG Length,
+    _In_ FILE_INFORMATION_CLASS FileInformationClass,
+    _In_ BOOLEAN ReturnSingleEntry,
+    _In_opt_ PUNICODE_STRING FileName,
+    _In_ BOOLEAN RestartScan,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoAcquireFile(
+    _In_ PFILE_OBJECT FileObject);
+
+BOOLEAN NTAPI
+NtfsFastIoReleaseFile(
+    _In_ PFILE_OBJECT FileObject);
+
+BOOLEAN NTAPI
+NtfsFastIoDetachDevice(
+    _In_ PDEVICE_OBJECT SourceDevice,
+    _In_ PDEVICE_OBJECT TargetDevice);
+
+BOOLEAN NTAPI
+NtfsFastIoQueryOpen(
+    _In_ PIRP Irp,
+    _Out_ PFILE_NETWORK_OPEN_INFORMATION NetworkInformation,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoPrepareMdlWrite(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PLARGE_INTEGER FileOffset,
+    _In_ ULONG Length,
+    _In_ ULONG LockKey,
+    _Out_ PMDL *MdlChain,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoMdlWriteComplete(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PLARGE_INTEGER FileOffset,
+    _In_ PMDL MdlChain,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoReadCompressed(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PLARGE_INTEGER FileOffset,
+    _In_ ULONG Length,
+    _In_ ULONG LockKey,
+    _Out_ PVOID Buffer,
+    _Out_ PMDL *MdlChain,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoWriteCompressed(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PLARGE_INTEGER FileOffset,
+    _In_ ULONG Length,
+    _In_ ULONG LockKey,
+    _In_ PVOID Buffer,
+    _Out_ PMDL *MdlChain,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoMdlRead(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PLARGE_INTEGER FileOffset,
+    _In_ ULONG Length,
+    _In_ ULONG LockKey,
+    _Out_ PMDL *MdlChain,
+    _Out_ PIO_STATUS_BLOCK IoStatus,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoMdlReadComplete(
+    _In_ PFILE_OBJECT FileObject,
+    _In_ PMDL MdlChain,
+    _In_ PDEVICE_OBJECT DeviceObject);
+
+BOOLEAN NTAPI
+NtfsFastIoAcquireFileForNtCreateSection(
+    _In_ PFILE_OBJECT FileObject);
+
+BOOLEAN NTAPI
+NtfsFastIoReleaseFileForNtCreateSection(
+    _In_ PFILE_OBJECT FileObject);
+
 // io/fsctrl
 _Requires_lock_held_(_Global_critical_region_)
 EXTERN_C

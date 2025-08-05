@@ -78,6 +78,20 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
 
     NtfsDiskFileSystemDeviceObject->Flags |= DO_DIRECT_IO;
 
+    // Initialize FastIo dispatch table
+    RtlZeroMemory(&FastIoDispatch, sizeof(FAST_IO_DISPATCH));
+    FastIoDispatch.SizeOfFastIoDispatch = sizeof(FAST_IO_DISPATCH);
+    FastIoDispatch.FastIoCheckIfPossible = NtfsFastIoCheckIfPossible;
+    FastIoDispatch.FastIoRead = NtfsFastIoRead;
+    FastIoDispatch.FastIoWrite = NtfsFastIoWrite;
+    FastIoDispatch.FastIoQueryBasicInfo = NtfsFastIoQueryBasicInfo;
+    FastIoDispatch.FastIoQueryStandardInfo = NtfsFastIoQueryStandardInfo;
+    FastIoDispatch.FastIoQueryNetworkOpenInfo = NtfsFastIoQueryNetworkOpenInfo;
+    FastIoDispatch.AcquireFileForNtCreateSection = (PFAST_IO_ACQUIRE_FILE)NtfsFastIoAcquireFileForNtCreateSection;
+    FastIoDispatch.ReleaseFileForNtCreateSection = (PFAST_IO_RELEASE_FILE)NtfsFastIoReleaseFileForNtCreateSection;
+    FastIoDispatch.FastIoDetachDevice = (PFAST_IO_DETACH_DEVICE)NtfsFastIoDetachDevice;
+    FastIoDispatch.FastIoQueryOpen = NtfsFastIoQueryOpen;
+
     // Get global driver settings from registry
     GetGlobalSettingsFromRegistry();
 
@@ -192,6 +206,11 @@ NtfsFsdCleanup(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     if (FileCB)
     {
+        // Clean up resources
+        ExDeleteResourceLite(&FileCB->MainResource);
+        ExDeleteResourceLite(&FileCB->PagingIoResource);
+        FsRtlUninitializeFileLock(&FileCB->FileLock);
+
         // Free BTree
         if (FileCB->FileDir)
             delete FileCB->FileDir;

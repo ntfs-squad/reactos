@@ -49,4 +49,11 @@ typedef struct _FCB
     // Consider moving, multiple files can point to the same stream in NTFS.
     PStreamContextBlock StreamCB;
 
+    // NT Required FCB Header - needed for proper resource management
+    FSRTL_COMMON_FCB_HEADER CommonFCBHeader;
+    SECTION_OBJECT_POINTERS SectionObjectPointers;
+    FILE_LOCK FileLock;
+    ERESOURCE MainResource;
+    ERESOURCE PagingIoResource;
+
 } FileContextBlock, *PFileContextBlock;

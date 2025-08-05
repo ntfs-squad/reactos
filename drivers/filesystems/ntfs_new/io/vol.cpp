@@ -9,6 +9,7 @@
 #include "vol.h"
 
 /* GLOBALS *****************************************************************/
+extern FAST_IO_DISPATCH FastIoDispatch;
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, NtfsFsdQueryVolumeInformation)
 #pragma alloc_text(PAGE, NtfsFsdSetVolumeInformation)
@@ -174,6 +175,9 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
 
     // Tell IO Manager to directly transfer data to FSDeviceObject.
     FSDeviceObject->Flags |= DO_BUFFERED_IO; // DO_DIRECT_IO;
+    
+    // Set up FastIo dispatch table for this volume
+    FSDeviceObject->DriverObject->FastIoDispatch = &FastIoDispatch;
 
     // Initialize Volume Context Block VolCB.
     VolCB = (PVolumeContextBlock)FSDeviceObject->DeviceExtension;
