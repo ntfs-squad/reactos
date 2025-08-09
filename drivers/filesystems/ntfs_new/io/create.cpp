@@ -94,19 +94,78 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             case FILE_CREATE:
             case FILE_OPEN_IF:
             case FILE_OVERWRITE_IF:
-                /* In these cases, create the file and open it.
-                 * Algorithm will probably be something like:
-                 *     - Call MFT to allocate a new file record.
-                 *     - Add $FILE_NAME attribute to parent directory tree.
-                 *     - Set new file record to CurrentFile to open it.
-                 * MFT will handle finding a free RecordID and calling LFS.
+                /* Minimal create support:
+                 * Build an in-memory file record with $STANDARD_INFORMATION and
+                 * empty resident $DATA. We do not yet persist to $MFT nor add
+                 * a directory entry. This enables handle-based I/O on new files.
                  */
-                DPRINT1("File creation not implemented! File: \"%S\"\n",
-                        FileObject->FileName.Buffer);
-                Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-                Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
-                IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-                return STATUS_NOT_IMPLEMENTED;
+                {
+                    // Allocate a new empty file record buffer
+                    CurrentFile = new(PagedPool, 'rftN') FileRecord(Volume);
+                    RtlZeroMemory(CurrentFile->Data, Volume->MFT->FileRecordSize);
+
+                    // Initialize FILE record header
+                    CurrentFile->Header->Header.TypeID[0] = 'F';
+                    CurrentFile->Header->Header.TypeID[1] = 'I';
+                    CurrentFile->Header->Header.TypeID[2] = 'L';
+                    CurrentFile->Header->Header.TypeID[3] = 'E';
+                    CurrentFile->Header->SequenceNumber = 1;
+                    CurrentFile->Header->HardLinkCount = 1;
+                    CurrentFile->Header->AttributeOffset = sizeof(FileRecordHeader);
+                    CurrentFile->Header->Flags = 0; // regular file
+                    CurrentFile->Header->AllocatedSize = Volume->MFT->FileRecordSize;
+                    CurrentFile->Header->BaseFileRecord = 0;
+                    CurrentFile->Header->NextAttributeID = 1;
+                    CurrentFile->Header->MFTRecordNumber = 0xFFFFFFFF; // sentinel: not on disk
+
+                    // Write $STANDARD_INFORMATION resident attribute
+                    PUCHAR attrPtr = CurrentFile->Data + CurrentFile->Header->AttributeOffset;
+                    PAttribute StdAttr = (PAttribute)attrPtr;
+                    RtlZeroMemory(StdAttr, sizeof(Attribute));
+                    StdAttr->AttributeType = TypeStandardInformation;
+                    StdAttr->IsNonResident = 0;
+                    StdAttr->NameLength = 0;
+                    StdAttr->NameOffset = 0;
+                    StdAttr->Resident.DataOffset = 0x18;
+                    StdAttr->Resident.DataLength = sizeof(StandardInformationEx);
+                    ULONG StdAttrLen = ROUND_UP(StdAttr->Resident.DataOffset + StdAttr->Resident.DataLength, 8);
+                    StdAttr->Length = StdAttrLen;
+
+                    PStandardInformationEx StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
+                    RtlZeroMemory(StdInfo, sizeof(StandardInformationEx));
+                    StdInfo->FilePermissions = FILE_PERM_ARCHIVE | FILE_PERM_NORMAL;
+
+                    // Advance pointer
+                    attrPtr += StdAttr->Length;
+
+                    // Write empty $DATA resident attribute
+                    PAttribute DataAttr = (PAttribute)attrPtr;
+                    RtlZeroMemory(DataAttr, sizeof(Attribute));
+                    DataAttr->AttributeType = TypeData;
+                    DataAttr->IsNonResident = 0;
+                    DataAttr->NameLength = 0;
+                    DataAttr->NameOffset = 0;
+                    DataAttr->Resident.DataOffset = 0x18;
+                    DataAttr->Resident.DataLength = 0;
+                    ULONG DataAttrLen = ROUND_UP(DataAttr->Resident.DataOffset + DataAttr->Resident.DataLength, 8);
+                    if (DataAttrLen == 0) DataAttrLen = 0x18; // minimal resident header size
+                    DataAttr->Length = DataAttrLen;
+
+                    attrPtr += DataAttr->Length;
+
+                    // End marker
+                    PAttribute EndAttr = (PAttribute)attrPtr;
+                    RtlZeroMemory(EndAttr, sizeof(Attribute));
+                    EndAttr->AttributeType = TypeAttributeEndMarker;
+                    EndAttr->Length = 0;
+
+                    // Finalize record size
+                    CurrentFile->Header->ActualSize = (ULONG)((ULONG_PTR)attrPtr - (ULONG_PTR)CurrentFile->Data);
+
+                    // Use this new record
+                    Status = STATUS_SUCCESS;
+                }
+                break;
                 break;
             case FILE_OPEN:
             case FILE_OVERWRITE:
