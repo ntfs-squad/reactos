@@ -70,15 +70,17 @@ AddStandardInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     StandardInfo->FileAttribute  = RA_METAFILES_ATTRIBUTES;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = NEXT_ATTRIBUTE(Attribute);
-    SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
+    {
+        PATTR_RECORD AttrEnd = (PATTR_RECORD)((ULONG_PTR)Attribute + ALIGN_UP_BY(Attribute->Length, ATTR_RECORD_ALIGNMENT));
+        SetFileRecordEnd(FileRecord, AttrEnd, FILE_RECORD_END);
+    }
 }
 
 VOID
 AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                      OUT PATTR_RECORD        Attribute,
                      IN  LPCWSTR             FileName,
-                     IN  DWORD32             MftRecordNumber)
+                     IN  DWORD32             ParentMftRecordNumber)
 {
     PFILENAME_ATTRIBUTE FileNameAttribute;
     LARGE_INTEGER       SystemTime;
@@ -102,9 +104,9 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
         ? FILE_TYPE_DIRECTORY
         : RA_METAFILES_ATTRIBUTES;
     
-    // Set reference to parent directory
-    FileNameAttribute->DirectoryFileReferenceNumber = MftRecordNumber;
-    FileNameAttribute->DirectoryFileReferenceNumber |= (ULONGLONG)METAFILE_ROOT << 48;
+    // Set reference to parent directory (MFT index and sequence). Use sequence 1 for our initial files.
+    FileNameAttribute->DirectoryFileReferenceNumber = ParentMftRecordNumber;
+    FileNameAttribute->DirectoryFileReferenceNumber |= (ULONGLONG)1 << 48;
 
     // Copy file name and save it length
     FileNameAttribute->NameLength = FileNameLength;
@@ -125,8 +127,10 @@ AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     Attribute->Resident.Flags = RA_INDEXED;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = NEXT_ATTRIBUTE(Attribute);
-    SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
+    {
+        PATTR_RECORD AttrEnd = (PATTR_RECORD)((ULONG_PTR)Attribute + ALIGN_UP_BY(Attribute->Length, ATTR_RECORD_ALIGNMENT));
+        SetFileRecordEnd(FileRecord, AttrEnd, FILE_RECORD_END);
+    }
 }
 
 VOID
@@ -146,8 +150,10 @@ AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     Attribute->NameOffset = RA_HEADER_LENGTH;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = NEXT_ATTRIBUTE(Attribute);
-    SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
+    {
+        PATTR_RECORD AttrEnd = (PATTR_RECORD)((ULONG_PTR)Attribute + ALIGN_UP_BY(Attribute->Length, ATTR_RECORD_ALIGNMENT));
+        SetFileRecordEnd(FileRecord, AttrEnd, FILE_RECORD_END);
+    }
 }
 
 static
@@ -159,11 +165,12 @@ AddNonResidentAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
                         IN  ULONG                   ClustersCount,
                         OPTIONAL IN ULONG           DataSize)
 {
-    ULONG LCN = BSWAP32(Address);
+    LONG LongLCN = (LONG)Address; // NTFS encodes LCN as a signed little-endian integer (relative possible later)
+    ULONG LCN = (ULONG)LongLCN;
     BYTE  LCNOffset;
     BYTE  LCNCutSize;
 
-    ULONG Clusters = BSWAP32(ClustersCount);
+    ULONG Clusters = ClustersCount;
     BYTE  ClustersOffset = RUN_LIST_ENTRY_HEADER_SIZE;
     BYTE  ClustersCutSize;
 
@@ -189,7 +196,9 @@ AddNonResidentAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
     Attribute->NonResident.DataSize        = !DataSize ? Attribute->NonResident.AllocatedSize : DataSize;
     Attribute->NonResident.CompressedSize  = !DataSize ? Attribute->NonResident.AllocatedSize : DataSize;
 
-    Attribute->Length = sizeof(ATTR_RECORD) + RUN_LIST_ENTRY_SIZE;
+    // We'll compute exact runlist size (entry + terminator) and then align the record length
+    // Reserve a small fixed buffer for zeroing, but use the actual used length for Attribute->Length
+    Attribute->Length = sizeof(ATTR_RECORD) + RUN_LIST_ENTRY_SIZE + 1; // temporary, will be aligned below
 
     // Setup run list entry
     RunListEntry = (PBYTE)((ULONG_PTR)Attribute + sizeof(ATTR_RECORD));
@@ -237,8 +246,8 @@ AddNonResidentAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
     // Calculate offsets
     LCNOffset = ClustersOffset + ClustersCutSize;
 
-    // Setup header
-    RunListEntry[0] = (LCNCutSize) << 4 | ClustersCutSize;
+    // Setup header (low nibble = cluster count size, high nibble = LCN size)
+    RunListEntry[0] = (LCNCutSize << 4) | ClustersCutSize;
 
     // Copy clusters count
     for (
@@ -247,22 +256,31 @@ AddNonResidentAttribute(OUT PFILE_RECORD_HEADER     FileRecord,
         RunListEntryOffset++
     )
     {
-        RunListEntry[RunListEntryOffset] = GET_BYTE_FROM_END(Clusters, RunListEntryOffset - ClustersOffset);
+        RunListEntry[RunListEntryOffset] = GET_BYTE(Clusters, RunListEntryOffset - ClustersOffset);
     }
 
-    // Copy LCN
+    // Copy LCN (signed little-endian)
     for (
         RunListEntryOffset = LCNOffset;
         RunListEntryOffset < LCNOffset + LCNCutSize;
         RunListEntryOffset++
     )
     {
-        RunListEntry[RunListEntryOffset] = GET_BYTE_FROM_END(LCN, RunListEntryOffset - LCNOffset);
+        RunListEntry[RunListEntryOffset] = GET_BYTE(LCN, RunListEntryOffset - LCNOffset);
+    // Add runlist terminator immediately after our single run
+    {
+        BYTE used = 1 /* header */ + ClustersCutSize + LCNCutSize;
+        RunListEntry[used] = 0x00;
+        Attribute->Length = sizeof(ATTR_RECORD) + used + 1; // include terminator
+        Attribute->Length = ALIGN_UP_BY(Attribute->Length, ATTR_RECORD_ALIGNMENT);
+    }
     }
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = NEXT_ATTRIBUTE(Attribute);
-    SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
+    {
+        PATTR_RECORD AttrEnd = (PATTR_RECORD)((ULONG_PTR)Attribute + ALIGN_UP_BY(Attribute->Length, ATTR_RECORD_ALIGNMENT));
+        SetFileRecordEnd(FileRecord, AttrEnd, FILE_RECORD_END);
+    }
 }
 
 VOID
@@ -308,8 +326,10 @@ AddEmptyVolumeNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     Attribute->NameOffset = RA_HEADER_LENGTH;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = NEXT_ATTRIBUTE(Attribute);
-    SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
+    {
+        PATTR_RECORD AttrEnd = (PATTR_RECORD)((ULONG_PTR)Attribute + ALIGN_UP_BY(Attribute->Length, ATTR_RECORD_ALIGNMENT));
+        SetFileRecordEnd(FileRecord, AttrEnd, FILE_RECORD_END);
+    }
 }
 
 VOID
@@ -339,8 +359,10 @@ AddVolumeInformationAttribute(OUT PFILE_RECORD_HEADER FileRecord,
     Attribute->Resident.Flags = RA_INDEXED;
 
     // Move the attribute-end and file-record-end markers to the end of the file record
-    Attribute = NEXT_ATTRIBUTE(Attribute);
-    SetFileRecordEnd(FileRecord, Attribute, Attribute->Length);
+    {
+        PATTR_RECORD AttrEnd = (PATTR_RECORD)((ULONG_PTR)Attribute + ALIGN_UP_BY(Attribute->Length, ATTR_RECORD_ALIGNMENT));
+        SetFileRecordEnd(FileRecord, AttrEnd, FILE_RECORD_END);
+    }
 }
 
 VOID

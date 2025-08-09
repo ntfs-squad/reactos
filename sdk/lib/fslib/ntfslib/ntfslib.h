@@ -36,7 +36,8 @@
 
 /* BYTES MACROSES ************************************************************/
 
-#define MB_TO_B(x) (x * 1024)
+// Convert megabytes to bytes
+#define MB_TO_B(x) ((ULONGLONG)(x) * 1024ULL * 1024ULL)
 
 #define GET_BYTE(val, n) (((val) >> (8*(n))) & 0xFF)
 
@@ -55,6 +56,12 @@
    (((val) <<  8) & 0x000000FF00000000) | (((val) << 24) & 0x0000FF0000000000) | \
    (((val) << 40) & 0x00FF000000000000) | (((val) << 56) & 0xFF00000000000000) )
 
+// Helpers
+#ifndef MAX
+#define MAX(a,b) (( (a) > (b) ) ? (a) : (b))
+#endif
+#define DIV_ROUND_UP(x,y) ( ((x) + ((y) - 1)) / (y) )
+
 
 /* DISK MACROSES *************************************************************/
 
@@ -64,9 +71,11 @@
 #define SECTORS_PER_CLUSTER (GetSectorsPerCluster())
 #define BYTES_PER_CLUSTER   ((ULONGLONG)BYTES_PER_SECTOR * (ULONGLONG)SECTORS_PER_CLUSTER)
 
-#define SECTORS_COUNT ( ((ULONGLONG)NtfsData.DiskGeometry->SectorsPerTrack)    * \
-                        ((ULONGLONG)NtfsData.DiskGeometry->TracksPerCylinder)  * \
-                        ((ULONGLONG)NtfsData.DiskGeometry->Cylinders.QuadPart) )
+// Total number of sectors on the volume (use device length, not geometry)
+#define SECTORS_COUNT ( ((ULONGLONG)NtfsData.LengthInformation->Length.QuadPart) / \
+                        ((ULONGLONG)BYTES_PER_SECTOR) )
+
+#define TOTAL_CLUSTERS   ( (ULONGLONG)(SECTORS_COUNT) / (ULONGLONG)(SECTORS_PER_CLUSTER) )
 
 #define IS_HARD_DRIVE (NtfsData.DiskGeometry->MediaType == FixedMedia)
 
@@ -78,16 +87,18 @@
 
 /* BOOT SECTOR DEFINES *******************************************************/
 
-#define BPB_HIDDEN_SECTORS  0x3F  // From WinXP
+// Default hidden sectors fallback (old MBR default is 63), overridden by real partition offset
+#define BPB_HIDDEN_SECTORS  0x3F
 
 #define OEM_ID              BSWAP64(0x4E54465320202020)
-#define EBPB_HEADER         BSWAP32(0x80008000)
+#define EBPB_HEADER         0x00000000
 #define BOOT_SECTOR_END     BSWAP16(0x55AA)
 
 
 /* MFT DEFINES ***************************************************************/
 
-#define MFT_ADDRESS         0x0C0000
+// Default starting LCN for $MFT is 0x0000000000000004 per NTFS on new volumes
+#define MFT_ADDRESS         0x00000004
 
 #define MFT_CLUSTERS_PER_RECORD        0xF6
 #define MFT_CLUSTERS_PER_INDEX_RECORD  0x01
@@ -100,7 +111,8 @@
 #define NTFS_MAJOR_VERSION 3
 #define NTFS_MINOR_VERSION 1
 
-#define FILE_RECORD_MAGIC  BSWAP32(0x46494C45)
+// 'FILE' magic in little-endian (bytes: 46 49 4C 45)
+#define FILE_RECORD_MAGIC  0x454C4946
 
 // The beginning and length of an attribute record are always aligned to an 8-byte boundary,
 // relative to the beginning of the file record.
@@ -146,7 +158,8 @@
 #define METAFILE_FIRST_USER_FILE  16
 
 #define MFT_DEFAULT_CLUSTERS_SIZE 8
-#define MFT_DEFAULT_RECORDS_COUNT (MFT_DEFAULT_CLUSTERS_SIZE * (BYTES_PER_CLUSTER / MFT_RECORD_SIZE))
+// Number of MFT records we initially reserve inside MFT_DEFAULT_CLUSTERS_SIZE clusters
+#define MFT_DEFAULT_RECORDS_COUNT MAX( ((MFT_DEFAULT_CLUSTERS_SIZE * BYTES_PER_CLUSTER) / MFT_RECORD_SIZE), 1 )
 
 #define MFT_BITMAP_SIZE    1 
 #define MFT_BITMAP_ADDRESS (MFT_ADDRESS - MFT_BITMAP_SIZE)
@@ -154,21 +167,29 @@
 #define RUN_LIST_ENTRY_HEADER_SIZE 1
 #define RUN_LIST_ENTRY_SIZE        8
 
-#define BOOT_SIZE    2
-#define BOOT_ADDRESS 0x00
+// $Boot must span the first 16 sectors of the volume
+#define BOOT_SECTORS   16
+#define BOOT_SIZE      DIV_ROUND_UP(BOOT_SECTORS, SECTORS_PER_CLUSTER) // in clusters
+#define BOOT_ADDRESS   0x00
 
 #define UPCASE_SIZE    32
-#define UPCASE_ADDRESS 0x03
+#define UPCASE_ADDRESS (LOGFILE_ADDRESS + LOGFILE_SIZE)
 
 #define ATTRDEF_SIZE    1
 #define ATTRDEF_ADDRESS (MFT_BITMAP_ADDRESS - ATTRDEF_SIZE)
 
 #define LOGFILE_SIZE    11000
-#define LOGFILE_ADDRESS (ATTRDEF_ADDRESS - LOGFILE_SIZE)
+#define LOGFILE_ADDRESS (MFT_ADDRESS + MFT_DEFAULT_CLUSTERS_SIZE)
 
-#define MFT_MIRR_SIZE    1
+// Number of clusters needed to store the first 4 MFT records
+#define MFT_MIRR_SIZE    DIV_ROUND_UP((MFT_MIRR_COUNT * MFT_RECORD_SIZE), BYTES_PER_CLUSTER)
 #define MFT_MIRR_ADDRESS (SECTORS_COUNT / SECTORS_PER_CLUSTER / 2)
 #define MFT_MIRR_COUNT   4
+
+// Volume bitmap placement and sizing
+#define VOLUME_BITMAP_ADDRESS   (UPCASE_ADDRESS + UPCASE_SIZE)
+#define VOLUME_BITMAP_BYTES     ( (ULONG)DIV_ROUND_UP(TOTAL_CLUSTERS, 8) )
+#define VOLUME_BITMAP_SIZE      ( (ULONG)DIV_ROUND_UP(VOLUME_BITMAP_BYTES, BYTES_PER_CLUSTER) )
 
 
 /* GLOBAL DATA ***************************************************************/
@@ -178,6 +199,7 @@ typedef struct _NtfsFormatData
     HANDLE                  DiskHandle;
     GET_LENGTH_INFORMATION* LengthInformation;
     PDISK_GEOMETRY          DiskGeometry;
+    DWORD32                 HiddenSectorsCount;
 } NtfsFormatData, *PNtfsFormatData;
 
 
@@ -403,7 +425,7 @@ VOID
 AddFileNameAttribute(OUT PFILE_RECORD_HEADER FileRecord,
                      OUT PATTR_RECORD        Attribute,
                      IN  LPCWSTR             FileName,
-                     IN  DWORD32             MftRecordNumber);
+                     IN  DWORD32             ParentMftRecordNumber);
 
 VOID
 AddEmptyDataAttribute(OUT PFILE_RECORD_HEADER FileRecord,

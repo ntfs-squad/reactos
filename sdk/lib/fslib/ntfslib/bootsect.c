@@ -31,7 +31,8 @@ static
 VOID
 FillOemId(OUT PBOOT_SECTOR BootSector)
 {
-    BootSector->OEMID.QuadPart = OEM_ID;
+    static const CHAR Oem[8] = { 'N','T','F','S',' ',' ',' ',' ' };
+    RtlCopyMemory(&BootSector->OEMID, Oem, sizeof(Oem));
 }
 
 static
@@ -43,11 +44,13 @@ FillBiosParametersBlock(OUT PBIOS_PARAMETERS_BLOCK BiosParametersBlock)
     BiosParametersBlock->BytesPerSector    = BYTES_PER_SECTOR;
     BiosParametersBlock->SectorsPerCluster = SECTORS_PER_CLUSTER;
 
-    BiosParametersBlock->MediaId = IS_HARD_DRIVE ? 0xF8 : 0x00;
+    BiosParametersBlock->MediaId = IS_HARD_DRIVE ? 0xF8 : 0xF0;
 
-    BiosParametersBlock->SectorsPerTrack    = SECTORS_PER_TRACK;
-    BiosParametersBlock->Heads              = DISK_HEADS;
-    BiosParametersBlock->HiddenSectorsCount = BPB_HIDDEN_SECTORS;
+    // Prefer standard INT13 translation geometry for hard drives (63/255)
+    BiosParametersBlock->SectorsPerTrack    = IS_HARD_DRIVE ? 63 : SECTORS_PER_TRACK;
+    BiosParametersBlock->Heads              = IS_HARD_DRIVE ? 255 : DISK_HEADS;
+    // Use detected partition start (hidden sectors) if available, else fallback
+    BiosParametersBlock->HiddenSectorsCount = NtfsData.HiddenSectorsCount ? NtfsData.HiddenSectorsCount : BPB_HIDDEN_SECTORS;
 }
 
 static
@@ -96,6 +99,9 @@ WriteBootSector()
     NTSTATUS        Status;
     IO_STATUS_BLOCK IoStatusBlock;
     PBOOT_SECTOR    BootSector;
+    LARGE_INTEGER   BackupOffset;
+    ULONG           Checksum = 0;
+    LARGE_INTEGER   ZeroOffset;
 
     BootSector = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(BOOT_SECTOR));
     if (!BootSector)
@@ -113,6 +119,24 @@ WriteBootSector()
 
     BootSector->EndSector = BOOT_SECTOR_END;
 
+    // Compute NTFS boot sector checksum: sum of all 32-bit values in first 0x200 bytes,
+    // skipping the checksum field itself at offset 0x50
+    {
+        PULONG ptr = (PULONG)BootSector;
+        SIZE_T count = (512 / sizeof(ULONG));
+        SIZE_T i;
+        for (i = 0; i < count; ++i)
+        {
+            SIZE_T byteOffset = i * sizeof(ULONG);
+            if (byteOffset == FIELD_OFFSET(BOOT_SECTOR, EBPB) + FIELD_OFFSET(EXTENDED_BIOS_PARAMETERS_BLOCK, Checksum))
+                continue;
+            Checksum += ptr[i];
+        }
+        BootSector->EBPB.Checksum = Checksum;
+    }
+
+    // Write primary boot sector at sector 0
+    ZeroOffset.QuadPart = 0;
     Status = NtWriteFile(NtfsData.DiskHandle,
                          NULL,
                          NULL,
@@ -120,13 +144,32 @@ WriteBootSector()
                          &IoStatusBlock,
                          BootSector,
                          sizeof(BOOT_SECTOR),
-                         0ULL,
+                         &ZeroOffset,
                          NULL);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("BootSector write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
     }
 
+    // Write NTFS backup boot sector at the last sector of the volume
+    BackupOffset.QuadPart = ((LONGLONG)SECTORS_COUNT - 1) * BYTES_PER_SECTOR;
+    Status = NtWriteFile(NtfsData.DiskHandle,
+                         NULL,
+                         NULL,
+                         NULL,
+                         &IoStatusBlock,
+                         BootSector,
+                         sizeof(BOOT_SECTOR),
+                         &BackupOffset,
+                         NULL);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Backup BootSector write failed. NtWriteFile() failed (Status %lx)\n", Status);
+        goto end;
+    }
+
+end:
     FREE(BootSector);
 
     return Status;

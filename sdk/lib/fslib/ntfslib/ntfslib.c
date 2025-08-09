@@ -139,6 +139,53 @@ NtfsFormat(
     NtfsData.DiskHandle = DiskHandle;
     NtfsData.DiskGeometry = &DiskGeometry;
     NtfsData.LengthInformation = &LengthInformation;
+    NtfsData.HiddenSectorsCount = 0;
+
+    // Try to discover real partition offset for HiddenSectors (BPB) via PARTITION_INFORMATION[_EX]
+    {
+        union {
+            PARTITION_INFORMATION         Mbr;
+            PARTITION_INFORMATION_EX      Ex;
+        } Part;
+
+        RtlZeroMemory(&Part, sizeof(Part));
+
+        // Prefer the extended query first
+        NTSTATUS PartSt = NtDeviceIoControlFile(DiskHandle,
+                                                NULL,
+                                                NULL,
+                                                NULL,
+                                                &Iosb,
+                                                IOCTL_DISK_GET_PARTITION_INFO_EX,
+                                                NULL,
+                                                0,
+                                                &Part.Ex,
+                                                sizeof(Part.Ex));
+        if (NT_SUCCESS(PartSt))
+        {
+            if (BYTES_PER_SECTOR)
+            {
+                NtfsData.HiddenSectorsCount = (DWORD32)(Part.Ex.StartingOffset.QuadPart / BYTES_PER_SECTOR);
+            }
+        }
+        else
+        {
+            PartSt = NtDeviceIoControlFile(DiskHandle,
+                                           NULL,
+                                           NULL,
+                                           NULL,
+                                           &Iosb,
+                                           IOCTL_DISK_GET_PARTITION_INFO,
+                                           NULL,
+                                           0,
+                                           &Part.Mbr,
+                                           sizeof(Part.Mbr));
+            if (NT_SUCCESS(PartSt) && BYTES_PER_SECTOR)
+            {
+                NtfsData.HiddenSectorsCount = (DWORD32)(Part.Mbr.StartingOffset.QuadPart / BYTES_PER_SECTOR);
+            }
+        }
+    }
 
     // Lock volume
     NtFsControlFile(DiskHandle, 
@@ -157,7 +204,6 @@ NtfsFormat(
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteBootSector() failed with status 0x%.08x\n", Status);
-        NtClose(DiskHandle);
         goto end;
     }
 
@@ -166,7 +212,6 @@ NtfsFormat(
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("WriteMetafiles() failed with status 0x%.08x\n", Status);
-        NtClose(DiskHandle);
         goto end;
     }
     
@@ -183,7 +228,7 @@ end:
     NtFsControlFile(DiskHandle, NULL, NULL, NULL, &Iosb, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0);
     NtFsControlFile(DiskHandle, NULL, NULL, NULL, &Iosb, FSCTL_UNLOCK_VOLUME, NULL, 0, NULL, 0);
 
-    // Clear memory
+    // Close volume handle
     NtClose(DiskHandle);
 
     // Update progress bar
@@ -193,7 +238,7 @@ end:
         Callback(DONE, 0, (PVOID)&success);
     }
 
-    return TRUE;
+    return NT_SUCCESS(Status);
 }
 
 BOOLEAN

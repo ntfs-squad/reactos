@@ -245,6 +245,23 @@ WriteMetafile(IN  PFILE_RECORD_HEADER      FileRecord,
         ((LONGLONG)MFT_ADDRESS * BYTES_PER_CLUSTER) +
         (LONGLONG)(FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
 
+    // Apply USA fixups to the record before writing
+    // Set USA number at UsaOffset (2 bytes) and replace the last two bytes of each sector with it.
+    {
+        USHORT* usa = (USHORT*)((ULONG_PTR)FileRecord + FileRecord->Header.UsaOffset);
+        USHORT usaNumber = (USHORT)NtGetTickCount();
+        USHORT sectors = FileRecord->Header.UsaCount - 1;
+        ULONG i;
+        *usa = usaNumber;
+        for (i = 0; i < sectors; ++i)
+        {
+            USHORT* sectorTail = (USHORT*)((ULONG_PTR)FileRecord + ((i + 1) * BYTES_PER_SECTOR) - sizeof(USHORT));
+            // Save tails in USA array, then stamp sector with USA number
+            usa[1 + i] = *sectorTail;
+            *sectorTail = usaNumber;
+        }
+    }
+
     return NtWriteFile(NtfsData.DiskHandle,
                        NULL,
                        NULL,
@@ -267,6 +284,21 @@ WriteMetafileMirror(IN  PFILE_RECORD_HEADER      FileRecord,
     Offset.QuadPart =
         ((LONGLONG)MFT_MIRR_ADDRESS * BYTES_PER_CLUSTER) +
         (LONGLONG)(FileRecord->MFTRecordNumber * MFT_RECORD_SIZE);
+
+    // Apply USA fixups to the record before writing
+    {
+        USHORT* usa = (USHORT*)((ULONG_PTR)FileRecord + FileRecord->Header.UsaOffset);
+        USHORT usaNumber = (USHORT)NtGetTickCount();
+        USHORT sectors = FileRecord->Header.UsaCount - 1;
+        ULONG i;
+        *usa = usaNumber;
+        for (i = 0; i < sectors; ++i)
+        {
+            USHORT* sectorTail = (USHORT*)((ULONG_PTR)FileRecord + ((i + 1) * BYTES_PER_SECTOR) - sizeof(USHORT));
+            usa[1 + i] = *sectorTail;
+            *sectorTail = usaNumber;
+        }
+    }
 
     return NtWriteFile(NtfsData.DiskHandle,
                        NULL,
@@ -321,7 +353,7 @@ NtfsCreateBlankFileRecord(IN  DWORD32       MftRecordNumber,
 
     // $FILE_NAME
     (*NextAttribute) = NEXT_ATTRIBUTE(*NextAttribute);
-    AddFileNameAttribute(FileRecord, *NextAttribute, METAFILES[MftRecordNumber].Name, MftRecordNumber);
+    AddFileNameAttribute(FileRecord, *NextAttribute, METAFILES[MftRecordNumber].Name, METAFILE_ROOT);
 
     (*NextAttribute) = NEXT_ATTRIBUTE(*NextAttribute);
 
@@ -510,8 +542,6 @@ static
 PFILE_RECORD_HEADER
 CreateRoot()
 {
-    // FIXME!
-
     PFILE_RECORD_HEADER FileRecord;
     PATTR_RECORD   Attribute = NULL;
 
@@ -523,14 +553,11 @@ CreateRoot()
         return NULL;
     }
 
-    // $INDEX_ROOT [$I30]
-    AddIndexRoot(FileRecord, Attribute);
+    // Mark as directory
+    FileRecord->Flags |= MFT_RECORD_IS_DIRECTORY;
 
-    // $INDEX_ALLOCATION
-    Attribute = NEXT_ATTRIBUTE(Attribute);
-    AddIndexAllocation(FileRecord, Attribute);
-
-    // TODO: $BITMAP
+    // For now, avoid creating incomplete index attributes to keep on-disk layout valid
+    AddEmptyDataAttribute(FileRecord, Attribute);
 
     return FileRecord;
 }
@@ -549,7 +576,12 @@ CreateBitmap()
         return NULL;
     }
 
-    // TODO: $DATA
+    // Non-resident $DATA for volume bitmap
+    AddNonResidentDataAttribute(FileRecord,
+                                Attribute,
+                                VOLUME_BITMAP_ADDRESS,
+                                VOLUME_BITMAP_SIZE,
+                                VOLUME_BITMAP_BYTES);
 
     return FileRecord;
 }
@@ -804,7 +836,56 @@ static NTSTATUS WriteAttributesTable()
 
 static NTSTATUS WriteBitmap()
 {
-    return STATUS_SUCCESS;
+    PBYTE Data = NULL;
+    LARGE_INTEGER Offset;
+    ULONG Bytes = VOLUME_BITMAP_BYTES;
+
+    NTSTATUS Status = STATUS_SUCCESS;
+    IO_STATUS_BLOCK IoStatusBlock;
+
+    // Allocate and clear the bitmap
+    Data = RtlAllocateHeap(RtlGetProcessHeap(), 0, VOLUME_BITMAP_SIZE * BYTES_PER_CLUSTER);
+    if (!Data)
+    {
+        DPRINT1("ERROR: Unable to allocate memory for volume bitmap!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    RtlZeroMemory(Data, VOLUME_BITMAP_SIZE * BYTES_PER_CLUSTER);
+
+    // Mark clusters used by system files at the beginning of the volume as allocated.
+    // We'll conservatively mark everything from LCN 0 up to the end of our last placed metafile ($Bitmap itself) as used.
+    {
+        ULONGLONG firstFreeLCN = VOLUME_BITMAP_ADDRESS + VOLUME_BITMAP_SIZE; // clusters after $Bitmap
+        ULONGLONG usedClusters = firstFreeLCN; // LCNs [0, firstFreeLCN)
+        ULONGLONG i;
+        for (i = 0; i < usedClusters; ++i)
+        {
+            ULONGLONG byteIndex = i >> 3;
+            BYTE bitMask = (BYTE)(1u << (i & 7));
+            if (byteIndex < (ULONGLONG)Bytes)
+                Data[byteIndex] |= bitMask;
+        }
+    }
+
+    // Write the bitmap to disk at VOLUME_BITMAP_ADDRESS
+    Offset.QuadPart = VOLUME_BITMAP_ADDRESS * BYTES_PER_CLUSTER;
+    Status = NtWriteFile(NtfsData.DiskHandle,
+                         NULL,
+                         NULL,
+                         NULL,
+                         &IoStatusBlock,
+                         Data,
+                         VOLUME_BITMAP_SIZE * BYTES_PER_CLUSTER,
+                         &Offset,
+                         NULL);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("ERROR: Unable to write volume bitmap to disk! NtWriteFile() failed (Status %lx)\n", Status);
+    }
+
+    FREE(Data);
+    return Status;
 }
 
 static NTSTATUS WriteUpCaseTable()
