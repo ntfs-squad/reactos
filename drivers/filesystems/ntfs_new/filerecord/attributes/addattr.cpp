@@ -32,6 +32,11 @@ FileRecord::UpdateResidentData(_In_ PAttribute TargetAttribute,
                                _In_ ULONGLONG  Offset)
 {
     PUCHAR EndOfFileRecord;
+    PUCHAR DataStart;
+    ULONGLONG oldDataLen;
+    ULONGLONG newDataEnd;
+    ULONG newAttrSizeAligned;
+    ULONG delta;
 
     /* TODO: Determine if the attribute needs to be made non-resident.
      *
@@ -46,32 +51,54 @@ FileRecord::UpdateResidentData(_In_ PAttribute TargetAttribute,
     /* If there is not enough room for the new attribute data, return
      * STATUS_BUFFER_TOO_SMALL.
      */
-    if (MustPromoteToNonResident(TargetAttribute, (Offset + *Length)))
+    newDataEnd = Offset + *Length;
+    if (MustPromoteToNonResident(TargetAttribute, (ULONG)newDataEnd))
         return STATUS_BUFFER_TOO_SMALL;
 
-    // TODO: Implement offsets
-    ASSERT(Offset == 0);
+    // Compute pointers and sizes
+    DataStart = (PUCHAR)TargetAttribute + TargetAttribute->Resident.DataOffset;
+    oldDataLen = TargetAttribute->Resident.DataLength;
 
     // Find the end of the file record.
     EndOfFileRecord = Data + Header->ActualSize;
 
-    // Adjust length of the file record
-    Header->ActualSize = NewRecordSize(TargetAttribute,
-                                       *Length);
+    // Grow attribute if needed (taking 8-byte alignment into account)
+    newAttrSizeAligned = UpdatedAttributeSize(TargetAttribute, (ULONG)newDataEnd);
+    if (newAttrSizeAligned > TargetAttribute->Length)
+    {
+        delta = newAttrSizeAligned - TargetAttribute->Length;
+        // Move the attribute tail forward to make room for the growth
+        RtlMoveMemory((PUCHAR)TargetAttribute + TargetAttribute->Length + delta,
+                      (PUCHAR)TargetAttribute + TargetAttribute->Length,
+                      (SIZE_T)(EndOfFileRecord - ((PUCHAR)TargetAttribute + TargetAttribute->Length)));
 
-    // Adjust length of the attribute data
-    TargetAttribute->Length = UpdatedAttributeSize(TargetAttribute, *Length);
-    TargetAttribute->Resident.DataLength = *Length;
+        // Update record and attribute sizes
+        Header->ActualSize += delta;
+        TargetAttribute->Length = newAttrSizeAligned;
+        TargetAttribute->Resident.DataLength = (ULONG)newDataEnd;
 
-    // Move the attribute data after the target attribute to where it needs to go
-    RtlMoveMemory(NewAttributeEndPtr(TargetAttribute, *Length),
-                  (PUCHAR)TargetAttribute + TargetAttribute->Length,
-                  (EndOfFileRecord - (PUCHAR)TargetAttribute - TargetAttribute->Length));
+        // Zero-fill any gap between old end and the write offset
+        if (Offset > oldDataLen)
+        {
+            RtlZeroMemory(DataStart + oldDataLen, (SIZE_T)(Offset - oldDataLen));
+        }
+    }
+    else
+    {
+        // Pure overwrite within existing size; only data length may increase (without alignment growth)
+        if (newDataEnd > oldDataLen)
+        {
+            // Zero-fill any gap between old end and the write offset
+            if (Offset > oldDataLen)
+            {
+                RtlZeroMemory(DataStart + oldDataLen, (SIZE_T)(Offset - oldDataLen));
+            }
+            TargetAttribute->Resident.DataLength = (ULONG)newDataEnd;
+        }
+    }
 
-    // Copy the buffer contents into the current attribute
-    RtlCopyMemory((PUCHAR)TargetAttribute + TargetAttribute->Resident.DataOffset,
-                  Buffer,
-                  *Length);
+    // Copy the buffer contents at the requested offset
+    RtlCopyMemory(DataStart + Offset, Buffer, *Length);
 
     return STATUS_SUCCESS;
 }
