@@ -177,7 +177,7 @@
 
 /* GLOBAL DATA ***************************************************************/
 
-static struct
+struct
 {
     HANDLE                  DiskHandle;
     GET_LENGTH_INFORMATION* LengthInformation;
