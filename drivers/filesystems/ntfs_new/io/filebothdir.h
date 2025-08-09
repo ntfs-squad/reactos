@@ -13,7 +13,8 @@ inline
 BOOLEAN
 ContainsWildcard(PUNICODE_STRING String)
 {
-    for (USHORT i = 0; i < String->Length; i++)
+    USHORT charCount = (USHORT)(String->Length / sizeof(WCHAR));
+    for (USHORT i = 0; i < charCount; i++)
     {
         if (String->Buffer[i] == L'*'    ||
             String->Buffer[i] == L'?'    ||

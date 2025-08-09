@@ -110,9 +110,13 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
     ULONG BytesToCopy;
     size_t FileNameInfoSize = sizeof(FILE_NAME_INFORMATION);
 
-    // If buffer can't hold the File Name Information struct, fail.
+    // If buffer can't hold the File Name Information struct, fail and
+    // report the required size back to caller.
     if (*Length < FileNameInfoSize)
-        return STATUS_BUFFER_TOO_SMALL;
+    {
+        *Length = (ULONG)(FileNameInfoSize + FileCB->FileName.Length);
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
 
     // Save file name length, and as much file len, as buffer length allows.
     Buffer->FileNameLength = FileCB->FileName.Length;
@@ -120,10 +124,8 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
     // TODO: Determine if we need this
     if (*Length < Buffer->FileNameLength + FileNameInfoSize)
     {
-        // The buffer isn't big enough. Fill what you can.
-        BytesToCopy = *Length - FileNameInfoSize;
-        RtlCopyMemory(Buffer->FileName, FileCB->FileName.Buffer, BytesToCopy);
-        *Length = 0;
+        // The buffer isn't big enough. Report required size.
+        *Length = (ULONG)(FileNameInfoSize + Buffer->FileNameLength);
         return STATUS_BUFFER_OVERFLOW;
     }
 
