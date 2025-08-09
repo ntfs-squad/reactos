@@ -45,6 +45,8 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         /* DeviceObject represents FileSystem instead of logical volume */
         DPRINT1("Opening file system\n");
         Irp->IoStatus.Information = FILE_OPENED;
+        Irp->IoStatus.Status = STATUS_SUCCESS;
+        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
         return STATUS_SUCCESS;
     }
 
@@ -102,6 +104,8 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                 DPRINT1("File creation not implemented! File: \"%S\"\n",
                         FileObject->FileName.Buffer);
                 Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
+                IoCompleteRequest(Irp, IO_DISK_INCREMENT);
                 return STATUS_NOT_IMPLEMENTED;
                 break;
             case FILE_OPEN:
@@ -109,6 +113,8 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             default:
                 // In these cases, return an error.
                 Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
+                IoCompleteRequest(Irp, IO_DISK_INCREMENT);
                 return STATUS_INVALID_PARAMETER;
                 break;
         }
@@ -123,6 +129,11 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     FsRtlInitializeFileLock(&FileCB->FileLock, NULL, NULL);
     ExInitializeResourceLite(&FileCB->MainResource);
     ExInitializeResourceLite(&FileCB->PagingIoResource);
+    ExInitializeFastMutex(&FileCB->HeaderMutex);
+    FsRtlSetupAdvancedHeader(&FileCB->CommonFCBHeader, &FileCB->HeaderMutex);
+    FileCB->CommonFCBHeader.Resource = &FileCB->MainResource;
+    FileCB->CommonFCBHeader.PagingIoResource = &FileCB->PagingIoResource;
+    FileCB->CommonFCBHeader.IsFastIoPossible = FastIoIsPossible;
 
     // Set file name
     FileNameLength = IrpSp->FileObject->FileName.Length;
@@ -145,6 +156,8 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         DPRINT1("Failed to get ADS preference! Aborting...\n");
         delete FileCB;
         Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+        Irp->IoStatus.Status = Status;
+        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
         return Status;
     }
 
@@ -175,9 +188,62 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         }
     }
 
+    // Initialize cache map on first open when we have valid sizes
+    {
+        // Use the CommonFCBHeader fields as the canonical CC_FILE_SIZES storage
+        PCC_FILE_SIZES FileSizes = (PCC_FILE_SIZES)&FileCB->CommonFCBHeader.AllocationSize;
+        // Initialize the common header sizes from attributes
+        PAttribute DataAttr = CurrentFile->GetAttribute(TypeData, NULL);
+        if (DataAttr)
+        {
+            if (DataAttr->IsNonResident)
+            {
+                FileCB->CommonFCBHeader.AllocationSize.QuadPart = DataAttr->NonResident.AllocatedSize;
+                FileCB->CommonFCBHeader.FileSize.QuadPart       = DataAttr->NonResident.DataSize;
+                FileCB->CommonFCBHeader.ValidDataLength.QuadPart= DataAttr->NonResident.InitalizedDataSize;
+            }
+            else
+            {
+                FileCB->CommonFCBHeader.AllocationSize.QuadPart = 0;
+                FileCB->CommonFCBHeader.FileSize.QuadPart       = DataAttr->Resident.DataLength;
+                FileCB->CommonFCBHeader.ValidDataLength.QuadPart= DataAttr->Resident.DataLength;
+            }
+        }
+        else
+        {
+            FileCB->CommonFCBHeader.AllocationSize.QuadPart = 0;
+            FileCB->CommonFCBHeader.FileSize.QuadPart       = 0;
+            FileCB->CommonFCBHeader.ValidDataLength.QuadPart= 0;
+        }
+
+        // Set SectionObjectPointers on FILE_OBJECT and initialize cache map
+        FileObject->SectionObjectPointer = &FileCB->SectionObjectPointers;
+        RtlZeroMemory(&FileCB->SectionObjectPointers, sizeof(SECTION_OBJECT_POINTERS));
+
+        // Build callbacks for Cache Manager
+        CACHE_MANAGER_CALLBACKS Callbacks = {0};
+        Callbacks.AcquireForLazyWrite  = NtfsAcqLazyWrite;
+        Callbacks.ReleaseFromLazyWrite = NtfsRelLazyWrite;
+        Callbacks.AcquireForReadAhead  = NtfsAcqReadAhead;
+        Callbacks.ReleaseFromReadAhead = NtfsRelReadAhead;
+
+        if (FileObject->PrivateCacheMap == NULL)
+        {
+            CcInitializeCacheMap(FileObject,
+                                 FileSizes,
+                                 FALSE,
+                                 &Callbacks,
+                                 FileCB);
+            CcSetFileSizes(FileObject, FileSizes);
+            CcSetReadAheadGranularity(FileObject, 0x10000);
+            FileObject->Flags |= FO_CACHE_SUPPORTED;
+        }
+    }
+
     // Set FsContext to the file context block and open file.
     FileObject->FsContext = FileCB;
     Irp->IoStatus.Information = FILE_OPENED;
-
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return STATUS_SUCCESS;
 }

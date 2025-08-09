@@ -42,6 +42,9 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (!FileCB)
     {
         DPRINT1("INVESTIGATE ME: NtfsFsdRead() called with NULL FileCB!\n");
+        Irp->IoStatus.Information = 0;
+        Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
+        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -53,6 +56,9 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         if (!StdAttr || StdAttr->IsNonResident)
         {
             DPRINT1("NtfsFsdRead(): Missing or invalid $STANDARD_INFORMATION attribute!\n");
+            Irp->IoStatus.Information = 0;
+            Irp->IoStatus.Status = STATUS_FILE_CORRUPT_ERROR;
+            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
             return STATUS_FILE_CORRUPT_ERROR;
         }
         // Validate resident data window
@@ -60,6 +66,9 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             (StdAttr->Resident.DataOffset + StdAttr->Resident.DataLength) > StdAttr->Length)
         {
             DPRINT1("NtfsFsdRead(): Corrupt $STANDARD_INFORMATION resident layout!\n");
+            Irp->IoStatus.Information = 0;
+            Irp->IoStatus.Status = STATUS_FILE_CORRUPT_ERROR;
+            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
             return STATUS_FILE_CORRUPT_ERROR;
         }
         StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
@@ -86,6 +95,7 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     {
         // If we aren't reading anything, don't read anything.
         Status = STATUS_SUCCESS;
+        
     }
 
     if (NT_SUCCESS(Status))
@@ -101,8 +111,10 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     else
     {
-        Irp->IoStatus.Information = NULL;
+        Irp->IoStatus.Information = 0;
     }
 
+    Irp->IoStatus.Status = Status;
+    IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return Status;
 }

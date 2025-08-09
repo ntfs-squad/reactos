@@ -47,6 +47,12 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         PFileContextBlock FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
         if (FileCB)
         {
+            // Uninitialize cache map if present
+            if (IrpSp->FileObject->PrivateCacheMap)
+            {
+                CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);
+            }
+
             ExDeleteResourceLite(&FileCB->MainResource);
             ExDeleteResourceLite(&FileCB->PagingIoResource);
             FsRtlUninitializeFileLock(&FileCB->FileLock);

@@ -49,8 +49,11 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (Volume->IsReadOnly)
     {
         // Disk is read-only. Don't try to write anything.
-        Irp->IoStatus.Information = NULL;
-        return STATUS_INVALID_DEVICE_REQUEST;
+        Irp->IoStatus.Information = 0;
+        Status = STATUS_INVALID_DEVICE_REQUEST;
+        Irp->IoStatus.Status = Status;
+        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+        return Status;
     }
 
     // Sometimes the file context block is still available, and sometimes it's not.
@@ -76,6 +79,9 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("Unable to find file record!\n");
+            Irp->IoStatus.Information = 0;
+            Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
+            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
             return STATUS_INVALID_PARAMETER;
         }
 
@@ -87,6 +93,9 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         {
             DPRINT1("Unable to find ADS preferences!\n");
             delete FileRec;
+            Irp->IoStatus.Information = 0;
+            Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
+            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
             return STATUS_INVALID_PARAMETER;
         }
     }
@@ -107,11 +116,12 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
         Irp->IoStatus.Information = Length;
     }
-
     else
     {
-        Irp->IoStatus.Information = NULL;
+        Irp->IoStatus.Information = 0;
     }
 
+    Irp->IoStatus.Status = Status;
+    IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return Status;
 }

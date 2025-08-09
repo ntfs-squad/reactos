@@ -173,8 +173,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     if (!NT_SUCCESS(Status))
         __debugbreak();
 
-    // Tell IO Manager to directly transfer data to FSDeviceObject.
-    FSDeviceObject->Flags |= DO_BUFFERED_IO; // DO_DIRECT_IO;
+    // Do not force buffered or direct I/O at FS level; leave to I/O manager/CC
     
     // Set up FastIo dispatch table for this volume
     FSDeviceObject->DriverObject->FastIoDispatch = &FastIoDispatch;

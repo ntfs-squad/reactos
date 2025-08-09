@@ -76,12 +76,14 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
     DriverObject->MajorFunction[IRP_MJ_SHUTDOWN]                 = NtfsFsdShutdown;
     //DriverObject->MajorFunction[IRP_MJ_PNP]                      = NtfsFsdPnp;
 
-    NtfsDiskFileSystemDeviceObject->Flags |= DO_DIRECT_IO;
+    // Do not set DO_DIRECT_IO/DO_BUFFERED_IO flags on the FS control device
+    // The I/O manager and Cache Manager will decide buffering for file I/O
 
     // Initialize FastIo dispatch table
     RtlZeroMemory(&FastIoDispatch, sizeof(FAST_IO_DISPATCH));
     FastIoDispatch.SizeOfFastIoDispatch = sizeof(FAST_IO_DISPATCH);
     FastIoDispatch.FastIoCheckIfPossible = NtfsFastIoCheckIfPossible;
+    // Defer to CopyRead/CopyWrite if we later support it, for now return FALSE
     FastIoDispatch.FastIoRead = NtfsFastIoRead;
     FastIoDispatch.FastIoWrite = NtfsFastIoWrite;
     FastIoDispatch.FastIoQueryBasicInfo = NtfsFastIoQueryBasicInfo;
@@ -91,6 +93,9 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
     FastIoDispatch.ReleaseFileForNtCreateSection = (PFAST_IO_RELEASE_FILE)NtfsFastIoReleaseFileForNtCreateSection;
     FastIoDispatch.FastIoDetachDevice = (PFAST_IO_DETACH_DEVICE)NtfsFastIoDetachDevice;
     FastIoDispatch.FastIoQueryOpen = NtfsFastIoQueryOpen;
+
+    // Register Fast I/O dispatch at driver level so all created FS device objects inherit it
+    DriverObject->FastIoDispatch = &FastIoDispatch;
 
     // Get global driver settings from registry
     GetGlobalSettingsFromRegistry();

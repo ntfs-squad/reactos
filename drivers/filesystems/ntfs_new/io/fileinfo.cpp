@@ -57,7 +57,7 @@ NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
     }
 
     FileObject->SectionObjectPointer = &(FileCB->StreamCB->SectionObjectPointers);
-    SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+    SystemBuffer = GetBuffer(Irp);
     BufferLength = IoStack->Parameters.QueryFile.Length;
 
     switch (FileInfoRequest)
@@ -110,6 +110,7 @@ Done:
         Irp->IoStatus.Information = 0;
     }
 
+    IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return Status;
 }
 
@@ -154,10 +155,17 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     FileCB = (PFileContextBlock)(IrpSp->FileObject->FsContext);
     VolCB = (PVolumeContextBlock)(VolumeDeviceObject->DeviceExtension);
-    SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+    SystemBuffer = GetBuffer(Irp);
     BufferLength = IrpSp->Parameters.QueryDirectory.Length;
 
-    ASSERT(SystemBuffer);
+    if (!SystemBuffer)
+    {
+        Status = STATUS_INVALID_USER_BUFFER;
+        Irp->IoStatus.Information = 0;
+        Irp->IoStatus.Status = Status;
+        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+        return Status;
+    }
 
     if (IrpSp->MinorFunction == IRP_MN_QUERY_DIRECTORY)
     {
@@ -223,5 +231,7 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         Irp->IoStatus.Information = 0;
     }
 
+    Irp->IoStatus.Status = Status;
+    IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return Status;
 }

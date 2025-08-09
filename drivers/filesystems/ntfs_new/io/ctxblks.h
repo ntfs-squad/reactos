@@ -55,5 +55,6 @@ typedef struct _FCB
     FILE_LOCK FileLock;
     ERESOURCE MainResource;
     ERESOURCE PagingIoResource;
+    FAST_MUTEX HeaderMutex;
 
 } FileContextBlock, *PFileContextBlock;
