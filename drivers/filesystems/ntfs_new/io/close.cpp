@@ -41,9 +41,32 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         return STATUS_SUCCESS;
     }
 
-    /* TODO: If cleanup frees memory for the file and flushes everything
-     * to disk, what else do we need to do here?
-     */
+    /* Perform final teardown of the file object's context. */
+    {
+        PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+        PFileContextBlock FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
+        if (FileCB)
+        {
+            ExDeleteResourceLite(&FileCB->MainResource);
+            ExDeleteResourceLite(&FileCB->PagingIoResource);
+            FsRtlUninitializeFileLock(&FileCB->FileLock);
+
+            if (FileCB->FileDir)
+                delete FileCB->FileDir;
+
+            if (FileCB->FileRec)
+                delete FileCB->FileRec;
+
+            if (FileCB->StreamCB)
+                delete FileCB->StreamCB;
+
+            if (FileCB->FileName.Buffer)
+                delete FileCB->FileName.Buffer;
+
+            delete FileCB;
+            IrpSp->FileObject->FsContext = NULL;
+        }
+    }
 
     Irp->IoStatus.Information = STATUS_SUCCESS;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);

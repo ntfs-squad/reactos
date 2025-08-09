@@ -204,32 +204,10 @@ NtfsFsdCleanup(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
 
-    if (FileCB)
-    {
-        // Clean up resources
-        ExDeleteResourceLite(&FileCB->MainResource);
-        ExDeleteResourceLite(&FileCB->PagingIoResource);
-        FsRtlUninitializeFileLock(&FileCB->FileLock);
-
-        // Free BTree
-        if (FileCB->FileDir)
-            delete FileCB->FileDir;
-
-        // Free file record
-        if (FileCB->FileRec)
-            delete FileCB->FileRec;
-
-        // Free the stream context block
-        if (FileCB->StreamCB)
-            delete FileCB->StreamCB;
-
-        // Free FileNameBuffer
-        if (FileCB->FileName.Buffer)
-            delete FileCB->FileName.Buffer;
-
-        // Free the file context block
-        delete FileCB;
-    }
+    // Do not free the FCB/stream structures here. Cleanup is called when the
+    // last handle is closed, but the file object may still be referenced by
+    // the cache/section. The actual deallocation is done on IRP_MJ_CLOSE.
+    UNREFERENCED_PARAMETER(FileCB);
 
     // TODO: How do we determine when the volume needs to get cleaned up?
 

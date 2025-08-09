@@ -17,7 +17,13 @@ FileRecord::GetAttribute(_In_     AttributeType Type,
 {
     ULONG DataPtr;
     PAttribute TestAttr;
-    UINT NameLength;
+    UINT NameLength = 0;
+
+    // Validate header before using it
+    if (!Header || !Data)
+        return NULL;
+
+    // Basic sanity: ensure pointers exist; detailed signature checks happen at load time
 
     if (Name)
         NameLength = wcslen(Name) * sizeof(WCHAR);
@@ -25,10 +31,31 @@ FileRecord::GetAttribute(_In_     AttributeType Type,
     // Progress data pointer to attribute section.
     DataPtr = Header->AttributeOffset;
 
-    while (DataPtr < Header->ActualSize)
+    // Ensure AttributeOffset is inside the record bounds
+    if (Header->AttributeOffset < sizeof(FileRecordHeader) ||
+        Header->AttributeOffset >= Header->ActualSize ||
+        Header->ActualSize > Header->AllocatedSize)
+    {
+        return NULL;
+    }
+
+    while (DataPtr + 0x10 /* minimum fixed header */ <= Header->ActualSize)
     {
         // Test current attribute
         TestAttr = (PAttribute)(&Data[DataPtr]);
+
+        // Guard against corrupted attributes and end marker
+        if (TestAttr->AttributeType == TypeAttributeEndMarker)
+            return NULL;
+
+        // Validate attribute length (resident: >= 0x18, nonresident: >= 0x40)
+        const ULONG minHeader = TestAttr->IsNonResident ? 0x40 : 0x18;
+        if (TestAttr->Length < minHeader ||
+            (TestAttr->Length & 7) != 0 ||
+            DataPtr + TestAttr->Length > Header->ActualSize)
+        {
+            return NULL;
+        }
 
         if (TestAttr->AttributeType == Type)
         {
@@ -38,20 +65,26 @@ FileRecord::GetAttribute(_In_     AttributeType Type,
                 return (PAttribute)&Data[DataPtr];
             }
 
-            else if ((TestAttr->NameLength) * sizeof(WCHAR) == NameLength &&
-                     RtlCompareMemory(GetNamePointer(TestAttr),
-                                      Name,
-                                      NameLength) == NameLength)
+            // Validate name fields before comparing
+            if (TestAttr->NameLength &&
+                TestAttr->NameOffset >= minHeader &&
+                TestAttr->NameOffset + (TestAttr->NameLength * sizeof(WCHAR)) <= TestAttr->Length)
             {
-                // We found the attribute!
-                return (PAttribute)&Data[DataPtr];
+                if ((TestAttr->NameLength) * sizeof(WCHAR) == NameLength &&
+                    RtlCompareMemory(GetNamePointer(TestAttr),
+                                     Name,
+                                     NameLength) == NameLength)
+                {
+                    // We found the attribute!
+                    return (PAttribute)&Data[DataPtr];
+                }
             }
 
             // This one isn't it. Try again.
         }
 
         else if (!TestAttr->Length ||
-                 TestAttr->AttributeType > Type)
+                 TestAttr->AttributeType > (ULONG)Type)
         {
             /* Attributes are stored in ascending order according to its attribute type.
              * If we passed the attribute type, it's not going to show up. Fail early.

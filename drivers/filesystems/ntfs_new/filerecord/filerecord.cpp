@@ -24,5 +24,5 @@ FileRecord::FileRecord(_In_ PNTFSVolume Volume) : FileRecord(Volume, Volume->MFT
 FileRecord::~FileRecord()
 {
     if (Data)
-        delete Data;
+        delete[] Data;
 }

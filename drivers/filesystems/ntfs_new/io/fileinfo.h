@@ -28,9 +28,12 @@ GetFileBasicInformation(_In_ PFileContextBlock FileCB,
     File = FileCB->FileRec;
 
     // From $STANDARD_INFORMATION
-    StdInfo = (PStandardInformationEx)
-              GetResidentDataPointer(File->GetAttribute(TypeStandardInformation,
-                                     NULL));
+    {
+        PAttribute StdAttr = File->GetAttribute(TypeStandardInformation, NULL);
+        if (!StdAttr || StdAttr->IsNonResident)
+            return STATUS_FILE_CORRUPT_ERROR;
+        StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
+    }
 
     Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
     Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
@@ -199,9 +202,12 @@ GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
     File = FileCB->FileRec;
 
     // From $STANDARD_INFORMATION
-    StdInfo = (PStandardInformationEx)
-              GetResidentDataPointer(File->GetAttribute(TypeStandardInformation,
-                                     NULL));
+    {
+        PAttribute StdAttr = File->GetAttribute(TypeStandardInformation, NULL);
+        if (!StdAttr || StdAttr->IsNonResident)
+            return STATUS_FILE_CORRUPT_ERROR;
+        StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
+    }
 
     Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
     Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;

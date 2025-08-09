@@ -16,11 +16,17 @@ FileRecord::CopyData(_In_    AttributeType Type,
                      _In_    ULONGLONG Offset)
 {
     PAttribute Attr = GetAttribute(Type, Name);
-
-    if (Attr)
-        return CopyData(Attr, Buffer, Length, Offset);
-
-    return STATUS_NOT_FOUND;
+    if (!Attr)
+        return STATUS_NOT_FOUND;
+    // Basic guard: resident data must have valid DataOffset/length window
+    if (!Attr->IsNonResident)
+    {
+        const ULONG dataStart = Attr->Resident.DataOffset;
+        const ULONG dataEnd = dataStart + Attr->Resident.DataLength;
+        if (dataStart < 0x18 || dataEnd > Attr->Length)
+            return STATUS_FILE_CORRUPT_ERROR;
+    }
+    return CopyData(Attr, Buffer, Length, Offset);
 }
 
 NTSTATUS
@@ -30,7 +36,7 @@ FileRecord::CopyData(_In_    PAttribute Attr,
                      _In_    ULONGLONG Offset)
 {
     NTSTATUS Status;
-    ULONG BytesToRead, BytesRead, BytesInRun, DataPointer;
+    ULONG BytesToRead, BytesRead, BytesInRun;
     PDataRun Head, CurrentDR;
 
     ASSERT(Buffer);
@@ -79,7 +85,6 @@ FileRecord::CopyData(_In_    PAttribute Attr,
         Head = FindNonResidentData(Attr);
         CurrentDR = Head;
         BytesRead = 0;
-        DataPointer = 0;
 
         while(CurrentDR)
         {
@@ -95,10 +100,11 @@ FileRecord::CopyData(_In_    PAttribute Attr,
             {
                 // We need to copy data from this run before moving to the next one.
 
-                // Get data
+                // Get data into the correct position in the caller's buffer
+                ULONG chunk = min(BytesToRead - BytesRead, (BytesInRun - (ULONG)Offset));
                 Status = Volume->ReadVolume(GetOffset(CurrentDR->LCN) + Offset,
-                                            min(BytesToRead, (BytesInRun - Offset)),
-                                            Buffer);
+                                            chunk,
+                                            Buffer + BytesRead);
                 if (!NT_SUCCESS(Status))
                 {
                     DPRINT1("Failed to read attribute contents!\n");
@@ -106,7 +112,7 @@ FileRecord::CopyData(_In_    PAttribute Attr,
                 }
 
                 // Adjust bytes read
-                BytesRead += min(BytesToRead, (BytesInRun - Offset));
+                BytesRead += chunk;
 
                 // Are we done reading?
                 if (BytesRead == BytesToRead)

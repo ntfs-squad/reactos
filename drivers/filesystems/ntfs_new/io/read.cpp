@@ -47,10 +47,23 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     ASSERT(FileCB->FileRec);
 
-    // For now until I add support for these
-    StdInfo = (PStandardInformationEx)
-              GetResidentDataPointer(FileCB->FileRec->GetAttribute(TypeStandardInformation,
-                                     NULL));
+    // Ensure the file has a valid resident StandardInformation attribute
+    {
+        PAttribute StdAttr = FileCB->FileRec->GetAttribute(TypeStandardInformation, NULL);
+        if (!StdAttr || StdAttr->IsNonResident)
+        {
+            DPRINT1("NtfsFsdRead(): Missing or invalid $STANDARD_INFORMATION attribute!\n");
+            return STATUS_FILE_CORRUPT_ERROR;
+        }
+        // Validate resident data window
+        if (StdAttr->Resident.DataOffset < 0x18 ||
+            (StdAttr->Resident.DataOffset + StdAttr->Resident.DataLength) > StdAttr->Length)
+        {
+            DPRINT1("NtfsFsdRead(): Corrupt $STANDARD_INFORMATION resident layout!\n");
+            return STATUS_FILE_CORRUPT_ERROR;
+        }
+        StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
+    }
 
     ASSERT(!(StdInfo->FilePermissions & FILE_PERM_COMPRESSED));
     ASSERT(!(StdInfo->FilePermissions & FILE_PERM_ENCRYPTED));
