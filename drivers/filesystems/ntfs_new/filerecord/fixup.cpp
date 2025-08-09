@@ -36,21 +36,21 @@ FileRecord::CommitFixup()
     PUSHORT UpdateSequenceArray;
     PUSHORT DataPtr;
 
-    // Increment update sequence number by one.
-    // IncrementUpdateSequenceNumber(Header);
+    // Increment update sequence number by one (must be non-zero on disk)
+    if (*GetUpdateSequenceNumber(Header) == 0)
+    {
+        *GetUpdateSequenceNumber(Header) = 1;
+    }
+    else
+    {
+        IncrementUpdateSequenceNumber(Header);
+    }
 
     // Get update sequence number
     UpdateSequenceNumber = *GetUpdateSequenceNumber(Header);
     UpdateSequenceArray = GetUpdateSequenceArray(Header);
 
-    /* HACK: We don't update the USN right now because
-     * doing so would require a working log file service (lfs).
-     */
-#if 0
-    IncrementUpdateSequenceNumber(Header);
-#else
-    DPRINT1("Skipping USN update!\n");
-#endif
+    // Note: We increment USN without journaling here; LFS integration can be added later
 
     DataPtr = (PUSHORT)(Data + OffsetToFirstUSN(Volume));
     USAPos = 0;

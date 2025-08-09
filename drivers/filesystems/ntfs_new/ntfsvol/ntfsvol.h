@@ -153,6 +153,11 @@ public:
                          _Inout_ PUCHAR Buffer);
 
     /**
+     * Forces the storage stack to flush its write caches for this volume.
+     */
+    NTSTATUS FlushVolume();
+
+    /**
      * Loads a partition as an NTFS Volume.
      *
      * @param DeviceToMount

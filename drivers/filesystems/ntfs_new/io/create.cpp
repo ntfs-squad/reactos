@@ -114,11 +114,11 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                     // Set flags/directory structures if creating a directory
                     if (IrpSp->Parameters.Create.Options & FILE_DIRECTORY_FILE)
                     {
-                        CurrentFile->Header->Flags = FR_IS_DIRECTORY;
+                        CurrentFile->Header->Flags = (FR_IN_USE | FR_IS_DIRECTORY);
                     }
                     else
                     {
-                        CurrentFile->Header->Flags = 0; // regular file
+                        CurrentFile->Header->Flags = FR_IN_USE; // regular file
                     }
                     CurrentFile->Header->AllocatedSize = Volume->MFT->FileRecordSize;
                     CurrentFile->Header->BaseFileRecord = 0;
@@ -137,6 +137,33 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                         RtlZeroMemory(CurrentFile->Data + usaOffset, usaTotalBytes);
                     }
 
+                    // Prepare name component for $FILE_NAME and directory entry
+                    PFileNameEx fn = NULL;
+                    SIZE_T fnAlloc = 0;
+                    {
+                        PWCHAR nameBuf = FileObject->FileName.Buffer;
+                        if (nameBuf)
+                        {
+                            PWCHAR last = wcsrchr(nameBuf, L'\\');
+                            PWCHAR comp = last ? last + 1 : nameBuf;
+                            USHORT nameChars = (USHORT)wcslen(comp);
+                            fnAlloc = sizeof(FileNameEx) - sizeof(WCHAR) + nameChars * sizeof(WCHAR);
+                            fn = (PFileNameEx)ExAllocatePoolWithTag(PagedPool, fnAlloc, TAG_FILE_RECORD);
+                            if (!fn)
+                            {
+                                delete CurrentFile;
+                                Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                                Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+                                IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+                                return STATUS_INSUFFICIENT_RESOURCES;
+                            }
+                            RtlZeroMemory(fn, (ULONG)fnAlloc);
+                            fn->NameLength = nameChars;
+                            fn->NameType = NAME_TYPE_WIN32;
+                            RtlCopyMemory(fn->Name, comp, nameChars * sizeof(WCHAR));
+                        }
+                    }
+
                     // Write $STANDARD_INFORMATION resident attribute
                     PUCHAR attrPtr = CurrentFile->Data + CurrentFile->Header->AttributeOffset;
                     PAttribute StdAttr = (PAttribute)attrPtr;
@@ -153,9 +180,99 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                     PStandardInformationEx StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
                     RtlZeroMemory(StdInfo, sizeof(StandardInformationEx));
                     StdInfo->FilePermissions = FILE_PERM_ARCHIVE | FILE_PERM_NORMAL;
+                    // Initialize timestamps
+                    LARGE_INTEGER now;
+                    KeQuerySystemTime(&now);
+                    StdInfo->CreationTime = (ULONG64)now.QuadPart;
+                    StdInfo->LastWriteTime = (ULONG64)now.QuadPart;
+                    StdInfo->ChangeTime = (ULONG64)now.QuadPart;
+                    StdInfo->LastAccessTime = (ULONG64)now.QuadPart;
 
                     // Advance pointer
                     attrPtr += StdAttr->Length;
+
+                    // Write $FILE_NAME resident attribute next (by type order) if name is available
+                    if (fn)
+                    {
+                        PAttribute FileNameAttr = (PAttribute)attrPtr;
+                        RtlZeroMemory(FileNameAttr, sizeof(Attribute));
+                        FileNameAttr->AttributeType = TypeFileName;
+                        FileNameAttr->IsNonResident = 0;
+                        FileNameAttr->NameLength = 0;
+                        FileNameAttr->NameOffset = 0;
+                        FileNameAttr->Resident.DataOffset = 0x18;
+                        FileNameAttr->Resident.DataLength = (ULONG)fnAlloc;
+                        ULONG fnAttrLen = ROUND_UP(FileNameAttr->Resident.DataOffset + FileNameAttr->Resident.DataLength, 8);
+                        FileNameAttr->Length = fnAttrLen;
+                        // Payload
+                        PFileNameEx fnPayload = (PFileNameEx)((PUCHAR)FileNameAttr + FileNameAttr->Resident.DataOffset);
+                        RtlCopyMemory(fnPayload, fn, (ULONG)fnAlloc);
+                        // Initialize basic filename flags/sizes
+                        fnPayload->AllocatedSize = 0;
+                        fnPayload->DataSize = 0;
+                        fnPayload->Flags = (CurrentFile->Header->Flags & FR_IS_DIRECTORY) ? FN_DIRECTORY : FN_ARCHIVE;
+                        fnPayload->CreationTime = StdInfo->CreationTime;
+                        fnPayload->LastWriteTime = StdInfo->LastWriteTime;
+                        fnPayload->ChangeTime = StdInfo->ChangeTime;
+                        fnPayload->LastAccessTime = StdInfo->LastAccessTime;
+                        fnPayload->ParentFileReference = _Root; // root for now
+                        // Advance pointer
+                        attrPtr += FileNameAttr->Length;
+                    }
+
+                    // Write $SECURITY_DESCRIPTOR resident attribute (self-relative SD)
+                    {
+                        SECURITY_DESCRIPTOR sdAbs;
+                        RtlZeroMemory(&sdAbs, sizeof(sdAbs));
+                        NTSTATUS sdStatus = RtlCreateSecurityDescriptor(&sdAbs, SECURITY_DESCRIPTOR_REVISION);
+                        if (!NT_SUCCESS(sdStatus)) { delete CurrentFile; Irp->IoStatus.Information = FILE_DOES_NOT_EXIST; Irp->IoStatus.Status = sdStatus; IoCompleteRequest(Irp, IO_DISK_INCREMENT); return sdStatus; }
+
+                        // Owner and Group: Everyone (world)
+                        sdStatus = RtlSetOwnerSecurityDescriptor(&sdAbs, SeExports->SeWorldSid, FALSE);
+                        if (!NT_SUCCESS(sdStatus)) { delete CurrentFile; Irp->IoStatus.Information = FILE_DOES_NOT_EXIST; Irp->IoStatus.Status = sdStatus; IoCompleteRequest(Irp, IO_DISK_INCREMENT); return sdStatus; }
+                        sdStatus = RtlSetGroupSecurityDescriptor(&sdAbs, SeExports->SeWorldSid, FALSE);
+                        if (!NT_SUCCESS(sdStatus)) { delete CurrentFile; Irp->IoStatus.Information = FILE_DOES_NOT_EXIST; Irp->IoStatus.Status = sdStatus; IoCompleteRequest(Irp, IO_DISK_INCREMENT); return sdStatus; }
+
+                        // Build a simple DACL granting FILE_ALL_ACCESS to Everyone
+                        ULONG aclLen = sizeof(ACL) + sizeof(ACCESS_ALLOWED_ACE) + RtlLengthSid(SeExports->SeWorldSid);
+                        PACL dacl = (PACL)ExAllocatePoolWithTag(PagedPool, aclLen, TAG_FILE_RECORD);
+                        if (!dacl) { delete CurrentFile; Irp->IoStatus.Information = FILE_DOES_NOT_EXIST; Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES; IoCompleteRequest(Irp, IO_DISK_INCREMENT); return STATUS_INSUFFICIENT_RESOURCES; }
+                        RtlZeroMemory(dacl, aclLen);
+                        sdStatus = RtlCreateAcl(dacl, aclLen, ACL_REVISION);
+                        if (!NT_SUCCESS(sdStatus)) { ExFreePoolWithTag(dacl, TAG_FILE_RECORD); delete CurrentFile; Irp->IoStatus.Information = FILE_DOES_NOT_EXIST; Irp->IoStatus.Status = sdStatus; IoCompleteRequest(Irp, IO_DISK_INCREMENT); return sdStatus; }
+                        sdStatus = RtlAddAccessAllowedAce(dacl, ACL_REVISION, FILE_ALL_ACCESS, SeExports->SeWorldSid);
+                        if (!NT_SUCCESS(sdStatus)) { ExFreePoolWithTag(dacl, TAG_FILE_RECORD); delete CurrentFile; Irp->IoStatus.Information = FILE_DOES_NOT_EXIST; Irp->IoStatus.Status = sdStatus; IoCompleteRequest(Irp, IO_DISK_INCREMENT); return sdStatus; }
+                        sdStatus = RtlSetDaclSecurityDescriptor(&sdAbs, TRUE, dacl, FALSE);
+                        if (!NT_SUCCESS(sdStatus)) { ExFreePoolWithTag(dacl, TAG_FILE_RECORD); delete CurrentFile; Irp->IoStatus.Information = FILE_DOES_NOT_EXIST; Irp->IoStatus.Status = sdStatus; IoCompleteRequest(Irp, IO_DISK_INCREMENT); return sdStatus; }
+
+                        // Convert to self-relative
+                        // Convert absolute SD to self-relative using SeQuerySecurityDescriptorInfo
+                        SECURITY_INFORMATION si = OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION;
+                        ULONG sdLen = RtlLengthSecurityDescriptor(&sdAbs);
+                        PSECURITY_DESCRIPTOR sdSelf = (PSECURITY_DESCRIPTOR)ExAllocatePoolWithTag(PagedPool, sdLen, TAG_FILE_RECORD);
+                        if (!sdSelf) { ExFreePoolWithTag(dacl, TAG_FILE_RECORD); delete CurrentFile; Irp->IoStatus.Information = FILE_DOES_NOT_EXIST; Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES; IoCompleteRequest(Irp, IO_DISK_INCREMENT); return STATUS_INSUFFICIENT_RESOURCES; }
+                        PSECURITY_DESCRIPTOR absPtr = &sdAbs;
+                        sdStatus = SeQuerySecurityDescriptorInfo(&si, sdSelf, &sdLen, &absPtr);
+                        // dacl no longer needed after self-relative conversion
+                        ExFreePoolWithTag(dacl, TAG_FILE_RECORD);
+                        if (!NT_SUCCESS(sdStatus)) { ExFreePoolWithTag(sdSelf, TAG_FILE_RECORD); delete CurrentFile; Irp->IoStatus.Information = FILE_DOES_NOT_EXIST; Irp->IoStatus.Status = sdStatus; IoCompleteRequest(Irp, IO_DISK_INCREMENT); return sdStatus; }
+
+                        // Write the attribute
+                        PAttribute SecAttr = (PAttribute)attrPtr;
+                        RtlZeroMemory(SecAttr, sizeof(Attribute));
+                        SecAttr->AttributeType = TypeSecurityDescriptor;
+                        SecAttr->IsNonResident = 0;
+                        SecAttr->NameLength = 0;
+                        SecAttr->NameOffset = 0;
+                        SecAttr->Resident.DataOffset = 0x18;
+                        SecAttr->Resident.DataLength = sdLen;
+                        ULONG secAttrLen = ROUND_UP(SecAttr->Resident.DataOffset + SecAttr->Resident.DataLength, 8);
+                        SecAttr->Length = secAttrLen;
+                        // Copy SD payload and advance
+                        RtlCopyMemory((PUCHAR)SecAttr + SecAttr->Resident.DataOffset, sdSelf, sdLen);
+                        attrPtr += SecAttr->Length;
+                        ExFreePoolWithTag(sdSelf, TAG_FILE_RECORD);
+                    }
 
                     // Write empty $DATA resident attribute
                     PAttribute DataAttr = (PAttribute)attrPtr;
@@ -171,12 +288,6 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                     DataAttr->Length = DataAttrLen;
 
                     attrPtr += DataAttr->Length;
-
-                    // End marker
-                    PAttribute EndAttr = (PAttribute)attrPtr;
-                    RtlZeroMemory(EndAttr, sizeof(Attribute));
-                    EndAttr->AttributeType = TypeAttributeEndMarker;
-                    EndAttr->Length = 0;
 
                     // If directory, append a minimal $INDEX_ROOT ("$I30")
                     if (CurrentFile->Header->Flags & FR_IS_DIRECTORY)
@@ -274,78 +385,12 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                         return Status;
                     }
 
-                    // Build a FILE_NAME stream for the new entry from requested name
-                    USHORT nameChars = 0;
-                    PWCHAR nameBuf = FileObject->FileName.Buffer;
-                    if (nameBuf)
+                    // Add a FILE_NAME entry to the parent directory (root for now)
+                    if (fn)
                     {
-                        PWCHAR last = wcsrchr(nameBuf, L'\\');
-                        PWCHAR comp = last ? last + 1 : nameBuf;
-                        nameChars = (USHORT)wcslen(comp);
-                        SIZE_T alloc = sizeof(FileNameEx) - sizeof(WCHAR) + nameChars * sizeof(WCHAR);
-                        PFileNameEx fn = (PFileNameEx)ExAllocatePoolWithTag(PagedPool, alloc, TAG_FILE_RECORD);
-                        if (!fn)
-                        {
-                            delete RootFile;
-                            delete CurrentFile;
-                            Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-                            Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-                            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-                            return STATUS_INSUFFICIENT_RESOURCES;
-                        }
-                        RtlZeroMemory(fn, (ULONG)alloc);
-                        fn->NameLength = nameChars;
-                        fn->NameType = NAME_TYPE_WIN32;
-                        RtlCopyMemory(fn->Name, comp, nameChars * sizeof(WCHAR));
-
-                        // Append resident $FILE_NAME attribute to file record just before END marker
-                        {
-                            // Scan to end marker
-                            ULONG off = CurrentFile->Header->AttributeOffset;
-                            PAttribute cur = (PAttribute)(CurrentFile->Data + off);
-                            while (cur->AttributeType != TypeAttributeEndMarker) {
-                                if (cur->Length == 0) { ExFreePoolWithTag(fn, TAG_FILE_RECORD); delete RootFile; delete CurrentFile; Irp->IoStatus.Information = FILE_DOES_NOT_EXIST; Irp->IoStatus.Status = STATUS_FILE_CORRUPT_ERROR; IoCompleteRequest(Irp, IO_DISK_INCREMENT); return STATUS_FILE_CORRUPT_ERROR; }
-                                off += cur->Length;
-                                cur = (PAttribute)(CurrentFile->Data + off);
-                            }
-                            // cur points to END marker. Write FILE_NAME attribute here
-                            PAttribute FileNameAttr = cur;
-                            RtlZeroMemory(FileNameAttr, sizeof(Attribute));
-                            FileNameAttr->AttributeType = TypeFileName;
-                            FileNameAttr->IsNonResident = 0;
-                            FileNameAttr->NameLength = 0;
-                            FileNameAttr->NameOffset = 0;
-                            FileNameAttr->Resident.DataOffset = 0x18;
-                            FileNameAttr->Resident.DataLength = (ULONG)alloc;
-                            ULONG fnAttrLen = ROUND_UP(FileNameAttr->Resident.DataOffset + FileNameAttr->Resident.DataLength, 8);
-                            FileNameAttr->Length = fnAttrLen;
-                            // Payload
-                            PFileNameEx fnPayload = (PFileNameEx)((PUCHAR)FileNameAttr + FileNameAttr->Resident.DataOffset);
-                            RtlCopyMemory(fnPayload, fn, (ULONG)alloc);
-                            fnPayload->ParentFileReference = _Root; // root for now
-                            // Advance pointer and write new END marker
-                            PAttribute NewEnd = (PAttribute)((PUCHAR)FileNameAttr + fnAttrLen);
-                            RtlZeroMemory(NewEnd, sizeof(Attribute));
-                            NewEnd->AttributeType = TypeAttributeEndMarker;
-                            NewEnd->Length = 0;
-                            // Update record size
-                            CurrentFile->Header->ActualSize += (fnAttrLen + sizeof(Attribute));
-                        }
-
-                        // Persist the file again to include the $FILE_NAME attribute
-                        Status = Volume->MFT->WriteFileRecordToMFT(CurrentFile);
-                        if (!NT_SUCCESS(Status))
-                        {
-                            ExFreePoolWithTag(fn, TAG_FILE_RECORD);
-                            delete RootFile;
-                            delete CurrentFile;
-                            Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-                            Irp->IoStatus.Status = Status;
-                            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-                            return Status;
-                        }
-
-                        Status = ParentDir.AddFileToDirectory(fn, NewFrn);
+                        // Compose full file reference (SQN:16 | FRN:48)
+                        ULONGLONG newFileRef = ((ULONGLONG)CurrentFile->Header->SequenceNumber << 48) | (ULONGLONG)NewFrn;
+                        Status = ParentDir.AddFileToDirectory(fn, newFileRef);
                         ExFreePoolWithTag(fn, TAG_FILE_RECORD);
                         if (!NT_SUCCESS(Status))
                         {

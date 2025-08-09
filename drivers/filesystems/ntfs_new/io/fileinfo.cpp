@@ -198,6 +198,25 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             return STATUS_INVALID_PARAMETER;
         }
 
+        // Refresh the directory tree when scan restarts or if not yet loaded
+        if (IrpSp->Flags & SL_RESTART_SCAN || FileCB->FileDir == NULL)
+        {
+            if (FileCB->FileDir)
+            {
+                delete FileCB->FileDir;
+                FileCB->FileDir = NULL;
+            }
+            FileCB->FileDir = new(PagedPool) Directory(((PVolumeContextBlock)VolCB)->Volume);
+            Status = FileCB->FileDir->LoadDirectory(FileCB->FileRec);
+            if (!NT_SUCCESS(Status))
+            {
+                Irp->IoStatus.Information = 0;
+                Irp->IoStatus.Status = Status;
+                IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+                return Status;
+            }
+        }
+
         FileInformationRequest = IrpSp->Parameters.QueryDirectory.FileInformationClass;
 
         switch(FileInformationRequest)

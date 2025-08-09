@@ -98,7 +98,8 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
         return Status;
     }
 
-    // TODO: Update file timestamps
+    // Force on-disk write-through for $MFT updates
+    (void)Volume->FlushVolume();
 
     return Status;
 }
@@ -145,9 +146,11 @@ MasterFileTable::AllocateFreeFileRecord(_Out_ PULONG FileRecordNumber)
      * TODO: Read and update $MFT bitmap properly and journal with LFS.
      */
     NTSTATUS Status;
-    ULONG reservedStart = 24; // reserved MFT entries (metadata files)
+    // Reserved MFT record numbers: metadata files and special entries.
+    // Our enumeration hides FRNs <= 26, so never allocate within that range.
+    ULONG reservedStart = 27;
 
-    // Query $MFT::$BITMAP attribute
+    // Query $MFT::$BITMAP attribute and current $MFT::$DATA size
     PFileRecord BitmapOwner;
     PAttribute  BitmapAttr;
     Status = GetFileAttributeFromFileRecordNumber(TypeBitmap, NULL, _MFT, &BitmapOwner, &BitmapAttr);
@@ -165,7 +168,25 @@ MasterFileTable::AllocateFreeFileRecord(_Out_ PULONG FileRecordNumber)
         }
     }
 
-    // Read bitmap and scan for a zero bit
+    // Determine current capacity (how many records fit in current $MFT data size)
+    ULONGLONG capacityRecords = 0;
+    {
+        PAttribute mftData = MFTFile->GetAttribute(TypeData, NULL);
+        if (!mftData)
+        {
+            delete BitmapOwner;
+            return STATUS_FILE_CORRUPT_ERROR;
+        }
+        ULONGLONG dataBytes = GetAttributeDataSize(mftData);
+        capacityRecords = dataBytes / FileRecordSize;
+        if (capacityRecords <= reservedStart)
+        {
+            delete BitmapOwner;
+            return STATUS_DISK_FULL; // cannot place any user records
+        }
+    }
+
+    // Read bitmap and scan for a zero bit within current capacity
     ULONGLONG totalBytes = GetAttributeDataSize(BitmapAttr);
     ULONGLONG offset = 0;
     ULONG chunk = 4096;
@@ -194,7 +215,7 @@ MasterFileTable::AllocateFreeFileRecord(_Out_ PULONG FileRecordNumber)
                     if (!(b & (1u << bit)))
                     {
                         ULONG globalBit = (ULONG)((offset + i) * 8 + bit);
-                        if (globalBit >= reservedStart)
+                        if (globalBit >= reservedStart && (ULONGLONG)globalBit < capacityRecords)
                         {
                             foundBit = globalBit;
                             goto found;

@@ -121,3 +121,27 @@ NTFSVolume::WriteVolume(_In_    ULONGLONG Offset,
 
     return Status;
 }
+
+NTSTATUS
+NTFSVolume::FlushVolume()
+{
+    // Issue a flush to the underlying storage device to force pending writes
+    // to stable media. This helps ensure visibility across reboots/other OS.
+    IO_STATUS_BLOCK ioStatus = {0};
+    KEVENT event; KeInitializeEvent(&event, NotificationEvent, FALSE);
+    PIRP irp = IoBuildSynchronousFsdRequest(IRP_MJ_FLUSH_BUFFERS,
+                                            PartDeviceObj,
+                                            NULL,
+                                            0,
+                                            NULL,
+                                            &event,
+                                            &ioStatus);
+    if (!irp) return STATUS_INSUFFICIENT_RESOURCES;
+    NTSTATUS status = IoCallDriver(PartDeviceObj, irp);
+    if (status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+        status = ioStatus.Status;
+    }
+    return status;
+}

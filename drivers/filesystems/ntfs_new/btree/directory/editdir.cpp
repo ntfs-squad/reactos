@@ -56,12 +56,15 @@ Directory::AddFileToDirectory(_In_ PFileNameEx FileToAdd,
     ULONG needed = entryLen;
     ULONG newTotal = totalSize + needed;
 
-    if (newTotal <= IndexRootAttr->Resident.DataLength)
+    // Ensure we only do in-place updates when the expanded index fits entirely
+    // within the current resident data length (including the IndexRootEx preamble)
+    if ((FIELD_OFFSET(IndexRootEx, Header) + newTotal) <= IndexRootAttr->Resident.DataLength)
     {
         // In-place insert within current resident data length
         SIZE_T tail = (SIZE_T)(end - (PUCHAR)entry);
         RtlMoveMemory((PUCHAR)entry + needed, entry, tail);
         root->Header.TotalIndexSize = (UINT16)newTotal;
+        root->Header.AllocatedSize = (UINT16)ROUND_UP(newTotal, 8);
 
         PIndexEntry newEntry = entry;
         newEntry->Data.Directory.IndexedFile = FileReferenceNumber;
@@ -117,6 +120,7 @@ Directory::AddFileToDirectory(_In_ PFileNameEx FileToAdd,
         SIZE_T endTail = (SIZE_T)(newEnd - (PUCHAR)scan);
         RtlMoveMemory((PUCHAR)scan + needed, scan, endTail);
         newRoot->Header.TotalIndexSize = (UINT16)newTotal;
+        newRoot->Header.AllocatedSize = (UINT16)ROUND_UP(newTotal, 8);
 
         PIndexEntry newEntry = scan;
         newEntry->Data.Directory.IndexedFile = FileReferenceNumber;
