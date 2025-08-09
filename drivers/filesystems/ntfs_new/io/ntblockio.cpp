@@ -17,17 +17,14 @@ ByPasscompletion (
     PVOID Context
     )
 { 
-    if (!NT_SUCCESS( Irp->IoStatus.Status )) {
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
 
-        Irp->IoStatus.Information = 0;
-    }
+    // Signal the waiter; let I/O manager continue completion so it can
+    // unlock MDLs/pages and free the IRP properly.
+    KeSetEvent((KEVENT*)Context, IO_NO_INCREMENT, FALSE);
+    return STATUS_CONTINUE_COMPLETION;
 
-    KeSetEvent( (KEVENT*)Context, 0, FALSE );
-    Irp->IoStatus.Status = STATUS_SUCCESS;
-    return STATUS_MORE_PROCESSING_REQUIRED;
-
-    UNREFERENCED_PARAMETER( DeviceObject );
-    UNREFERENCED_PARAMETER( Irp );
 }
 
 
@@ -60,13 +57,14 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
     SetFlag(IoGetNextIrpStackLocation(Irp)->Flags, SL_OVERRIDE_VERIFY_VOLUME);
 
 
-    //TODO: There's something SERIOUSLY wrong with completetion.
-    IoSetCompletionRoutine( Irp,
-                            ByPasscompletion,
-                            &Event,
-                            TRUE,
-                            TRUE,
-                            TRUE );
+    // Set a completion to signal our event, but allow normal completion flow
+    // so the I/O manager can unlock pages and free the IRP.
+    IoSetCompletionRoutine(Irp,
+                           ByPasscompletion,
+                           &Event,
+                           TRUE,
+                           TRUE,
+                           TRUE);
 
     //  Call the device to do the read and wait for it to finish.
     Status = IoCallDriver(DeviceToRead, Irp);
@@ -78,7 +76,7 @@ ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
                               KernelMode,
                               FALSE,
                               NULL);
-        // Status = Iosb.Status; ???
+        Status = Iosb.Status;
     }
 
     NT_ASSERT(Status != STATUS_VERIFY_REQUIRED);
@@ -133,22 +131,21 @@ WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
     }
 
     SetFlag(IoGetNextIrpStackLocation( Irp )->Flags, SL_OVERRIDE_VERIFY_VOLUME); // override this because it causes problems
-    //TODO: There's something SERIOUSLY wrong with completetion.
-    IoSetCompletionRoutine( Irp,
-                            ByPasscompletion,
-                            &Event,
-                            TRUE,
-                            TRUE,
-                            TRUE );
+    // Set a completion to signal our event, but allow normal completion flow
+    IoSetCompletionRoutine(Irp,
+                           ByPasscompletion,
+                           &Event,
+                           TRUE,
+                           TRUE,
+                           TRUE);
 
     //  Call the device to do the write and wait for it to finish.
     Status = IoCallDriver(DeviceToWrite, Irp); // DO DE WRITE
 
     if (Status == STATUS_PENDING)
     {
-        // Infinitely stall the OS until this kernel mode executive event completes
         (VOID)KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL);
-       // Status = Iosb.Status; ???
+        Status = Iosb.Status;
     }
 
     NT_ASSERT(Status != STATUS_VERIFY_REQUIRED);

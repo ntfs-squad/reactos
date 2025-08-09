@@ -165,9 +165,8 @@ Directory::CreateRootNode(_In_  PFileRecord File,
 
     // Get $INDEX_ROOT attribute.
     IndexRootAttribute = File->GetAttribute(TypeIndexRoot, NULL);
-
-    // If it's a directory, it should have an index root.
-    ASSERT(IndexRootAttribute);
+    if (!IndexRootAttribute || IndexRootAttribute->IsNonResident)
+        return STATUS_FILE_CORRUPT_ERROR;
 
     /* Set up pointers.
      * Note: IndexAllocationAttribute may be null. That is okay!
@@ -197,7 +196,8 @@ Directory::CreateRootNode(_In_  PFileRecord File,
 
     while ((ULONG_PTR)CurrentEntry < EndOfIndexRootData)
     {
-        ASSERT(CurrentEntry->EntryLength);
+        if (CurrentEntry->EntryLength == 0)
+            return STATUS_FILE_CORRUPT_ERROR;
 
         // Create current entry
         CurrentKey->Entry = (PIndexEntry)ExAllocatePoolWithTag(NonPagedPool,
@@ -261,6 +261,9 @@ Directory::LoadDirectory(_In_ PFileRecord File)
 
     // This only works on files that are directories.
     ASSERT(File->Header->Flags & FR_IS_DIRECTORY);
+
+    // Remember which directory file record we are operating on
+    this->DirFile = File;
 
     /* First, we need to get the index allocation bitmap attribute
      * to determine what index entries are marked as in use.
@@ -410,6 +413,7 @@ Directory::GetShortNameKey(_In_ PBTreeKey Key,
 Directory::Directory(_In_ PNTFSVolume Volume)
 {
     this->Volume = Volume;
+    this->DirFile = NULL;
 }
 
 Directory::Directory(_In_ PFileRecord File,

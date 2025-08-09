@@ -21,6 +21,7 @@ Directory::AddFileToDirectory(_In_ PFileNameEx FileToAdd,
     DPRINT1("AddFileToDirectory() called!\n");
 
     NTSTATUS Status;
+    if (!DirFile) return STATUS_INVALID_PARAMETER;
     PAttribute IndexRootAttr = DirFile->GetAttribute(TypeIndexRoot, NULL);
     if (!IndexRootAttr || IndexRootAttr->IsNonResident)
         return STATUS_FILE_CORRUPT_ERROR;
@@ -30,56 +31,119 @@ Directory::AddFileToDirectory(_In_ PFileNameEx FileToAdd,
     USHORT streamBytes = (USHORT)(sizeof(FileNameEx) - sizeof(WCHAR) + nameBytes);
     USHORT entryLen = (USHORT)ROUND_UP(FIELD_OFFSET(IndexEntry, IndexStream) + streamBytes, 8);
 
-    // Find insertion point: for now, append before the end entry in the root index
+    // Access root index data
     PIndexRootEx root = (PIndexRootEx)GetResidentDataPointer(IndexRootAttr);
     PUCHAR rootData = (PUCHAR)&root->Header;
     ULONG totalSize = root->Header.TotalIndexSize;
     ULONG indexOffset = root->Header.IndexOffset;
     PIndexEntry entry = (PIndexEntry)(rootData + indexOffset);
     PUCHAR end = (PUCHAR)rootData + totalSize;
+    // Sanity: TotalIndexSize must not exceed resident data length
+    if ((FIELD_OFFSET(IndexRootEx, Header) + totalSize) > IndexRootAttr->Resident.DataLength)
+        return STATUS_FILE_CORRUPT_ERROR;
 
-    // Walk to last entry
-    while ((PUCHAR)entry < end && !(entry->Flags & INDEX_ENTRY_END))
+    // Walk to last entry (validate bounds)
+    while ((PUCHAR)entry < end)
     {
+        if (entry->EntryLength == 0) return STATUS_FILE_CORRUPT_ERROR;
+        if (entry->Flags & INDEX_ENTRY_END) break;
         entry = (PIndexEntry)((PUCHAR)entry + entry->EntryLength);
     }
 
     if ((PUCHAR)entry >= end)
         return STATUS_FILE_CORRUPT_ERROR;
 
-    // Ensure room in resident index root; if insufficient, bail for now
     ULONG needed = entryLen;
-    if ((totalSize + needed) > IndexRootAttr->Resident.DataLength)
+    ULONG newTotal = totalSize + needed;
+
+    if (newTotal <= IndexRootAttr->Resident.DataLength)
     {
-        DPRINT1("Index root expansion not implemented yet (promote to IndexAllocation).\n");
-        return STATUS_NOT_IMPLEMENTED;
+        // In-place insert within current resident data length
+        SIZE_T tail = (SIZE_T)(end - (PUCHAR)entry);
+        RtlMoveMemory((PUCHAR)entry + needed, entry, tail);
+        root->Header.TotalIndexSize = (UINT16)newTotal;
+
+        PIndexEntry newEntry = entry;
+        newEntry->Data.Directory.IndexedFile = FileReferenceNumber;
+        newEntry->StreamLength = streamBytes;
+        newEntry->EntryLength = entryLen;
+        newEntry->Flags = 0; // leaf entry
+
+        PFileNameEx fn = (PFileNameEx)newEntry->IndexStream;
+        fn->ParentFileReference = 0; // not used in index stream
+        fn->CreationTime = 0;
+        fn->LastWriteTime = 0;
+        fn->ChangeTime = 0;
+        fn->LastAccessTime = 0;
+        fn->AllocatedSize = 0;
+        fn->DataSize = 0;
+        fn->Flags = 0;
+        fn->Extended.EAInfo.PackedEASize = 0;
+        fn->Extended.EAInfo.Padding = 0;
+        fn->NameLength = FileToAdd->NameLength;
+        fn->NameType = NAME_TYPE_WIN32;
+        RtlCopyMemory(fn->Name, FileToAdd->Name, nameBytes);
     }
+    else
+    {
+        // Need to grow the resident index root data. Build a new buffer and write it using UpdateResidentData.
+        // Allocate buffer for entire IndexRootEx (preamble + header.TotalIndexSize)
+        ULONG copyLen = FIELD_OFFSET(IndexRootEx, Header) + totalSize;
+        PUCHAR newBuf = (PUCHAR)ExAllocatePoolWithTag(PagedPool, copyLen + needed, TAG_BTREE);
+        if (!newBuf) return STATUS_INSUFFICIENT_RESOURCES;
+        // Copy existing IndexRootEx preamble + header+entries into new buffer
+        RtlCopyMemory(newBuf, root, copyLen);
 
-    // Shift end marker forward to make space
-    SIZE_T tail = (SIZE_T)(end - (PUCHAR)entry);
-    RtlMoveMemory((PUCHAR)entry + needed, entry, tail);
-    root->Header.TotalIndexSize += (UINT16)needed;
+        // Pointers within new buffer
+        PIndexRootEx newRoot = (PIndexRootEx)newBuf;
+        PUCHAR newRootData = (PUCHAR)newRoot;
 
-    // Fill the new entry
-    entry->Data.Directory.IndexedFile = FileReferenceNumber;
-    entry->StreamLength = streamBytes;
-    entry->EntryLength = entryLen;
-    entry->Flags = 0; // leaf entry
+        // Locate end marker entry in the new buffer by walking from IndexOffset
+        PIndexEntry scan = (PIndexEntry)(newRootData + newRoot->Header.IndexOffset);
+        PUCHAR newEnd = newRootData + newRoot->Header.TotalIndexSize;
+        while ((PUCHAR)scan < newEnd)
+        {
+            if (scan->EntryLength == 0) { ExFreePoolWithTag(newBuf, TAG_BTREE); return STATUS_FILE_CORRUPT_ERROR; }
+            if (scan->Flags & INDEX_ENTRY_END) break;
+            scan = (PIndexEntry)((PUCHAR)scan + scan->EntryLength);
+        }
+        if ((PUCHAR)scan >= newEnd)
+        {
+            ExFreePoolWithTag(newBuf, TAG_BTREE);
+            return STATUS_FILE_CORRUPT_ERROR;
+        }
 
-    PFileNameEx fn = (PFileNameEx)entry->IndexStream;
-    fn->ParentFileReference = 0; // not used in index stream
-    fn->CreationTime = 0;
-    fn->LastWriteTime = 0;
-    fn->ChangeTime = 0;
-    fn->LastAccessTime = 0;
-    fn->AllocatedSize = 0;
-    fn->DataSize = 0;
-    fn->Flags = 0;
-    fn->Extended.EAInfo.PackedEASize = 0;
-    fn->Extended.EAInfo.Padding = 0;
-    fn->NameLength = FileToAdd->NameLength;
-    fn->NameType = NAME_TYPE_WIN32;
-    RtlCopyMemory(fn->Name, FileToAdd->Name, nameBytes);
+        // Insert new entry before end marker: shift current end marker and trailing bytes
+        SIZE_T endTail = (SIZE_T)(newEnd - (PUCHAR)scan);
+        RtlMoveMemory((PUCHAR)scan + needed, scan, endTail);
+        newRoot->Header.TotalIndexSize = (UINT16)newTotal;
+
+        PIndexEntry newEntry = scan;
+        newEntry->Data.Directory.IndexedFile = FileReferenceNumber;
+        newEntry->StreamLength = streamBytes;
+        newEntry->EntryLength = entryLen;
+        newEntry->Flags = 0;
+        PFileNameEx fn = (PFileNameEx)newEntry->IndexStream;
+        fn->ParentFileReference = 0;
+        fn->CreationTime = 0;
+        fn->LastWriteTime = 0;
+        fn->ChangeTime = 0;
+        fn->LastAccessTime = 0;
+        fn->AllocatedSize = 0;
+        fn->DataSize = 0;
+        fn->Flags = 0;
+        fn->Extended.EAInfo.PackedEASize = 0;
+        fn->Extended.EAInfo.Padding = 0;
+        fn->NameLength = FileToAdd->NameLength;
+        fn->NameType = NAME_TYPE_WIN32;
+        RtlCopyMemory(fn->Name, FileToAdd->Name, nameBytes);
+
+        // Write back with attribute growth
+        ULONG newLenVar = FIELD_OFFSET(IndexRootEx, Header) + newTotal;
+        Status = DirFile->UpdateResidentData(IndexRootAttr, newBuf, &newLenVar, 0);
+        ExFreePoolWithTag(newBuf, TAG_BTREE);
+        if (!NT_SUCCESS(Status)) return Status;
+    }
 
     // Update the file record on disk (write back directory's file record)
     Status = Volume->MFT->WriteFileRecordToMFT(DirFile);

@@ -73,6 +73,8 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
 
     if (IsFileRecordInMFTMirr(File->Header->MFTRecordNumber))
     {
+        // Reset length for second write
+        FRSize = FileRecordSize;
         // Write file record to $MFTMirr.
         Status = MFTMirrFile->WriteFileData(TypeData,
                                             NULL,
@@ -105,37 +107,35 @@ NTSTATUS
 MasterFileTable::IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
                                          _Out_ PBOOLEAN InUse)
 {
-#if 0
     NTSTATUS Status;
-    USHORT Bitmask;
-    UCHAR BitmapSection;
-    ULONG Size;
+    PFileRecord BitmapOwner;
+    PAttribute  BitmapAttr;
 
-    /* This code consistently fails an assertion:
-     * .\drivers\storage\class\disk\disk.c(589): residualOffset == 0
-     */
+    Status = GetFileAttributeFromFileRecordNumber(TypeBitmap, NULL, _MFT, &BitmapOwner, &BitmapAttr);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
-    Size = 1;
-    Status = MFTFile->CopyData(TypeBitmap,
-                               NULL,
-                               &BitmapSection,
-                               &Size,
-                               FileRecordNumber >> 3);
-
-    Bitmask = 1 << (FileRecordNumber % 8);
-
-    if(!NT_SUCCESS(Status))
+    ULONGLONG dataSize = GetAttributeDataSize(BitmapAttr);
+    ULONGLONG byteOffset = (ULONGLONG)(FileRecordNumber >> 3);
+    if (byteOffset >= dataSize)
     {
-        DPRINT1("Failed to get bitmap!\n");
+        delete BitmapOwner;
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    UCHAR b = 0;
+    ULONG len = 1;
+    Status = MFTFile->CopyData(TypeBitmap, NULL, &b, &len, byteOffset);
+    if (!NT_SUCCESS(Status))
+    {
+        delete BitmapOwner;
         return Status;
     }
 
-    *InUse = !!(BitmapSection & Bitmask);
+    UCHAR mask = (UCHAR)(1u << (FileRecordNumber & 7));
+    *InUse = !!(b & mask);
+    delete BitmapOwner;
     return STATUS_SUCCESS;
-#else
-    *InUse = TRUE;
-    return STATUS_SUCCESS;
-#endif
 }
 
 NTSTATUS
@@ -145,7 +145,7 @@ MasterFileTable::AllocateFreeFileRecord(_Out_ PULONG FileRecordNumber)
      * TODO: Read and update $MFT bitmap properly and journal with LFS.
      */
     NTSTATUS Status;
-    ULONG probe = 24; // skip first metadata records
+    ULONG reservedStart = 24; // reserved MFT entries (metadata files)
 
     // Query $MFT::$BITMAP attribute
     PFileRecord BitmapOwner;
@@ -155,6 +155,7 @@ MasterFileTable::AllocateFreeFileRecord(_Out_ PULONG FileRecordNumber)
     {
         // Fallback: linear probe without bitmap
         BOOLEAN inUse;
+        ULONG probe = reservedStart;
         for (;; ++probe)
         {
             Status = IsFileRecordNumberInUse(probe, &inUse);
@@ -164,43 +165,77 @@ MasterFileTable::AllocateFreeFileRecord(_Out_ PULONG FileRecordNumber)
         }
     }
 
-    // Read bitmap into memory
-    ULONG bytesToRead = (ULONG)((probe >> 3) + 0x1000); // read a chunk
-    PUCHAR map = (PUCHAR)ExAllocatePoolWithTag(PagedPool, bytesToRead, TAG_MFT);
+    // Read bitmap and scan for a zero bit
+    ULONGLONG totalBytes = GetAttributeDataSize(BitmapAttr);
+    ULONGLONG offset = 0;
+    ULONG chunk = 4096;
+    PUCHAR map = (PUCHAR)ExAllocatePoolWithTag(PagedPool, chunk, TAG_MFT);
     if (!map) { delete BitmapOwner; return STATUS_INSUFFICIENT_RESOURCES; }
-    RtlZeroMemory(map, bytesToRead);
-    Status = MFTFile->CopyData(TypeBitmap, NULL, map, &bytesToRead, 0);
-    if (!NT_SUCCESS(Status)) { ExFreePoolWithTag(map, TAG_MFT); delete BitmapOwner; return Status; }
-
-    // Scan for a zero bit
-    ULONG bitIndex = 24; // skip system
-    for (;; ++bitIndex)
+    ULONG foundBit = 0xFFFFFFFF;
+    while (offset < totalBytes)
     {
-        ULONG byteIndex = bitIndex >> 3;
-        if (byteIndex >= bytesToRead)
+        ULONGLONG remainBytes = totalBytes - offset;
+        ULONG toRead = (remainBytes < (ULONGLONG)chunk) ? (ULONG)remainBytes : chunk;
+        RtlZeroMemory(map, toRead);
+        ULONG remain = toRead;
+        Status = MFTFile->CopyData(TypeBitmap, NULL, map, &remain, offset);
+        if (!NT_SUCCESS(Status)) { ExFreePoolWithTag(map, TAG_MFT); delete BitmapOwner; return Status; }
+        ULONG got = toRead - remain;
+        if (got == 0) break;
+
+        for (ULONG i = 0; i < got; ++i)
         {
-            // TODO: grow read range; for now, fail
-            ExFreePoolWithTag(map, TAG_MFT);
-            delete BitmapOwner;
-            return STATUS_DISK_FULL;
+            UCHAR b = map[i];
+            if (b != 0xFF)
+            {
+                // find first zero bit in this byte
+                for (ULONG bit = 0; bit < 8; ++bit)
+                {
+                    if (!(b & (1u << bit)))
+                    {
+                        ULONG globalBit = (ULONG)((offset + i) * 8 + bit);
+                        if (globalBit >= reservedStart)
+                        {
+                            foundBit = globalBit;
+                            goto found;
+                        }
+                    }
+                }
+            }
         }
-        UCHAR b = map[byteIndex];
-        if (!(b & (1u << (bitIndex & 7))))
-        {
-            *FileRecordNumber = bitIndex;
-            break;
-        }
+
+        offset += got;
     }
 
-    // Mark bit as used and write back bitmap (simplified; no journaling, no cache)
-    ULONG setByte = (*FileRecordNumber) >> 3;
-    UCHAR mask = (UCHAR)(1u << ((*FileRecordNumber) & 7));
-    map[setByte] |= mask;
-    ULONG writeLen = bytesToRead;
-    LARGE_INTEGER zeroOffset; zeroOffset.QuadPart = 0;
-    Status = MFTFile->WriteFileData(TypeBitmap, NULL, map, &writeLen, &zeroOffset);
+found:
+    if (foundBit == 0xFFFFFFFF)
+    {
+        ExFreePoolWithTag(map, TAG_MFT);
+        delete BitmapOwner;
+        return STATUS_DISK_FULL;
+    }
+
+    // Mark the found bit and write back only the affected byte at its offset
+    ULONGLONG byteOff = (ULONGLONG)(foundBit >> 3);
+    UCHAR newByte;
+    ULONG one = 1;
+    // Read current byte to modify
+    Status = MFTFile->CopyData(TypeBitmap, NULL, &newByte, &one, byteOff);
+    if (!NT_SUCCESS(Status)) { ExFreePoolWithTag(map, TAG_MFT); delete BitmapOwner; return Status; }
+    newByte = (UCHAR)(newByte | (1u << (foundBit & 7)));
+    {
+        LARGE_INTEGER writeOff; writeOff.QuadPart = byteOff;
+        ULONG oneLen = 1;
+        Status = MFTFile->WriteFileData(TypeBitmap, NULL, &newByte, &oneLen, &writeOff);
+    }
+
+    // Update the in-memory MFT file's StandardInformation/DataSize if needed
+    // (not strictly necessary, but keeps sizes consistent for cache)
+    // No-op for now
 
     ExFreePoolWithTag(map, TAG_MFT);
     delete BitmapOwner;
-    return Status;
+    if (!NT_SUCCESS(Status)) return Status;
+    *FileRecordNumber = foundBit;
+    return STATUS_SUCCESS;
 }

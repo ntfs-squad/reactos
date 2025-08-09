@@ -29,6 +29,7 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PUCHAR Buffer;
     LARGE_INTEGER ByteOffset;
     ULONG Length;
+    ULONG RequestedLength;
     PFileContextBlock FileCB;
     PFILE_OBJECT FileObj;
     PNTFSVolume Volume;
@@ -40,6 +41,7 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     Buffer = (PUCHAR)(GetBuffer(Irp));
     ByteOffset = IrpSp->Parameters.Write.ByteOffset;
     Length = IrpSp->Parameters.Write.Length;
+    RequestedLength = Length;
     FileObj = IrpSp->FileObject;
     FileCB = (PFileContextBlock)FileObj->FsContext;
     Volume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->Volume;
@@ -111,10 +113,11 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         if (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO)
         {
             // Advance file pointer
-            IrpSp->FileObject->CurrentByteOffset.QuadPart = ByteOffset.QuadPart + Length;
+            ULONG bytesWritten = RequestedLength - Length;
+            IrpSp->FileObject->CurrentByteOffset.QuadPart = ByteOffset.QuadPart + bytesWritten;
         }
 
-        Irp->IoStatus.Information = Length;
+        Irp->IoStatus.Information = RequestedLength - Length;
     }
     else
     {

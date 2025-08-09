@@ -140,10 +140,14 @@ FileRecord::UpdateNonResidentData(_In_ PAttribute TargetAttribute,
 
         else
         {
-            // Get data
+            // Compute how much remains to write
+            ULONG remaining = *Length - BytesWritten;
+            ULONG chunk = (ULONG)min((ULONGLONG)remaining, (BytesInRun - Offset));
+
+            // Write data for this fragment from the correct position in caller's buffer
             Status = Volume->WriteVolume(GetOffset(CurrentRun->LCN) + Offset,
-                                         min(*Length, (BytesInRun - Offset)),
-                                         Buffer);
+                                         chunk,
+                                         Buffer + BytesWritten);
             if (!NT_SUCCESS(Status))
             {
                 DPRINT1("Failed to write data contents!\n");
@@ -152,7 +156,7 @@ FileRecord::UpdateNonResidentData(_In_ PAttribute TargetAttribute,
             }
 
             // Adjust bytes written
-            BytesWritten += min(*Length, (BytesInRun - Offset));
+            BytesWritten += chunk;
 
             // Are we done writing?
             if (BytesWritten == *Length)

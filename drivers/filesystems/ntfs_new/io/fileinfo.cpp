@@ -169,6 +169,35 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     if (IrpSp->MinorFunction == IRP_MN_QUERY_DIRECTORY)
     {
+#if 0
+        // Refresh directory tree only if this is actually a directory
+        if (FileCB->FileRec && (FileCB->FileRec->Header->Flags & FR_IS_DIRECTORY))
+        {
+            if (FileCB->FileDir)
+            {
+                delete FileCB->FileDir;
+                FileCB->FileDir = NULL;
+            }
+            FileCB->FileDir = new(PagedPool) Directory(((PVolumeContextBlock)VolCB)->Volume);
+            Status = FileCB->FileDir->LoadDirectory(FileCB->FileRec);
+            if (!NT_SUCCESS(Status))
+            {
+                Irp->IoStatus.Information = 0;
+                Irp->IoStatus.Status = Status;
+                IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+                return Status;
+            }
+        }
+#endif
+        // Only directories can be enumerated
+        if (!FileCB->FileRec || !(FileCB->FileRec->Header->Flags & FR_IS_DIRECTORY))
+        {
+            Irp->IoStatus.Information = 0;
+            Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
+            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+            return STATUS_INVALID_PARAMETER;
+        }
+
         FileInformationRequest = IrpSp->Parameters.QueryDirectory.FileInformationClass;
 
         switch(FileInformationRequest)

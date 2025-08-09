@@ -31,6 +31,8 @@ FileRecord::UpdateResidentData(_In_ PAttribute TargetAttribute,
                                _In_ PULONG Length,
                                _In_ ULONGLONG  Offset)
 {
+    // Track original requested length so the caller can compute bytes written
+    ULONG requestedLength = *Length;
     PUCHAR EndOfFileRecord;
     PUCHAR DataStart;
     ULONGLONG oldDataLen;
@@ -98,7 +100,10 @@ FileRecord::UpdateResidentData(_In_ PAttribute TargetAttribute,
     }
 
     // Copy the buffer contents at the requested offset
-    RtlCopyMemory(DataStart + Offset, Buffer, *Length);
+    RtlCopyMemory(DataStart + Offset, Buffer, requestedLength);
+
+    // All requested bytes were written for resident data
+    *Length = 0;
 
     return STATUS_SUCCESS;
 }
