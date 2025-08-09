@@ -94,10 +94,8 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             case FILE_CREATE:
             case FILE_OPEN_IF:
             case FILE_OVERWRITE_IF:
-                /* Minimal create support:
-                 * Build an in-memory file record with $STANDARD_INFORMATION and
-                 * empty resident $DATA. We do not yet persist to $MFT nor add
-                 * a directory entry. This enables handle-based I/O on new files.
+                /* Create a new file record, assign a free FRN, persist to $MFT,
+                 * and add an entry to the parent directory (root for now).
                  */
                 {
                     // Allocate a new empty file record buffer
@@ -112,7 +110,15 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                     CurrentFile->Header->SequenceNumber = 1;
                     CurrentFile->Header->HardLinkCount = 1;
                     CurrentFile->Header->AttributeOffset = sizeof(FileRecordHeader);
-                    CurrentFile->Header->Flags = 0; // regular file
+                    // Set flags/directory structures if creating a directory
+                    if (IrpSp->Parameters.Create.Options & FILE_DIRECTORY_FILE)
+                    {
+                        CurrentFile->Header->Flags = FR_IS_DIRECTORY;
+                    }
+                    else
+                    {
+                        CurrentFile->Header->Flags = 0; // regular file
+                    }
                     CurrentFile->Header->AllocatedSize = Volume->MFT->FileRecordSize;
                     CurrentFile->Header->BaseFileRecord = 0;
                     CurrentFile->Header->NextAttributeID = 1;
@@ -159,10 +165,122 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                     EndAttr->AttributeType = TypeAttributeEndMarker;
                     EndAttr->Length = 0;
 
+                    // If directory, append a minimal $INDEX_ROOT ("$I30")
+                    if (CurrentFile->Header->Flags & FR_IS_DIRECTORY)
+                    {
+                        PAttribute IdxRoot = (PAttribute)attrPtr;
+                        RtlZeroMemory(IdxRoot, sizeof(Attribute));
+                        IdxRoot->AttributeType = TypeIndexRoot;
+                        IdxRoot->IsNonResident = 0;
+                        IdxRoot->NameLength = 4; // "$I30"
+                        IdxRoot->NameOffset = 0x18;
+                        IdxRoot->Resident.DataOffset = 0x18 + (4 * sizeof(WCHAR));
+                        IdxRoot->Resident.DataLength = sizeof(IndexRootEx);
+                        ULONG idxLen = ROUND_UP(IdxRoot->Resident.DataOffset + IdxRoot->Resident.DataLength, 8);
+                        IdxRoot->Length = idxLen;
+                        // Name
+                        PWCHAR nm = (PWCHAR)((PUCHAR)IdxRoot + 0x18);
+                        nm[0] = L'$'; nm[1] = L'I'; nm[2] = L'3'; nm[3] = L'0';
+                        // Payload
+                        PIndexRootEx ir = (PIndexRootEx)((PUCHAR)IdxRoot + IdxRoot->Resident.DataOffset);
+                        RtlZeroMemory(ir, sizeof(IndexRootEx));
+                        ir->AttributeType = TypeFileName;
+                        ir->CollationRule = ATTRDEF_COLLATION_FILENAME;
+                        ir->BytesPerIndexRec = BytesPerCluster(Volume);
+                        ir->ClusPerIndexRec = 1;
+                        ir->Header.IndexOffset = sizeof(IndexRootEx);
+                        ir->Header.TotalIndexSize = (UINT16)sizeof(IndexRootEx);
+                        ir->Header.AllocatedSize = (UINT16)ROUND_UP(sizeof(IndexRootEx), 8);
+                        attrPtr += IdxRoot->Length;
+                    }
+
                     // Finalize record size
                     CurrentFile->Header->ActualSize = (ULONG)((ULONG_PTR)attrPtr - (ULONG_PTR)CurrentFile->Data);
 
-                    // Use this new record
+                    // Allocate a file record number
+                    ULONG NewFrn;
+                    Status = Volume->MFT->AllocateFreeFileRecord(&NewFrn);
+                    if (!NT_SUCCESS(Status))
+                    {
+                        delete CurrentFile;
+                        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                        Irp->IoStatus.Status = Status;
+                        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+                        return Status;
+                    }
+                    CurrentFile->Header->MFTRecordNumber = NewFrn;
+
+                    // Persist the file record to $MFT
+                    Status = Volume->MFT->WriteFileRecordToMFT(CurrentFile);
+                    if (!NT_SUCCESS(Status))
+                    {
+                        delete CurrentFile;
+                        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                        Irp->IoStatus.Status = Status;
+                        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+                        return Status;
+                    }
+
+                    // Add a directory entry in the parent directory (root for now)
+                    PFileRecord RootFile;
+                    if (!NT_SUCCESS(Volume->MFT->GetFileRecord(_Root, &RootFile)))
+                    {
+                        delete CurrentFile;
+                        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                        Irp->IoStatus.Status = STATUS_NOT_FOUND;
+                        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+                        return STATUS_NOT_FOUND;
+                    }
+                    Directory ParentDir(Volume);
+                    Status = ParentDir.LoadDirectory(RootFile);
+                    if (!NT_SUCCESS(Status))
+                    {
+                        delete RootFile;
+                        delete CurrentFile;
+                        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                        Irp->IoStatus.Status = Status;
+                        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+                        return Status;
+                    }
+
+                    // Build a FILE_NAME stream for the new entry from requested name
+                    USHORT nameChars = 0;
+                    PWCHAR nameBuf = FileObject->FileName.Buffer;
+                    if (nameBuf)
+                    {
+                        PWCHAR last = wcsrchr(nameBuf, L'\\');
+                        PWCHAR comp = last ? last + 1 : nameBuf;
+                        nameChars = (USHORT)wcslen(comp);
+                        SIZE_T alloc = sizeof(FileNameEx) - sizeof(WCHAR) + nameChars * sizeof(WCHAR);
+                        PFileNameEx fn = (PFileNameEx)ExAllocatePoolWithTag(PagedPool, alloc, TAG_FILE_RECORD);
+                        if (!fn)
+                        {
+                            delete RootFile;
+                            delete CurrentFile;
+                            Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                            Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+                            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+                            return STATUS_INSUFFICIENT_RESOURCES;
+                        }
+                        RtlZeroMemory(fn, (ULONG)alloc);
+                        fn->NameLength = nameChars;
+                        fn->NameType = NAME_TYPE_WIN32;
+                        RtlCopyMemory(fn->Name, comp, nameChars * sizeof(WCHAR));
+
+                        Status = ParentDir.AddFileToDirectory(fn, NewFrn);
+                        ExFreePoolWithTag(fn, TAG_FILE_RECORD);
+                        if (!NT_SUCCESS(Status))
+                        {
+                            delete RootFile;
+                            delete CurrentFile;
+                            Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+                            Irp->IoStatus.Status = Status;
+                            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+                            return Status;
+                        }
+                    }
+
+                    delete RootFile;
                     Status = STATUS_SUCCESS;
                 }
                 break;
@@ -301,7 +419,8 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     // Set FsContext to the file context block and open file.
     FileObject->FsContext = FileCB;
-    Irp->IoStatus.Information = FILE_OPENED;
+    Irp->IoStatus.Information = (!NT_SUCCESS(Status)) ? 0 :
+        ((Disposition == FILE_CREATE || Disposition == FILE_OPEN_IF || Disposition == FILE_OVERWRITE_IF || Disposition == FILE_SUPERSEDE) ? FILE_CREATED : FILE_OPENED);
     Irp->IoStatus.Status = STATUS_SUCCESS;
     IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return STATUS_SUCCESS;

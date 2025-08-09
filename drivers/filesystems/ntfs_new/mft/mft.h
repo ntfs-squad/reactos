@@ -29,6 +29,9 @@ public:
     IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
                             _Out_ PBOOLEAN InUse);
 
+    NTSTATUS
+    AllocateFreeFileRecord(_Out_ PULONG FileRecordNumber);
+
     // ./get.cpp
     NTSTATUS
     GetFileRecord(_In_   ULONG FileRecordNumber,

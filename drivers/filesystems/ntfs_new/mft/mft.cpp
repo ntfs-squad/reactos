@@ -137,3 +137,70 @@ MasterFileTable::IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
     return STATUS_SUCCESS;
 #endif
 }
+
+NTSTATUS
+MasterFileTable::AllocateFreeFileRecord(_Out_ PULONG FileRecordNumber)
+{
+    /* Temporary allocator: linear probe for a free record number.
+     * TODO: Read and update $MFT bitmap properly and journal with LFS.
+     */
+    NTSTATUS Status;
+    ULONG probe = 24; // skip first metadata records
+
+    // Query $MFT::$BITMAP attribute
+    PFileRecord BitmapOwner;
+    PAttribute  BitmapAttr;
+    Status = GetFileAttributeFromFileRecordNumber(TypeBitmap, NULL, _MFT, &BitmapOwner, &BitmapAttr);
+    if (!NT_SUCCESS(Status) || !BitmapAttr)
+    {
+        // Fallback: linear probe without bitmap
+        BOOLEAN inUse;
+        for (;; ++probe)
+        {
+            Status = IsFileRecordNumberInUse(probe, &inUse);
+            if (!NT_SUCCESS(Status)) return Status;
+            if (!inUse) { *FileRecordNumber = probe; return STATUS_SUCCESS; }
+            if (probe > 0x00FFFFFF) return STATUS_DISK_FULL;
+        }
+    }
+
+    // Read bitmap into memory
+    ULONG bytesToRead = (ULONG)((probe >> 3) + 0x1000); // read a chunk
+    PUCHAR map = (PUCHAR)ExAllocatePoolWithTag(PagedPool, bytesToRead, TAG_MFT);
+    if (!map) { delete BitmapOwner; return STATUS_INSUFFICIENT_RESOURCES; }
+    RtlZeroMemory(map, bytesToRead);
+    Status = MFTFile->CopyData(TypeBitmap, NULL, map, &bytesToRead, 0);
+    if (!NT_SUCCESS(Status)) { ExFreePoolWithTag(map, TAG_MFT); delete BitmapOwner; return Status; }
+
+    // Scan for a zero bit
+    ULONG bitIndex = 24; // skip system
+    for (;; ++bitIndex)
+    {
+        ULONG byteIndex = bitIndex >> 3;
+        if (byteIndex >= bytesToRead)
+        {
+            // TODO: grow read range; for now, fail
+            ExFreePoolWithTag(map, TAG_MFT);
+            delete BitmapOwner;
+            return STATUS_DISK_FULL;
+        }
+        UCHAR b = map[byteIndex];
+        if (!(b & (1u << (bitIndex & 7))))
+        {
+            *FileRecordNumber = bitIndex;
+            break;
+        }
+    }
+
+    // Mark bit as used and write back bitmap (simplified; no journaling, no cache)
+    ULONG setByte = (*FileRecordNumber) >> 3;
+    UCHAR mask = (UCHAR)(1u << ((*FileRecordNumber) & 7));
+    map[setByte] |= mask;
+    ULONG writeLen = bytesToRead;
+    LARGE_INTEGER zeroOffset; zeroOffset.QuadPart = 0;
+    Status = MFTFile->WriteFileData(TypeBitmap, NULL, map, &writeLen, &zeroOffset);
+
+    ExFreePoolWithTag(map, TAG_MFT);
+    delete BitmapOwner;
+    return Status;
+}

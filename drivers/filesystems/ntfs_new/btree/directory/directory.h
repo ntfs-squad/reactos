@@ -65,7 +65,8 @@ public:
 
     // ./editdir.cpp
     NTSTATUS
-    AddFileToDirectory(_In_ PFileNameEx FileToAdd);
+    AddFileToDirectory(_In_ PFileNameEx FileToAdd,
+                       _In_ ULONGLONG FileReferenceNumber);
 
     NTSTATUS
     RemoveFileFromDirectory(_In_ PBTreeKey FileToRemove);
@@ -76,6 +77,7 @@ public:
 
 private:
     PNTFSVolume Volume;
+    PFileRecord DirFile;
 
     // ./directory.cpp
     NTSTATUS

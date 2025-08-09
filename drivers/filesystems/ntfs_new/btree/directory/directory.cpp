@@ -416,5 +416,6 @@ Directory::Directory(_In_ PFileRecord File,
                      _In_ PNTFSVolume Volume)
                     : Directory(Volume)
 {
+    DirFile = File;
     LoadDirectory(File);
 }
