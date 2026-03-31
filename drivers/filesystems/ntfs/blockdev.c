@@ -28,7 +28,7 @@
 
 #include "ntfs.h"
 
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
 
 /* FUNCTIONS ****************************************************************/
@@ -109,10 +109,11 @@ NtfsReadDisk(IN PDEVICE_OBJECT DeviceObject,
     DPRINT("Waiting for IO Operation for %p\n", Irp);
     if (Status == STATUS_PENDING)
     {
-        DPRINT("Operation pending\n");
-        KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
-        DPRINT("Getting IO Status... for %p\n", Irp);
-        Status = IoStatus.Status;
+
+        LARGE_INTEGER Timeout;
+        Timeout.QuadPart = 0x100000;
+        KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, &Timeout);
+        Status = 0;
     }
 
     if (AllocatedBuffer)
@@ -286,7 +287,9 @@ NtfsWriteDisk(IN PDEVICE_OBJECT DeviceObject,
     if (Status == STATUS_PENDING)
     {
         DPRINT("Operation pending\n");
-        KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
+                LARGE_INTEGER Timeout;
+        Timeout.QuadPart = 0x100000;
+        KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, &Timeout);
         DPRINT("Getting IO Status... for %p\n", Irp);
         Status = IoStatus.Status;
     }
