@@ -1623,6 +1623,7 @@ MmAdvanceMdl(IN PMDL Mdl,
 
 /*
  * @implemented
+ * @implemented
  */
 PVOID
 NTAPI

@@ -2847,6 +2847,10 @@ StartScan:
             QuerySection = FALSE;
         }
     }
+    else
+    {
+        __debugbreak(); 
+    }
 
     /* Did we already do these checks? */
     if (!SkipSaferAndAppCompat)

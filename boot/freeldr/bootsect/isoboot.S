@@ -190,6 +190,7 @@ relocated:
     call crlf_early
     call crlf_early
 #endif
+.boot_setupldr:
 
     // The BIOS gave us a boot drive number, so in a perfect world we could just use that one now.
     // Unfortunately, there are many broken BIOSes around, which is why ISOLINUX verifies it and applies some hacks if the number is wrong.
