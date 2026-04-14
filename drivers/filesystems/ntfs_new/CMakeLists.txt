@@ -25,7 +25,6 @@ list(APPEND SOURCE
      io/pnp.cpp
      io/read.cpp
      io/registry.cpp
-     io/util.cpp
      io/vol.cpp
      io/write.cpp
      lfs/lfs.cpp
@@ -41,7 +40,7 @@ list(APPEND SOURCE
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
 set_module_type(ntfs kernelmodedriver)
-target_link_libraries(ntfs ${PSEH_LIB} memcmp)
+target_link_libraries(ntfs ${PSEH_LIB} memcmp ntfslib_new)
 if(GDB AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
     target_compile_options(ntfs PRIVATE -O0)
 endif()
