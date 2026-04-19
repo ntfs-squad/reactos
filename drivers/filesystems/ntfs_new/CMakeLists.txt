@@ -1,15 +1,15 @@
 list(APPEND SOURCE
-     close.cpp
+     close.c
      create.cpp
-     ea.cpp
-     fastio.cpp
+     ea.c
+     fastio.c
      fileinfo.cpp
-     fsctrl.cpp
-     ntblockio.cpp
-     ntfsinit.cpp
-     pnp.cpp
+     fsctrl.c
+     ntblockio.c
+     ntfsinit.c
+     pnp.c
      read.cpp
-     registry.cpp
+     registry.c
      vol.cpp
      write.cpp
      ntfsvol.cpp)

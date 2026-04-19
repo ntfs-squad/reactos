@@ -10,6 +10,7 @@
 
 #define InvalidMftZoneReservation(Num) Num < 0 || Num > 4
 #define InvalidDisableLastAccessUpdate(Num) Num < 0 || Num > 3
+#define KEYVAL_BUFFER_SIZE ROUND_UP(sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG), 0x10)
 
 BOOLEAN gAllowExtChar8dot3;
 BOOLEAN gShowMetadataFiles;
@@ -51,14 +52,13 @@ OpenRegistryKey()
 }
 
 INT
-QueryDwordRegistryValue(_In_ HANDLE RegistryKey,
-                        _In_ PWCHAR Name,
-                        _In_ INT Default)
+QueryDwordRegistryValueEx(_In_ HANDLE RegistryKey,
+                          _In_ PWCHAR Name,
+                          _In_ INT Default)
 {
     NTSTATUS Status;
     UNICODE_STRING ValueName;
-    const UINT BufferSize = ROUND_UP(sizeof(KeyValuePartialInformation) + sizeof(ULONG), 0x10);
-    UCHAR Buffer[BufferSize];
+    UCHAR Buffer[KEYVAL_BUFFER_SIZE];
     ULONG DataLength;
 
     if (!RegistryKey)
@@ -71,7 +71,7 @@ QueryDwordRegistryValue(_In_ HANDLE RegistryKey,
                              &ValueName,
                              KeyValuePartialInformation,
                              Buffer,
-                             BufferSize,
+                             KEYVAL_BUFFER_SIZE,
                              &DataLength);
 
     if (!NT_SUCCESS(Status))
@@ -92,15 +92,15 @@ QueryDwordRegistryValue(_In_ PWCHAR Name,
     RegistryKey = OpenRegistryKey();
     if (!RegistryKey)
         return Default;
-    return QueryDwordRegistryValue(RegistryKey, Name, Default);
+    return QueryDwordRegistryValueEx(RegistryKey, Name, Default);
 }
 
 BOOLEAN
-QueryBooleanRegistryValue(_In_ HANDLE RegistryKey,
-                          _In_ PWCHAR Name,
-                          _In_ BOOLEAN Default)
+QueryBooleanRegistryValueEx(_In_ HANDLE RegistryKey,
+                            _In_ PWCHAR Name,
+                            _In_ BOOLEAN Default)
 {
-    return !!QueryDwordRegistryValue(RegistryKey, Name, Default ? 1 : 0);
+    return !!QueryDwordRegistryValueEx(RegistryKey, Name, Default ? 1 : 0);
 }
 
 BOOLEAN
@@ -139,6 +139,7 @@ SetBooleanRegistryValue(_In_ HANDLE RegistryKey,
     return SetDwordRegistryValue(RegistryKey, Name, Data ? 1 : 0);
 }
 
+EXTERN_C
 VOID
 GetGlobalSettingsFromRegistry()
 {
@@ -151,22 +152,25 @@ GetGlobalSettingsFromRegistry()
     /* Allows extended characters, including diacritics, for 8.3 compliant
      * file names. Default is OFF (0).
      */
-    gAllowExtChar8dot3 = QueryBooleanRegistryValue(RegistryKey,
-                                                   L"NtfsAllowExtendedCharacter8dot3Rename");
+    gAllowExtChar8dot3 = QueryBooleanRegistryValueEx(RegistryKey,
+                                                     L"NtfsAllowExtendedCharacter8dot3Rename",
+                                                     FALSE);
 
     /* Initiates a Bug Check when file corruption is detected, instead of
      * trying to repair it. Default is OFF (0).
      */
-    gBugCheckOnCorrupt = QueryBooleanRegistryValue(RegistryKey,
-                                                   L"NtfsBugCheckOnCorrupt");
+    gBugCheckOnCorrupt = QueryBooleanRegistryValueEx(RegistryKey,
+                                                     L"NtfsBugCheckOnCorrupt",
+                                                     FALSE);
 
     /* Disables generating an 8.3 compliant name when a file has a
      * non-compliant name. This feature has a significant performance impact,
      * but allows older Windows programs to access these files.
      * Default is OFF (0).
      */
-    gDisable8dot3NameCreation = QueryBooleanRegistryValue(RegistryKey,
-                                                          L"NtfsDisable8dot3NameCreation");
+    gDisable8dot3NameCreation = QueryBooleanRegistryValueEx(RegistryKey,
+                                                            L"NtfsDisable8dot3NameCreation",
+                                                            FALSE);
 
     /* Enables or disables the last access time on all files and all volumes.
      * Options:
@@ -175,9 +179,9 @@ GetGlobalSettingsFromRegistry()
      *     2 - System Managed, Enabled (default)
      *     3 - System Managed, Disabled
      */
-    gDisableLastAccessUpdate = QueryDwordRegistryValue(RegistryKey,
-                                                       L"NtfsDisableLastAccessUpdate",
-                                                       2);
+    gDisableLastAccessUpdate = QueryDwordRegistryValueEx(RegistryKey,
+                                                         L"NtfsDisableLastAccessUpdate",
+                                                         2);
 
     if (InvalidDisableLastAccessUpdate(gDisableLastAccessUpdate))
     {
@@ -192,8 +196,9 @@ GetGlobalSettingsFromRegistry()
      *
      * Note: This option currently has no effect.
      */
-    gDisableLfsDowngrade = QueryBooleanRegistryValue(RegistryKey,
-                                                     L"NtfsDisableLfsDowngrade");
+    gDisableLfsDowngrade = QueryBooleanRegistryValueEx(RegistryKey,
+                                                       L"NtfsDisableLfsDowngrade",
+                                                       FALSE);
 
     /* Disables LFS upgrade when a volume is mounted. The LFS upgrade can cause
      * compatibility issues with older versions of Windows when the volume is
@@ -201,8 +206,9 @@ GetGlobalSettingsFromRegistry()
      *
      * Note: This option currently has no effect.
      */
-    gDisableLfsUpgrade = QueryBooleanRegistryValue(RegistryKey,
-                                                   L"NtfsDisableLfsUpgrade");
+    gDisableLfsUpgrade = QueryBooleanRegistryValueEx(RegistryKey,
+                                                     L"NtfsDisableLfsUpgrade",
+                                                     FALSE);
 
     /* Changes the amount of space reserved for the Master File Table (MFT)
      * by default.
@@ -223,9 +229,9 @@ GetGlobalSettingsFromRegistry()
      * > seems to work better on spinning disk drives and is better documented.
      * > - Carl Bialorucki
      */
-    gMftZoneReservation = QueryDwordRegistryValue(RegistryKey,
-                                                  L"NtfsMftZoneReservation",
-                                                  1);
+    gMftZoneReservation = QueryDwordRegistryValueEx(RegistryKey,
+                                                    L"NtfsMftZoneReservation",
+                                                    1);
 
     if (InvalidMftZoneReservation(gMftZoneReservation))
     {
@@ -239,14 +245,16 @@ GetGlobalSettingsFromRegistry()
     /* Shows the super hidden NTFS metadata files, including $MFT and $LogFile.
      * Default is OFF (0).
      */
-    gShowMetadataFiles = QueryBooleanRegistryValue(RegistryKey,
-                                                   L"NtfsShowMetadataFiles");
+    gShowMetadataFiles = QueryBooleanRegistryValueEx(RegistryKey,
+                                                     L"NtfsShowMetadataFiles",
+                                                     FALSE);
 
     /* Shows the NTFS version information, including the LFS Client version,
      * in the properties window for each NTFS volume. Default is OFF (0).
      */
-    gShowVersionInfo = QueryBooleanRegistryValue(RegistryKey,
-                                                 L"NtfsShowVersionInfo");
+    gShowVersionInfo = QueryBooleanRegistryValueEx(RegistryKey,
+                                                   L"NtfsShowVersionInfo",
+                                                   FALSE);
 
     CloseRegistryKey(RegistryKey);
 }

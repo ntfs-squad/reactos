@@ -215,4 +215,4 @@ static inline void PrintFileCreateOptions(UINT8 Disposition, ULONG CreateOptions
     PrintFlag(CreateOptions, FILE_RESERVE_OPFILTER, "FILE_RESERVE_OPFILTER");
 }
 
-#endif
+#endif // NTFS_DEBUG

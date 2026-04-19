@@ -7,7 +7,9 @@
 #include "ntfs_tags.h"
 
 // Hack: This is a driver-specific setting. Our lib should not care.
-extern BOOLEAN gShowMetadataFiles;
+extern "C" {
+    extern BOOLEAN gShowMetadataFiles;
+}
 
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);

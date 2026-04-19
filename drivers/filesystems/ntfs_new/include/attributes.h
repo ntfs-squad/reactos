@@ -73,6 +73,10 @@ enum AttributeType
     TypeAttributeEndMarker  = 0xFFFFFFFF
 };
 
+#ifndef __cplusplus
+typedef enum AttributeType AttributeType;
+#endif
+
 typedef struct
 {
     UINT32 AttributeType;                  // Offset 0x00, Size 4
@@ -297,10 +301,14 @@ typedef struct
     UINT16 Padding;                        // Offset 0x06, Size 2
 } ReparsePointEx, *PReparsePointEx;
 
-struct ThirdPartyReparsePointEx : ReparsePointEx
+// TODO: Simplify this so we're not defining ReparsePointEx twice.
+typedef struct _ThirdPartyReparsePointEx
 {
-    GUID ReparseGUID; // Offset 0x08, Size 16
-};
+    UINT32 ReparseType;                    // Offset 0x00, Size 4
+    UINT16 ReparseDataLength;              // Offset 0x04, Size 2
+    UINT16 Padding;                        // Offset 0x06, Size 2
+    GUID ReparseGUID;                      // Offset 0x08, Size 16
+} ThirdPartyReparsePointEx, *PThirdPartyReparsePointEx;
 
 // $EA_INFORMATION (0xD0)
 typedef struct
