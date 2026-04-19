@@ -1,30 +1,18 @@
-// This whole header is a hack replacement for ntfspch.h
+// Hack: This whole header is a hack replacement for ntfspch.h
 
+// Hack: This should only be in enviornments/km.cpp
 #include <ntifs.h>
+
+// Hack: This should not be in any public header.
+#include "ntfs_tags.h"
+
+// Hack: This is a driver-specific setting. Our lib should not care.
+extern BOOLEAN gShowMetadataFiles;
 
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
-
-#ifndef TAG_NTFS
-#define TAG_NTFS 'NTFS'
-#endif
-#ifndef TAG_MFT
-#define TAG_MFT '$MFT'
-#endif
-#ifndef TAG_FILE_RECORD
-#define TAG_FILE_RECORD 'FREC'
-#endif
-#ifndef TAG_DATA_RUN
-#define TAG_DATA_RUN 'DTRN'
-#endif
-#ifndef TAG_LOG_FILE_SERVICE
-#define TAG_LOG_FILE_SERVICE 'LgFS'
-#endif
-#ifndef TAG_BTREE
-#define TAG_BTREE 'BTRE'
-#endif
 
 #define GetWStrLength(x) ((x) * sizeof(WCHAR))
 #define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
@@ -43,8 +31,6 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 #ifndef UINT
 typedef unsigned int UINT;
 #endif
-
-extern BOOLEAN gShowMetadataFiles;
 
 #include "filerecord/attributes/attributes.h"
 #include "ntfsvol/ntfsvol.h"

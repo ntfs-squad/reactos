@@ -16,14 +16,15 @@ list(APPEND SOURCE
      lfs/lfs.cpp
      mft/get.cpp
      mft/mft.cpp
-     # ntfsvol/disk.cpp
      ntfsvol/metadata/attrdef.cpp
      ntfsvol/metadata/bitmap.cpp
      ntfsvol/metadata/upcase.cpp
-     ntfsvol/metadata/volume.cpp
-     # ntfsvol/ntfsvol.cpp
-     # ntfsvol/sanity.cpp
-     util.cpp)
+     ntfsvol/metadata/volume.cpp)
 
 add_library(ntfslib_new ${SOURCE})
 add_dependencies(ntfslib_new psdk)
+
+# Environment specific targets
+add_library(ntfslib_new_km enviornments/km.cpp)
+# add_library(ntfslib_new_um enviornments/um.cpp)
+# add_library(ntfslib_new_fl enviornments/fl.cpp)

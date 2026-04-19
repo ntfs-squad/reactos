@@ -20,7 +20,7 @@ list(APPEND SOURCE
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
 set_module_type(ntfs kernelmodedriver)
-target_link_libraries(ntfs ${PSEH_LIB} memcmp ntfslib_new)
+target_link_libraries(ntfs ${PSEH_LIB} memcmp ntfslib_new ntfslib_new_km)
 if(GDB AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
     target_compile_options(ntfs PRIVATE -O0)
 endif()
