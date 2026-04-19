@@ -6,11 +6,7 @@
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include <ntifs.h>
-
-#ifndef TAG_NTFS
-#define TAG_NTFS 'NTFS'
-#endif // !TAG_NTFS
+#include "ntfslib_new.h"
 
  void* __cdecl operator new(size_t Size, POOL_TYPE PoolType)
  {
