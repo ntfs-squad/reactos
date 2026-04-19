@@ -6,7 +6,22 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "fsctrl.h"
+ #include "ntfspch.h"
+
+ static
+ BOOLEAN
+ NtfsIsIrpTopLevel (_In_ PIRP Irp)
+ {
+     PAGED_CODE();
+ 
+     if (!IoGetTopLevelIrp())
+     {
+         IoSetTopLevelIrp(Irp);
+         return TRUE;
+     }
+ 
+     return FALSE;
+ }
 
 /* GLOBALS *****************************************************************/
 

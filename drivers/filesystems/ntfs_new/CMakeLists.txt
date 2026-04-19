@@ -1,22 +1,18 @@
 list(APPEND SOURCE
-     ntfspch.h
-     io/close.cpp
-     io/create.cpp
-     io/ea.cpp
-     io/fastio.cpp
-     io/fileinfo.cpp
-     io/fsctrl.cpp
-     io/ntblockio.cpp
-     io/ntfsinit.cpp
-     io/pnp.cpp
-     io/read.cpp
-     io/registry.cpp
-     io/vol.cpp
-     io/write.cpp
-     ntfsvol/disk.cpp
-     ntfsvol/ntfsvol.cpp
-     ntfsvol/sanity.cpp
-     )
+     close.cpp
+     create.cpp
+     ea.cpp
+     fastio.cpp
+     fileinfo.cpp
+     fsctrl.cpp
+     ntblockio.cpp
+     ntfsinit.cpp
+     pnp.cpp
+     read.cpp
+     registry.cpp
+     vol.cpp
+     write.cpp
+     ntfsvol.cpp)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
 set_module_type(ntfs kernelmodedriver)
