@@ -1,12 +1,16 @@
 /*
- * PROJECT:     ReactOS Kernel
+ * PROJECT:     ReactOS NTFS library
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     NTFS filesystem driver
+ * PURPOSE:     Kernelmode glue
  * COPYRIGHT:   Copyright 2024 Justin Miller <justin.miller@reactos.org>
  *              Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "ntfslib_new.h"
+ #include <ntifs.h>
+ 
+ #ifndef TAG_NTFS
+ #define TAG_NTFS 'NTFS'
+ #endif
 
  void* __cdecl operator new(size_t Size, POOL_TYPE PoolType)
  {
