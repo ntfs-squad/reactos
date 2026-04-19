@@ -61,7 +61,7 @@ NtfsFsdFileSystemControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     {
         Irp->IoStatus.Status = STATUS_UNRECOGNIZED_VOLUME;
         Status = STATUS_UNRECOGNIZED_VOLUME;
-        IoCompleteRequest(Irp, NULL);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
     }
     else
     {
@@ -91,7 +91,7 @@ NtfsFsdFileSystemControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                     break;
         }
         Status = Irp->IoStatus.Status;
-        IoCompleteRequest(Irp, NULL);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
     }
     if (TopLevel) { IoSetTopLevelIrp(NULL); }
     FsRtlExitFileSystem();

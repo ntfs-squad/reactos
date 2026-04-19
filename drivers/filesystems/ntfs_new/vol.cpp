@@ -10,8 +10,7 @@
 
  extern NPAGED_LOOKASIDE_LIST FileCBLookasideList;
  //TODO:
- extern PDRIVER_OBJECT NtfsDriverObject;
- 
+
  static
  NTSTATUS
  NtfsGetVolumeInformation(PDEVICE_OBJECT DeviceObject,
@@ -150,7 +149,6 @@
  }
 
 /* GLOBALS *****************************************************************/
-extern FAST_IO_DISPATCH FastIoDispatch;
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(PAGE, NtfsFsdQueryVolumeInformation)
 #pragma alloc_text(PAGE, NtfsFsdSetVolumeInformation)

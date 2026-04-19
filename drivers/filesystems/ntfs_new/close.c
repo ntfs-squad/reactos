@@ -16,7 +16,6 @@
 #endif
 
 /* FUNCTIONS ****************************************************************/
-extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 
 _Function_class_(IRP_MJ_CLOSE)
 _Function_class_(DRIVER_DISPATCH)
@@ -58,18 +57,18 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             FsRtlUninitializeFileLock(&FileCB->FileLock);
 
             if (FileCB->FileDir)
-                delete FileCB->FileDir;
+                ExFreePool(FileCB->FileDir);
 
             if (FileCB->FileRec)
-                delete FileCB->FileRec;
+                ExFreePool(FileCB->FileRec);
 
             if (FileCB->StreamCB)
-                delete FileCB->StreamCB;
+                ExFreePool(FileCB->StreamCB);
 
             if (FileCB->FileName.Buffer)
-                delete FileCB->FileName.Buffer;
+                ExFreePool(FileCB->FileName.Buffer);
 
-            delete FileCB;
+            ExFreePool(FileCB);
             IrpSp->FileObject->FsContext = NULL;
         }
     }

@@ -9,7 +9,6 @@
 #include "ntfspch.h"
 
 #define NDEBUG
-#include <debug.h>
 
 /* GLOBALS *****************************************************************/
 

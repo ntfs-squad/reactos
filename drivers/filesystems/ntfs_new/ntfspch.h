@@ -18,6 +18,8 @@
 #include <ntddstor.h>
 #include <ntintsafe.h>
 #include <pseh/pseh2.h>
+#include <ntstrsafe.h>
+#include <debug.h>
 
 #define NTFS_DEBUG
 
@@ -33,7 +35,6 @@ Irp->UserBuffer
 #define GetBuffer(Irp) Irp->AssociatedIrp.SystemBuffer ? Irp->AssociatedIrp.SystemBuffer : GetUserBuffer(Irp)
 
 typedef enum _TYPE_OF_OPEN {
-
     UnopenedFileObject = 1,
     UserFileOpen,
     UserDirectoryOpen,
@@ -43,35 +44,46 @@ typedef enum _TYPE_OF_OPEN {
     EaFile,
 } TYPE_OF_OPEN;
 
+#include "include/tags.h"
+#include "include/dispatch.h"
+#include "include/attributes.h"
+#include "include/reg.h"
+#include "include/ctxblks.h"
+
+#ifndef __cplusplus
+extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
+#endif
+
+#ifdef __cplusplus
+
+extern "C" {
+    extern BOOLEAN gAllowExtChar8dot3;
+    extern BOOLEAN gShowMetadataFiles;
+    extern BOOLEAN gShowVersionInfo;
+    extern BOOLEAN gBugCheckOnCorrupt;
+    extern BOOLEAN gDisable8dot3NameCreation;
+    extern INT gDisableLastAccessUpdate;
+    extern BOOLEAN gDisableLfsDowngrade;
+    extern BOOLEAN gDisableLfsUpgrade;
+    extern INT gMftZoneReservation;
+
+    extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
+    extern PDRIVER_OBJECT NtfsDriverObject;
+    extern FAST_IO_DISPATCH FastIoDispatch;
+}
+
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 
-#include "include/tags.h"
-#include "include/dispatch.h"
-#include "include/reg.h"
-#include "include/attributes.h"
-#include "include/ctxblks.h"
 #include "include/ntfsvol.h"
 #include "include/filerecord.h"
 #include "include/btree.h"
 #include "include/mft.h"
 #include "include/lfs.h"
-#include <ntstrsafe.h>
-
-// Global variables
-extern BOOLEAN gAllowExtChar8dot3;
-extern BOOLEAN gShowMetadataFiles;
-extern BOOLEAN gShowVersionInfo;
-extern BOOLEAN gBugCheckOnCorrupt;
-extern BOOLEAN gDisable8dot3NameCreation;
-extern INT gDisableLastAccessUpdate;
-extern BOOLEAN gDisableLfsDowngrade;
-extern BOOLEAN gDisableLfsUpgrade;
-extern INT gMftZoneReservation;
-
-#include <debug.h>
 #include "include/dbg.h"
+
+#endif /* __cplusplus */
 
 #endif // _NTFSPROCS_

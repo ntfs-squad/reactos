@@ -15,7 +15,6 @@
 #endif
 
 /* FUNCTIONS ****************************************************************/
-extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 
 _Function_class_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)

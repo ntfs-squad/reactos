@@ -18,7 +18,6 @@
 
 _Function_class_(IRP_MJ_PNP)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdPnp(_In_ PDEVICE_OBJECT VolumeDeviceObject,
@@ -28,6 +27,8 @@ NtfsFsdPnp(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Handles PnP requests.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-pnp
      */
+     UNREFERENCED_PARAMETER(VolumeDeviceObject);
+     UNREFERENCED_PARAMETER(Irp);
     __debugbreak();
     return 1;
 }
