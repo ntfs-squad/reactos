@@ -53,6 +53,7 @@ typedef enum _TYPE_OF_OPEN {
 #include "include/ntfsvol.h"
 #endif
 #include "include/filerecord.h"
+#include "include/btree.h"
 
 #ifndef __cplusplus
 extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
@@ -81,7 +82,6 @@ void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 
-#include "include/btree.h"
 #include "include/mft.h"
 #include "include/lfs.h"
 #include "include/dbg.h"
