@@ -8,8 +8,8 @@
 
 #include "ntfslib_new.h"
 
-#define BytesPerIndexRecord(Volume) \
-(BytesPerCluster(Volume) * Volume->ClustersPerIndexRecord)
+#define BytesPerIndexRecord(DiskVolume) \
+(BytesPerCluster(DiskVolume) * DiskVolume->ClustersPerIndexRecord)
 
 // Used for LoadDirectory()
 #define MayHaveShortKey(SearchKey) \
@@ -25,7 +25,7 @@ Directory::VerifyUpdateSequenceArray(PNTFSRecordHeader Record)
     USHORT *Block;
     ULONG  BytesPerSector;
 
-    BytesPerSector = Volume->BytesPerSector;
+    BytesPerSector = DiskVolume->BytesPerSector;
     USA = (USHORT*)((PCHAR)Record + Record->UpdateSequenceOffset);
     USANumber = *(USA++);
     USACount = Record->SizeOfUpdateSequence - 1; // Exclude the USA Number.
@@ -62,7 +62,7 @@ Directory::CreateNode(_In_    PFileRecord File,
 
     // Get VCN from the end of the node entry
     VCN = (PULONGLONG)((char*)ParentNodeKey->Entry + ParentNodeKey->Entry->EntryLength - sizeof(ULONGLONG));
-    IndexBufferSize = BytesPerIndexRecord(Volume);
+    IndexBufferSize = BytesPerIndexRecord(DiskVolume);
 
     // Create the new node and first key.
     NewNode = new(PagedPool, TAG_BTREE) BTreeNode();
@@ -329,7 +329,7 @@ Directory::DoesFileNameMatch(PUNICODE_STRING NameFilter,
          * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtlisnameinexpression
         */
 
-        // TODO: Should this be replaced with Volume->UpcaseWideString()?
+        // TODO: Should this be replaced with DiskVolume->UpcaseWideString()?
         NTSTATUS Status = RtlUpcaseUnicodeString(NameFilter, NameFilter, FALSE);
         if (!NT_SUCCESS(Status))
         {
@@ -407,14 +407,14 @@ Directory::GetShortNameKey(_In_ PBTreeKey Key,
     return NULL;
 }
 
-Directory::Directory(_In_ PNTFSVolume Volume)
+Directory::Directory(_In_ PVolume DiskVolume)
 {
-    this->Volume = Volume;
+    this->DiskVolume = DiskVolume;
 }
 
 Directory::Directory(_In_ PFileRecord File,
-                     _In_ PNTFSVolume Volume)
-                    : Directory(Volume)
+                     _In_ PVolume DiskVolume)
+                    : Directory(DiskVolume)
 {
     LoadDirectory(File);
 }

@@ -17,7 +17,7 @@
      UINT FileRecordSize;
  
      // ./ mft.cpp
-     MasterFileTable(_In_ PNTFSVolume TargetVolume,
+     MasterFileTable(_In_ PVolume TargetVolume,
                      _In_ UINT64 MFTLCN,
                      _In_ UINT64 MFTMirrLCN,
                      _In_ INT8   ClustersPerFileRecord);
@@ -50,7 +50,7 @@
                                           _Out_ PAttribute* TargetAttribute);
  
  private:
-     PNTFSVolume Volume;
+     PVolume DiskVolume;
      UINT64 MFTLCN;
      UINT64 MFTMirrLCN;
      INT    MftZoneReservation;

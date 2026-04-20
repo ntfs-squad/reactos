@@ -9,7 +9,7 @@
 #include "ntfslib_new.h"
 
 void
-NTFSVolume::SanityCheckBlockIO()
+Volume::SanityCheckBlockIO()
 {
 
     DPRINT1("Running a very close sanity check by reading one block, writing one block and re reading\n\n\n\n");
@@ -55,7 +55,7 @@ NTFSVolume::SanityCheckBlockIO()
     }
 }
 void
-NTFSVolume::RunSanityChecks()
+Volume::RunSanityChecks()
 {
     PAGED_CODE();
 

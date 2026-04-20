@@ -9,9 +9,9 @@
 #include "ntfslib_new.h"
 
 NTSTATUS
-NTFSVolume::ReadVolume(_In_    ULONGLONG Offset,
-                       _In_    ULONG Length,
-                       _Inout_ PUCHAR Buffer)
+Volume::ReadVolume(_In_    ULONGLONG Offset,
+                   _In_    ULONG Length,
+                   _Inout_ PUCHAR Buffer)
 {
     NTSTATUS Status;
     PUCHAR ReadBuffer;
@@ -64,9 +64,9 @@ NTFSVolume::ReadVolume(_In_    ULONGLONG Offset,
 }
 
 NTSTATUS
-NTFSVolume::WriteVolume(_In_    ULONGLONG Offset,
-                        _In_    ULONG Length,
-                        _Inout_ PUCHAR Buffer)
+Volume::WriteVolume(_In_    ULONGLONG Offset,
+                    _In_    ULONG Length,
+                    _Inout_ PUCHAR Buffer)
 {
     NTSTATUS Status;
     PUCHAR WriteBuffer;

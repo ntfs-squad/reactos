@@ -102,9 +102,9 @@ FileRecord::CopyData(_In_    PAttribute Attr,
 
                 // Get data into the correct position in the caller's buffer
                 ULONG chunk = min(BytesToRead - BytesRead, (BytesInRun - (ULONG)Offset));
-                Status = Volume->ReadVolume(GetOffset(CurrentDR->LCN) + Offset,
-                                            chunk,
-                                            Buffer + BytesRead);
+                Status = DiskVolume->ReadVolume(GetOffset(CurrentDR->LCN) + Offset,
+                                                chunk,
+                                                Buffer + BytesRead);
                 if (!NT_SUCCESS(Status))
                 {
                     DPRINT1("Failed to read attribute contents!\n");

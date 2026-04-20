@@ -9,8 +9,8 @@
 #include "ntfslib_new.h"
 
 NTSTATUS
-NTFSVolume::UpcaseWideString(_Inout_ PWSTR WideString,
-                             _In_    ULONG Length)
+Volume::UpcaseWideString(_Inout_ PWSTR WideString,
+                         _In_    ULONG Length)
 {
     NTSTATUS Status;
     PWSTR UpCaseBuffer;

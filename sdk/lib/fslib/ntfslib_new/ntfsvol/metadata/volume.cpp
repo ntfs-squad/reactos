@@ -9,8 +9,8 @@
 #include "ntfslib_new.h"
 
 NTSTATUS
-NTFSVolume::GetVolumeLabel(_Inout_ PWSTR   VolumeLabel,
-                           _Inout_ PUSHORT Length)
+Volume::GetVolumeLabel(_Inout_ PWSTR   VolumeLabel,
+                       _Inout_ PUSHORT Length)
 {
     NTSTATUS Status;
     PFileRecord VolumeFile;
@@ -42,8 +42,8 @@ NTFSVolume::GetVolumeLabel(_Inout_ PWSTR   VolumeLabel,
 }
 
 NTSTATUS
-NTFSVolume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
-                           _In_ ULONG Length)
+Volume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
+                       _In_ ULONG Length)
 {
     NTSTATUS Status;
     FileRecord* VolumeFile;

@@ -6,147 +6,147 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
- #include "ntfspch.h"
+#include "ntfspch.h"
 
- extern NPAGED_LOOKASIDE_LIST FileCBLookasideList;
- //TODO:
+extern NPAGED_LOOKASIDE_LIST FileCBLookasideList;
+//TODO:
 
- static
- NTSTATUS
- NtfsGetVolumeInformation(PDEVICE_OBJECT DeviceObject,
-                          PFILE_FS_VOLUME_INFORMATION Buffer,
-                          PULONG Length)
- {
-     size_t VolumeInfoSize = sizeof(FILE_FS_VOLUME_INFORMATION);
+static
+NTSTATUS
+NtfsGetVolumeInformation(PDEVICE_OBJECT DeviceObject,
+                         PFILE_FS_VOLUME_INFORMATION Buffer,
+                         PULONG Length)
+{
+    size_t VolumeInfoSize = sizeof(FILE_FS_VOLUME_INFORMATION);
+
+    if (*Length < VolumeInfoSize + DeviceObject->Vpb->VolumeLabelLength)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    Buffer->VolumeSerialNumber = DeviceObject->Vpb->SerialNumber;
+    Buffer->VolumeLabelLength = DeviceObject->Vpb->VolumeLabelLength;
+    RtlCopyMemory(Buffer->VolumeLabel,
+                  DeviceObject->Vpb->VolumeLabel,
+                  DeviceObject->Vpb->VolumeLabelLength);
+
+    // TODO: Fix this
+    Buffer->VolumeCreationTime.QuadPart = 0;
+    Buffer->SupportsObjects = FALSE;
+
+    // TODO: Investigate. Should we be returning the bytes written instead?
+    *Length -= VolumeInfoSize + DeviceObject->Vpb->VolumeLabelLength;
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+NtfsGetSizeInfo(PDEVICE_OBJECT DeviceObject,
+                PFILE_FS_SIZE_INFORMATION Buffer,
+                PULONG Length)
+{
+    PVolume DiskVolume;
+
+    if (*Length < sizeof(FILE_FS_SIZE_INFORMATION))
+        return STATUS_BUFFER_OVERFLOW;
+
+       DiskVolume = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->DiskVolume;
+
+    if (!DiskVolume)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    DiskVolume->GetFreeClusters(&Buffer->AvailableAllocationUnits);
+    Buffer->TotalAllocationUnits.QuadPart = DiskVolume->ClustersInVolume;
+    Buffer->SectorsPerAllocationUnit = DiskVolume->SectorsPerCluster;
+    Buffer->BytesPerSector = DiskVolume->BytesPerSector;
+
+    *Length -= sizeof(FILE_FS_SIZE_INFORMATION);
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+NtfsGetAttributeInfo(PVolume DiskVolume,
+                     PFILE_FS_ATTRIBUTE_INFORMATION Buffer,
+                     PULONG Length)
+{
+    NTSTATUS Status;
+    size_t BytesToWrite;
+    LPCWSTR NTFSVerFormat;
+    UNICODE_STRING NTFSVer;
+
+    if (gShowVersionInfo)
+    {
+        // Report "NTFS x.x, Client x.x"
+        BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 38;
+        if (*Length < BytesToWrite)
+            goto fallback;
+        Buffer->FileSystemNameLength = 40;
+        NTFSVerFormat = L"NTFS %1ld.%1ld, Client %1ld.%1ld";
+        RtlInitEmptyUnicodeString(&NTFSVer,
+                                  Buffer->FileSystemName,
+                                  40);
+        Status = RtlUnicodeStringPrintf(&NTFSVer,
+                                        NTFSVerFormat,
+                                        DiskVolume->NtfsMajorVersion,
+                                        DiskVolume->NtfsMinorVersion,
+                                        DiskVolume->LFS->ClientMajorVersion,
+                                        DiskVolume->LFS->ClientMinorVersion);
+        if (!NT_SUCCESS(Status))
+            goto fallback;
+    }
+
+    else
+    {
+fallback:
+        // Report "NTFS"
+        BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 6;
+        if (*Length < BytesToWrite)
+            return STATUS_BUFFER_TOO_SMALL;
+        Buffer->FileSystemNameLength = 8;
+        RtlCopyMemory(Buffer->FileSystemName, L"NTFS", 8);
+        *Length -= BytesToWrite;
+    }
+
+    /* For more information on FileSystemAttributes:
+     * https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb/3065351b-0b78-4976-9a5a-11657d8857c7
+     *
+     * TODO: Add attributes as needed.
+     */
+    Buffer->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES
+                                   | FILE_UNICODE_ON_DISK
+                                   | FILE_NAMED_STREAMS;
+
+    if (DiskVolume->IsReadOnly)
+        Buffer->FileSystemAttributes |= FILE_READ_ONLY_VOLUME;
+
+    Buffer->MaximumComponentNameLength = 255;
+    *Length -= BytesToWrite;
+    return STATUS_SUCCESS;
+}
  
-     if (*Length < VolumeInfoSize + DeviceObject->Vpb->VolumeLabelLength)
-         return STATUS_BUFFER_TOO_SMALL;
- 
-     Buffer->VolumeSerialNumber = DeviceObject->Vpb->SerialNumber;
-     Buffer->VolumeLabelLength = DeviceObject->Vpb->VolumeLabelLength;
-     RtlCopyMemory(Buffer->VolumeLabel,
-                   DeviceObject->Vpb->VolumeLabel,
-                   DeviceObject->Vpb->VolumeLabelLength);
- 
-     // TODO: Fix this
-     Buffer->VolumeCreationTime.QuadPart = 0;
-     Buffer->SupportsObjects = FALSE;
- 
-     // TODO: Investigate. Should we be returning the bytes written instead?
-     *Length -= VolumeInfoSize + DeviceObject->Vpb->VolumeLabelLength;
- 
-     return STATUS_SUCCESS;
- }
- 
- static
- NTSTATUS
- NtfsGetSizeInfo(PDEVICE_OBJECT DeviceObject,
-                 PFILE_FS_SIZE_INFORMATION Buffer,
-                 PULONG Length)
- {
-     PNTFSVolume Volume;
- 
-     if (*Length < sizeof(FILE_FS_SIZE_INFORMATION))
-         return STATUS_BUFFER_OVERFLOW;
- 
-     Volume = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->Volume;
- 
-     if (!Volume)
-         return STATUS_INSUFFICIENT_RESOURCES;
- 
-     Volume->GetFreeClusters(&Buffer->AvailableAllocationUnits);
-     Buffer->TotalAllocationUnits.QuadPart = Volume->ClustersInVolume;
-     Buffer->SectorsPerAllocationUnit = Volume->SectorsPerCluster;
-     Buffer->BytesPerSector = Volume->BytesPerSector;
- 
-     *Length -= sizeof(FILE_FS_SIZE_INFORMATION);
- 
-     return STATUS_SUCCESS;
- }
- 
- static
- NTSTATUS
- NtfsGetAttributeInfo(PNTFSVolume Volume,
-                      PFILE_FS_ATTRIBUTE_INFORMATION Buffer,
-                      PULONG Length)
- {
-     NTSTATUS Status;
-     size_t BytesToWrite;
-     LPCWSTR NTFSVerFormat;
-     UNICODE_STRING NTFSVer;
- 
-     if (gShowVersionInfo)
-     {
-         // Report "NTFS x.x, Client x.x"
-         BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 38;
-         if (*Length < BytesToWrite)
-             goto fallback;
-         Buffer->FileSystemNameLength = 40;
-         NTFSVerFormat = L"NTFS %1ld.%1ld, Client %1ld.%1ld";
-         RtlInitEmptyUnicodeString(&NTFSVer,
-                                   Buffer->FileSystemName,
-                                   40);
-         Status = RtlUnicodeStringPrintf(&NTFSVer,
-                                         NTFSVerFormat,
-                                         Volume->NtfsMajorVersion,
-                                         Volume->NtfsMinorVersion,
-                                         Volume->LFS->ClientMajorVersion,
-                                         Volume->LFS->ClientMinorVersion);
-         if (!NT_SUCCESS(Status))
-             goto fallback;
-     }
- 
-     else
-     {
- fallback:
-         // Report "NTFS"
-         BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 6;
-         if (*Length < BytesToWrite)
-             return STATUS_BUFFER_TOO_SMALL;
-         Buffer->FileSystemNameLength = 8;
-         RtlCopyMemory(Buffer->FileSystemName, L"NTFS", 8);
-         *Length -= BytesToWrite;
-     }
- 
-     /* For more information on FileSystemAttributes:
-      * https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb/3065351b-0b78-4976-9a5a-11657d8857c7
-      *
-      * TODO: Add attributes as needed.
-      */
-     Buffer->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES
-                                    | FILE_UNICODE_ON_DISK
-                                    | FILE_NAMED_STREAMS;
- 
-     if (Volume->IsReadOnly)
-         Buffer->FileSystemAttributes |= FILE_READ_ONLY_VOLUME;
- 
-     Buffer->MaximumComponentNameLength = 255;
-     *Length -= BytesToWrite;
-     return STATUS_SUCCESS;
- }
- 
- static
- NTSTATUS
- NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
-                    _In_ PFILE_FS_LABEL_INFORMATION NewLabel,
-                    _In_ PULONG Length)
- {
-     NTSTATUS Status;
-     PNTFSVolume Volume;
- 
-     Volume = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->Volume;
- 
-     if (!Volume || !NewLabel)
-         return STATUS_INSUFFICIENT_RESOURCES;
- 
-     Volume->SetVolumeLabel(NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
- 
-     // Re-read volume label.
-     Status = Volume->GetVolumeLabel(DeviceObject->Vpb->VolumeLabel,
-                                     &DeviceObject->Vpb->VolumeLabelLength);
- 
-     return Status;
- }
+static
+NTSTATUS
+NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
+                   _In_ PFILE_FS_LABEL_INFORMATION NewLabel,
+                   _In_ PULONG Length)
+{
+    NTSTATUS Status;
+    PVolume DiskVolume;
+
+    DiskVolume = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->DiskVolume;
+
+    if (!DiskVolume || !NewLabel)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    DiskVolume->SetVolumeLabel(NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
+
+    // Re-read volume label.
+    Status = DiskVolume->GetVolumeLabel(DeviceObject->Vpb->VolumeLabel,
+                                        &DeviceObject->Vpb->VolumeLabelLength);
+
+    return Status;
+}
 
 /* GLOBALS *****************************************************************/
 #ifdef ALLOC_PRAGMA
@@ -194,7 +194,7 @@ NtfsFsdQueryVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                                      &BufferLength);
             break;
         case FileFsAttributeInformation:
-            Status = NtfsGetAttributeInfo(VolCB->Volume,
+            Status = NtfsGetAttributeInfo(VolCB->DiskVolume,
                                           (PFILE_FS_ATTRIBUTE_INFORMATION)SystemBuffer,
                                           &BufferLength);
             break;
@@ -282,7 +282,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                 IN PDEVICE_OBJECT FsDeviceObject)
 {
     PDEVICE_OBJECT FSDeviceObject;
-    NTFSVolume* Volume;
+    PVolume DiskVolume;
     NTSTATUS Status;
     PVolumeContextBlock VolCB;
     LARGE_INTEGER FilesystemSize;
@@ -290,15 +290,15 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     /* The function here returns, but it's not an error.
      * We're a boot driver, NT will try every possible filesystem.
      */
-    Volume = new(PagedPool) NTFSVolume();
-    Status = Volume->LoadNTFSDevice(TargetDeviceObject);
+    DiskVolume = new(PagedPool) Volume();
+    Status = DiskVolume->LoadNTFSDevice(TargetDeviceObject);
 
     DPRINT1("LoadNTFSDevice() returned %lx\n", Status);
     if (Status != STATUS_SUCCESS)
         return Status;
 
     // Currently used for debugging output.
-    Volume->RunSanityChecks();
+    DiskVolume->RunSanityChecks();
 
     // Create file system device object.
     Status = IoCreateDevice(NtfsDriverObject,
@@ -323,7 +323,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     FSDeviceObject->Vpb = TargetDeviceObject->Vpb;
 
     // Give VolCB access to Ntfs Partition object
-    VolCB->Volume = Volume;
+    VolCB->DiskVolume = DiskVolume;
 
     // Set up storage device in VolCB.
     VolCB->StorageDevice = TargetDeviceObject;
@@ -340,14 +340,16 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                                                        VolCB->StorageDevice);
 
     // Set file system size information.
-    FilesystemSize.QuadPart = Volume->ClustersInVolume * Volume->SectorsPerCluster * Volume->BytesPerSector;
+    FilesystemSize.QuadPart = DiskVolume->ClustersInVolume
+                            * DiskVolume->SectorsPerCluster
+                            * DiskVolume->BytesPerSector;
 
     // Get serial number.
-    FSDeviceObject->Vpb->SerialNumber = Volume->SerialNumber;
+    FSDeviceObject->Vpb->SerialNumber = DiskVolume->SerialNumber;
 
     // Get volume label.
-    Status = Volume->GetVolumeLabel(FSDeviceObject->Vpb->VolumeLabel,
-                                    &FSDeviceObject->Vpb->VolumeLabelLength);
+    Status = DiskVolume->GetVolumeLabel(FSDeviceObject->Vpb->VolumeLabel,
+                                        &FSDeviceObject->Vpb->VolumeLabelLength);
 
     // Mount volume.
     FsRtlNotifyVolumeEvent(VolCB->StreamFileObject, FSRTL_VOLUME_MOUNT);

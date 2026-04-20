@@ -8,18 +8,18 @@
 
 #include "ntfslib_new.h"
 
-FileRecord::FileRecord(_In_ PNTFSVolume Volume,
+FileRecord::FileRecord(_In_ PVolume DiskVolume,
                        _In_ ULONG FileRecordSize)
 {
-    // Save NTFSVolume pointer.
-    this->Volume = Volume;
+    // Save Volume pointer.
+    this->DiskVolume = DiskVolume;
 
     // Initialize data buffer and header pointer.
     Data = new(PagedPool, TAG_FILE_RECORD) UCHAR[FileRecordSize];
     Header = (PFileRecordHeader)Data;
 }
 
-FileRecord::FileRecord(_In_ PNTFSVolume Volume) : FileRecord(Volume, Volume->MFT->FileRecordSize) { }
+FileRecord::FileRecord(_In_ PVolume DiskVolume) : FileRecord(DiskVolume, DiskVolume->MFT->FileRecordSize) { }
 
 FileRecord::~FileRecord()
 {

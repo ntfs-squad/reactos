@@ -12,7 +12,7 @@ NtfsFileRecordCreate(
     _In_ void *Volume,
     _In_ ULONG FileRecordSize)
 {
-    PNTFSVolume Vol = static_cast<PNTFSVolume>(Volume);
+    PVolume Vol = static_cast<PVolume>(Volume);
 
     if (!Vol)
         return nullptr;

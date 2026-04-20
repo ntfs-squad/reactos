@@ -16,7 +16,7 @@ const UINT8 Zeros[16] = { 4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0 };
 #define IsBitSet(Byte, Bit) !!((Byte >> Bit) & 1)
 
 NTSTATUS
-NTFSVolume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
+Volume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
 {
     NTSTATUS Status;
     PFileRecord BitmapFile;

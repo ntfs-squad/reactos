@@ -8,14 +8,14 @@
 
 #include "ntfslib_new.h"
 
-MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
+MasterFileTable::MasterFileTable(_In_ PVolume TargetVolume,
                                  _In_ UINT64 MFTLCN,
                                  _In_ UINT64 MFTMirrLCN,
                                  _In_ INT8   ClustersPerFileRecord)
 {
     NTSTATUS Status;
 
-    Volume = TargetVolume;
+    DiskVolume = TargetVolume;
     this->MFTLCN = MFTLCN;
     this->MFTMirrLCN = MFTMirrLCN;
 
@@ -25,7 +25,7 @@ MasterFileTable::MasterFileTable(_In_ PNTFSVolume TargetVolume,
      */
     FileRecordSize = ClustersPerFileRecord < 0 ?
                      1 << (-(ClustersPerFileRecord))
-                     : ClustersPerFileRecord * BytesPerCluster(Volume);
+                     : ClustersPerFileRecord * BytesPerCluster(DiskVolume);
 
     // Initialize $MFT
     Status = GetFileRecord(_MFT, &MFTFile);

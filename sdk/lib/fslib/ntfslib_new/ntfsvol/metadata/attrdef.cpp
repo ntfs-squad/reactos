@@ -9,8 +9,8 @@
 #include "ntfslib_new.h"
 
 NTSTATUS
-NTFSVolume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
-                                     _Out_ AttributeType* Type)
+Volume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
+                                 _Out_ AttributeType* Type)
 {
     NTSTATUS Status;
     PFileRecord AttrDefFile;
@@ -75,9 +75,9 @@ Done:
 }
 
 NTSTATUS
-NTFSVolume::GetADSPreference(_In_  PFILE_OBJECT FileObj,
-                             _Out_ AttributeType* RequestedType,
-                             _Out_ PWSTR* RequestedStream)
+Volume::GetADSPreference(_In_  PFILE_OBJECT FileObj,
+                         _Out_ AttributeType* RequestedType,
+                         _Out_ PWSTR* RequestedStream)
 {
     NTSTATUS Status;
     PWSTR FileNameQuery, ADSPtr, ADSTypePtr;

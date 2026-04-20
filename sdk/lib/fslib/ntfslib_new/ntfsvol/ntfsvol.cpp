@@ -9,7 +9,7 @@
 #include "ntfslib_new.h"
 
 NTSTATUS
-NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
+Volume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 {
     DISK_GEOMETRY DiskGeometry;
     NTSTATUS Status;

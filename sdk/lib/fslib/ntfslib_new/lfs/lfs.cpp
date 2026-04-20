@@ -10,10 +10,10 @@
 
 #define RESTART_PAGE_2_OFFSET 4096
 
-LogFileService::LogFileService(_In_ PNTFSVolume TargetVolume)
+LogFileService::LogFileService(_In_ PVolume TargetVolume)
 {
     // Store volume pointer
-    Volume = TargetVolume;
+    DiskVolume = TargetVolume;
 }
 
 LogFileService::~LogFileService()
@@ -29,7 +29,7 @@ LogFileService::InitializeLFS()
     ULONG LogFileSize;
 
     // Find the Log File.
-    Status = Volume->MFT->GetFileRecord(_LogFile, &LogFile);
+    Status = DiskVolume->MFT->GetFileRecord(_LogFile, &LogFile);
 
     if (!NT_SUCCESS(Status))
     {

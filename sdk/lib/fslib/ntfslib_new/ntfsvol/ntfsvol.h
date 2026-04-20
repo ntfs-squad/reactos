@@ -36,7 +36,7 @@ struct BootSector
     USHORT EndSector;
 };
 
-typedef class NTFSVolume
+typedef class Volume
 {
 public:
     ULONG  BytesPerSector;
@@ -175,4 +175,4 @@ public:
     void RunSanityChecks();
     void SanityCheckBlockIO();
 
-} *PNTFSVolume;
+} *PVolume;

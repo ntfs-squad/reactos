@@ -9,7 +9,7 @@
 #include "ntfspch.h"
 
 NTSTATUS
-NTFSVolume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
+Volume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
 {
     DISK_GEOMETRY DiskGeometry;
     NTSTATUS Status;
@@ -179,9 +179,9 @@ Cleanup:
 }
 
 NTSTATUS
-NTFSVolume::ReadVolume(_In_    ULONGLONG Offset,
-                       _In_    ULONG Length,
-                       _Inout_ PUCHAR Buffer)
+Volume::ReadVolume(_In_    ULONGLONG Offset,
+                   _In_    ULONG Length,
+                   _Inout_ PUCHAR Buffer)
 {
     NTSTATUS Status;
     PUCHAR ReadBuffer;
@@ -234,9 +234,9 @@ NTFSVolume::ReadVolume(_In_    ULONGLONG Offset,
 }
 
 NTSTATUS
-NTFSVolume::WriteVolume(_In_    ULONGLONG Offset,
-                        _In_    ULONG Length,
-                        _Inout_ PUCHAR Buffer)
+Volume::WriteVolume(_In_    ULONGLONG Offset,
+                    _In_    ULONG Length,
+                    _Inout_ PUCHAR Buffer)
 {
     NTSTATUS Status;
     PUCHAR WriteBuffer;
@@ -293,7 +293,7 @@ NTFSVolume::WriteVolume(_In_    ULONGLONG Offset,
 }
 
 void
-NTFSVolume::SanityCheckBlockIO()
+Volume::SanityCheckBlockIO()
 {
 
     DPRINT1("Running a very close sanity check by reading one block, writing one block and re reading\n\n\n\n");
@@ -340,7 +340,7 @@ NTFSVolume::SanityCheckBlockIO()
 }
 
 void
-NTFSVolume::RunSanityChecks()
+Volume::RunSanityChecks()
 {
     PAGED_CODE();
 

@@ -21,14 +21,14 @@ public:
     ULONG ClientMajorVersion;
     ULONG ClientMinorVersion;
 
-    LogFileService(_In_ PNTFSVolume TargetVolume);
+    LogFileService(_In_ PVolume TargetVolume);
     ~LogFileService();
     NTSTATUS InitializeLFS();
     NTSTATUS LogTransaction();
     NTSTATUS CommitTransaction();
     NTSTATUS ShutdownLFS();
 private:
-    PNTFSVolume Volume;
+    PVolume DiskVolume;
     PFileRecord LogFile;
     PUCHAR LogFileData;
 

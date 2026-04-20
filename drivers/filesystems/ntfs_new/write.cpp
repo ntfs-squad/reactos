@@ -31,7 +31,7 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     ULONG Length;
     PFileContextBlock FileCB;
     PFILE_OBJECT FileObj;
-    PNTFSVolume Volume;
+    PVolume DiskVolume;
     PFileRecord FileRec;
     AttributeType RequestedType;
     PWSTR RequestedStream;
@@ -42,11 +42,11 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     Length = IrpSp->Parameters.Write.Length;
     FileObj = IrpSp->FileObject;
     FileCB = (PFileContextBlock)FileObj->FsContext;
-    Volume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->Volume;
+    DiskVolume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->DiskVolume;
 
     DPRINT1("NtfsFsdWrite() called!\n");
 
-    if (Volume->IsReadOnly)
+    if (DiskVolume->IsReadOnly)
     {
         // Disk is read-only. Don't try to write anything.
         Irp->IoStatus.Information = 0;
@@ -73,8 +73,8 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     else
     {
-        Status = Volume->MFT->GetFileRecordFromQuery(FileObj->FileName.Buffer,
-                                                     &FileRec);
+        Status = DiskVolume->MFT->GetFileRecordFromQuery(FileObj->FileName.Buffer,
+                                                         &FileRec);
 
         if (!NT_SUCCESS(Status))
         {
@@ -85,9 +85,9 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             return STATUS_INVALID_PARAMETER;
         }
 
-        Status = Volume->GetADSPreference(FileObj,
-                                          &RequestedType,
-                                          &RequestedStream);
+        Status = DiskVolume->GetADSPreference(FileObj,
+                                              &RequestedType,
+                                              &RequestedStream);
 
         if (!NT_SUCCESS(Status))
         {

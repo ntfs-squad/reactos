@@ -7,8 +7,8 @@
  */
 
 #define IsFileRecordInMFTMirr(FileRecordNumber) \
-((Volume->SectorsPerCluster * Volume->BytesPerSector) > (FileRecordSize << 2)) ? \
-((Volume->SectorsPerCluster * Volume->BytesPerSector) / FileRecordSize) < FileRecordNumber \
+((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) > (FileRecordSize << 2)) ? \
+((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) / FileRecordSize) < FileRecordNumber \
 : FileRecordNumber < 4
 
 typedef class MasterFileTable
@@ -17,7 +17,7 @@ public:
     UINT FileRecordSize;
 
     // ./ mft.cpp
-    MasterFileTable(_In_ PNTFSVolume TargetVolume,
+    MasterFileTable(_In_ PVolume TargetVolume,
                     _In_ UINT64 MFTLCN,
                     _In_ UINT64 MFTMirrLCN,
                     _In_ INT8   ClustersPerFileRecord);
@@ -50,7 +50,7 @@ public:
                                          _Out_ PAttribute* TargetAttribute);
 
 private:
-    PNTFSVolume Volume;
+    PVolume DiskVolume;
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;
     INT    MftZoneReservation;
