@@ -11,6 +11,8 @@
 ((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) / FileRecordSize) < FileRecordNumber \
 : FileRecordNumber < 4
 
+#ifdef __cplusplus
+
 typedef class MasterFileTable
 {
 public:
@@ -57,3 +59,5 @@ private:
     PFileRecord MFTFile = NULL;
     PFileRecord MFTMirrFile = NULL;
 } *PMasterFileTable;
+
+#endif // __cplusplus

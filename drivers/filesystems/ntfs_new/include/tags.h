@@ -1,6 +1,0 @@
-#define TAG_NTFS 'NTFS'
-#define TAG_MFT '$MFT'
-#define TAG_FILE_RECORD 'FREC'
-#define TAG_DATA_RUN 'DTRN'
-#define TAG_LOG_FILE_SERVICE 'LgFS'
-#define TAG_BTREE 'BTRE'
