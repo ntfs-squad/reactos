@@ -34,16 +34,13 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 typedef unsigned int UINT;
 #endif
 
-#include "filerecord/attributes/attributes.h"
-#include "ntfsvol/ntfsvol.h"
-#include "filerecord/filerecord.h"
+#include "attributes.h"
+#include "ntfsvol.h"
+#include "filerecord.h"
 
-#include "mft/mft.h"
-#include "lfs/logfile.h"
-#include "lfs/usnjrnl.h"
-#include "lfs/lfs.h"
+#include "mft.h"
+#include "lfs.h"
 
-#include "btree/btree.h"
-#include "btree/directory/directory.h"
+#include "btree.h"
 
 #include <debug.h>

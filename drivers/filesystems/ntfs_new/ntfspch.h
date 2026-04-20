@@ -44,16 +44,16 @@ typedef enum _TYPE_OF_OPEN {
     EaFile,
 } TYPE_OF_OPEN;
 
-#include "include/tags.h"
+#include <ntfs_tags.h>
 #include "include/dispatch.h"
-#include "include/attributes.h"
+#include <attributes.h>
 #include "include/reg.h"
 #include "include/ctxblks.h"
 #ifdef __cplusplus
-#include "include/ntfsvol.h"
+#include <ntfsvol.h>
 #endif
-#include "include/filerecord.h"
-#include "include/btree.h"
+#include <filerecord.h>
+#include <btree.h>
 
 #ifndef __cplusplus
 extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
@@ -82,8 +82,8 @@ void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
 
-#include "include/mft.h"
-#include "include/lfs.h"
+#include <mft.h>
+#include <lfs.h>
 #include "include/dbg.h"
 
 #endif /* __cplusplus */

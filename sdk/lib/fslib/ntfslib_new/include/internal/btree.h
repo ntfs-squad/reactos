@@ -1,11 +1,38 @@
-/*
- * PROJECT:     ReactOS Kernel
- * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     NTFS filesystem driver
- * COPYRIGHT:   Copyright 2024 Carl Bialorucki <carl.bialorucki@reactos.org>
- *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
- */
+/* *** Formerly: btree/btree.h *** */
 
+#define INDEX_ENTRY_NODE 1
+#define INDEX_ENTRY_END  2
+
+struct _BTreeNode;
+struct _BTreeKey;
+
+typedef struct _BTreeNode BTreeNode, *PBTreeNode;
+typedef struct _BTreeKey BTreeKey, *PBTreeKey;
+
+struct _BTreeNode
+{
+    ULONGLONG  VCN;
+    PBTreeKey  FirstKey;
+};
+
+struct _BTreeKey
+{
+    PBTreeKey   ParentNodeKey; // Used to get entries linearly.
+    PBTreeNode  ChildNode;
+    PBTreeKey   NextKey;
+    PIndexEntry Entry;
+    ULONG       Flags;
+};
+
+typedef struct
+{
+    NTFSRecordHeader RecordHeader;
+    ULONGLONG VCN;
+    IndexNodeHeader IndexHeader;
+} IndexBuffer, *PIndexBuffer;
+
+
+/* *** Formerly: btree/directory.h *** */
 #define GetFileName(Key) \
 ((PFileNameEx)((Key)->Entry->IndexStream))
 
@@ -42,7 +69,19 @@ Buffer[0] == L'.' \
 
 #ifdef __cplusplus
 
-class Directory : BTree
+typedef class BTree
+{
+public:
+    NTSTATUS ResetCurrentKey();
+    // Hack:
+    // TODO: Make private when we abandon oldbtreefuncs
+    PBTreeNode RootNode;
+protected:
+    ~BTree();
+    PBTreeKey CurrentKey;
+} *PBTree;
+
+typedef class Directory : BTree
 {
 public:
     // ./directory.cpp
@@ -113,11 +152,9 @@ private:
     BOOLEAN
     IsLegal8Dot3ShortName(_In_ PWSTR Buffer,
                           _In_ USHORT Length);
-};
+} *PDirectory;
 
-typedef Directory* PDirectory;
-
-#endif //__cplusplus
+#endif // __cplusplus
 
 typedef struct NtfsDirectory NtfsDirectory;
 typedef NtfsDirectory* PNtfsDirectory;
