@@ -52,7 +52,10 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     // Ensure the file has a valid resident StandardInformation attribute
     {
-        PAttribute StdAttr = FileCB->FileRec->GetAttribute(TypeStandardInformation, NULL);
+        
+        PAttribute StdAttr = NtfsFileRecordGetAttribute(FileCB->FileRec,
+                                                        TypeStandardInformation,
+                                                        NULL);
         if (!StdAttr || StdAttr->IsNonResident)
         {
             DPRINT1("NtfsFsdRead(): Missing or invalid $STANDARD_INFORMATION attribute!\n");
@@ -84,11 +87,12 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (RequestedLength)
     {
         // Copy data from $DATA into file buffer.
-        Status = FileCB->FileRec->CopyData(FileCB->RequestedType,
-                                           FileCB->RequestedStream,
-                                           Buffer,
-                                           &RequestedLength,
-                                           ReadOffset.QuadPart);
+        Status = NtfsFileRecordCopyData(FileCB->FileRec,
+                                        FileCB->RequestedType,
+                                        FileCB->RequestedStream,
+                                        Buffer,
+                                        &RequestedLength,
+                                        ReadOffset.QuadPart);
     }
 
     else
