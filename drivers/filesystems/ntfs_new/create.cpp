@@ -36,7 +36,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     BOOLEAN PerformAccessChecks;
     FileRecord* CurrentFile;
     UINT8 Disposition;
-    PNTFSVolume Volume;
+    PVolume DiskVolume;
     USHORT FileNameLength;
 
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
@@ -53,7 +53,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
     FileObject = IrpSp->FileObject;
     Disposition = GetDisposition(IrpSp->Parameters.Create.Options);
-    Volume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->Volume;
+    DiskVolume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->DiskVolume;
 
     // Determine if we should check access rights
     PerformAccessChecks = (Irp->RequestorMode == UserMode) ||
@@ -62,8 +62,8 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     // TODO: Check if we have rights to access file.
 
     // Try to find the requested file record.
-    Status = Volume->MFT->GetFileRecordFromQuery(FileObject->FileName.Buffer,
-                                                 &CurrentFile);
+    Status = DiskVolume->MFT->GetFileRecordFromQuery(FileObject->FileName.Buffer,
+                                                     &CurrentFile);
 
     /* What we do here depends on the CreateDisposition value.
      * See https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntcreatefile
@@ -146,9 +146,9 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     // NOTE: FileNameBuffer gets freed when the FileCB is cleaned up.
 
     // Get ADS Preferences for the file.
-    Status = Volume->GetADSPreference(FileObject,
-                                      &FileCB->RequestedType,
-                                      &FileCB->RequestedStream);
+    Status = DiskVolume->GetADSPreference(FileObject,
+                                          &FileCB->RequestedType,
+                                          &FileCB->RequestedStream);
 
     if (!NT_SUCCESS(Status))
     {
@@ -176,7 +176,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (!!(CurrentFile->Header->Flags & FR_IS_DIRECTORY))
     {
         // Set up btree for this file
-        FileCB->FileDir = new(PagedPool) Directory(Volume);
+        FileCB->FileDir = new(PagedPool) Directory(DiskVolume);
         Status = FileCB->FileDir->LoadDirectory(FileCB->FileRec);
 
         if (!NT_SUCCESS(Status))

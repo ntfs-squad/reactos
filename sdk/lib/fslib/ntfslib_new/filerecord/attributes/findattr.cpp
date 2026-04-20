@@ -155,7 +155,7 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
     // Populate children data runs for head, if available.
     Temp = Head;
     PreviousLCN = Temp->LCN;
-    ReadSize += (Head->Length) * Volume->SectorsPerCluster * Volume->BytesPerSector;
+    ReadSize += (Head->Length) * DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector;
     DataRunPtr += 1 + LengthSize + OffsetSize;
 
     while (*DataRunPtr != '\0')
@@ -177,7 +177,7 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
                       DataRunPtr + 1,
                       LengthSize);
 
-        ReadSize += (Temp->Length) * Volume->SectorsPerCluster * Volume->BytesPerSector;
+        ReadSize += (Temp->Length) * DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector;
 
         /* Note: Child LCN's are relative to previous offset. They can be negative.
          * So the real LCN = Previous LCN + Current LCN.

@@ -18,16 +18,16 @@
 #define GetCreateOptions(x) (x & 0xFFFFFF)
 
 #ifdef __cplusplus
-class NTFSVolume;
+class Volume;
 class FileRecord;
 #endif
 
 typedef struct _VolumeContextBlock
 {
 #ifdef __cplusplus
-    NTFSVolume *Volume;
+    Volume *DiskVolume;
 #else
-    void* Volume;
+    void* DiskVolume;
 #endif
     PDEVICE_OBJECT StorageDevice;
     PFILE_OBJECT StreamFileObject;

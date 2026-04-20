@@ -85,9 +85,9 @@ typedef class Directory : BTree
 {
 public:
     // ./directory.cpp
-    Directory(_In_ PNTFSVolume Volume);
+    Directory(_In_ PVolume DiskVolume);
     Directory(_In_ PFileRecord File,
-              _In_ PNTFSVolume Volume);
+              _In_ PVolume DiskVolume);
     NTSTATUS
     LoadDirectory(_In_ PFileRecord File);
 
@@ -116,7 +116,7 @@ public:
     DumpFileTree();
 
 private:
-    PNTFSVolume Volume;
+    PVolume DiskVolume;
 
     // ./directory.cpp
     NTSTATUS

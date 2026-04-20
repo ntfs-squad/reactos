@@ -6,8 +6,8 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#define GetOffset(LCN) (LCN * BytesPerCluster(Volume))
-#define GetRunSize(Run) (Run->Length * BytesPerCluster(Volume))
+#define GetOffset(LCN) (LCN * BytesPerCluster(DiskVolume))
+#define GetRunSize(Run) (Run->Length * BytesPerCluster(DiskVolume))
 
 /* NTFS file record numbers */
 enum FileRecordNumbers
@@ -90,9 +90,9 @@ public:
     PUCHAR Data = NULL;
 
     // ./filerecord.cpp
-    FileRecord(_In_ PNTFSVolume Volume,
+    FileRecord(_In_ PVolume DiskVolume,
                _In_ ULONG FileRecordSize);
-    FileRecord(_In_ PNTFSVolume Volume);
+    FileRecord(_In_ PVolume DiskVolume);
     ~FileRecord();
 
     // ./find.cpp
@@ -135,7 +135,7 @@ public:
     ApplyFixup();
 
 private:
-    PNTFSVolume Volume;
+    PVolume DiskVolume;
 
     // ./write.cpp
     NTSTATUS
@@ -157,7 +157,7 @@ extern "C" {
 
 PNtfsFileRecord
 NtfsFileRecordCreate(
-    _In_ void *Volume,
+    _In_ void *DiskVolume,
     _In_ ULONG FileRecordSize);
 
 void

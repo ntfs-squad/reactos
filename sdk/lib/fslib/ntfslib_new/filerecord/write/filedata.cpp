@@ -66,7 +66,7 @@ FileRecord::WriteFileData(_In_     AttributeType AttrType,
         }
 
         // Write the file record to disk
-        Status = Volume->MFT->WriteFileRecordToMFT(this);
+        Status = DiskVolume->MFT->WriteFileRecordToMFT(this);
     }
 
     else
@@ -141,9 +141,9 @@ FileRecord::UpdateNonResidentData(_In_ PAttribute TargetAttribute,
         else
         {
             // Get data
-            Status = Volume->WriteVolume(GetOffset(CurrentRun->LCN) + Offset,
-                                         min(*Length, (BytesInRun - Offset)),
-                                         Buffer);
+            Status = DiskVolume->WriteVolume(GetOffset(CurrentRun->LCN) + Offset,
+                                             min(*Length, (BytesInRun - Offset)),
+                                             Buffer);
             if (!NT_SUCCESS(Status))
             {
                 DPRINT1("Failed to write data contents!\n");

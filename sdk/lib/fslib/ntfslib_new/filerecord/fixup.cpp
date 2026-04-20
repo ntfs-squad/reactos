@@ -15,7 +15,7 @@
 (PUSHORT)((ULONG_PTR)Header + Header->Header.UpdateSequenceOffset + sizeof(USHORT))
 
 #define OffsetToFirstUSN(Volume) \
-(Volume->BytesPerSector - sizeof(USHORT))
+(DiskVolume->BytesPerSector - sizeof(USHORT))
 
 #define IncrementUpdateSequenceNumber(Header) \
 ((*GetUpdateSequenceNumber(Header)) == 0xFFFF) \
@@ -52,7 +52,7 @@ FileRecord::CommitFixup()
     DPRINT1("Skipping USN update!\n");
 #endif
 
-    DataPtr = (PUSHORT)(Data + OffsetToFirstUSN(Volume));
+    DataPtr = (PUSHORT)(Data + OffsetToFirstUSN(DiskVolume));
     USAPos = 0;
 
     while (DataPtr < (PUSHORT)((ULONG_PTR)Header + Header->AllocatedSize))
@@ -64,7 +64,7 @@ FileRecord::CommitFixup()
         *DataPtr = UpdateSequenceNumber;
 
         // Move to the next element.
-        DataPtr = (PUSHORT)((ULONG_PTR)DataPtr + Volume->BytesPerSector);
+        DataPtr = (PUSHORT)((ULONG_PTR)DataPtr + DiskVolume->BytesPerSector);
         USAPos++;
     }
 
@@ -108,7 +108,7 @@ FileRecord::ApplyFixup()
         *DataPtr = UpdateSequenceArray[UpdateSequenceArrayPos];
 
         // Move on to next sector
-        DataPtr = (PUSHORT)((ULONG_PTR)DataPtr + Volume->BytesPerSector);
+        DataPtr = (PUSHORT)((ULONG_PTR)DataPtr + DiskVolume->BytesPerSector);
         UpdateSequenceArrayPos++;
     }
 

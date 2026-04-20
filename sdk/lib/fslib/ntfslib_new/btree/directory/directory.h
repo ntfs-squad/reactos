@@ -17,9 +17,9 @@
 
 // Calculates start of Index Buffer relative to the index allocation, given the node's VCN
 #define GetAllocationOffsetFromVCN(VCN) \
-(BytesPerIndexRecord(Volume) < BytesPerCluster(Volume)) ? \
-(VCN * (Volume->BytesPerSector)) : \
-(VCN * BytesPerCluster(Volume))
+(BytesPerIndexRecord(DiskVolume) < BytesPerCluster(DiskVolume)) ? \
+(VCN * (DiskVolume->BytesPerSector)) : \
+(VCN * BytesPerCluster(DiskVolume))
 
 #define IsLastEntry(Key) !!((Key)->Entry->Flags & INDEX_ENTRY_END)
 
@@ -46,9 +46,9 @@ class Directory : BTree
 {
 public:
     // ./directory.cpp
-    Directory(_In_ PNTFSVolume Volume);
+    Directory(_In_ PVolume DiskVolume);
     Directory(_In_ PFileRecord File,
-              _In_ PNTFSVolume Volume);
+              _In_ PVolume DiskVolume);
     NTSTATUS
     LoadDirectory(_In_ PFileRecord File);
 
@@ -77,7 +77,7 @@ public:
     DumpFileTree();
 
 private:
-    PNTFSVolume Volume;
+    PVolume DiskVolume;
 
     // ./directory.cpp
     NTSTATUS

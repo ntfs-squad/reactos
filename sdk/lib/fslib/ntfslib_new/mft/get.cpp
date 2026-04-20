@@ -11,8 +11,8 @@
 #define IsRootFile(Path) \
 Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 
-#define MFTDiskOffset (MFTLCN * BytesPerCluster(Volume))
-#define MFTMirrDiskOffset (MFTMirrLCN * BytesPerCluster(Volume))
+#define MFTDiskOffset (MFTLCN * BytesPerCluster(DiskVolume))
+#define MFTMirrDiskOffset (MFTMirrLCN * BytesPerCluster(DiskVolume))
 #define FileRecordOffset(FileRecordNumber) (FileRecordNumber * FileRecordSize)
 
 // NOTE: This function will search $MFTMirr automatically if needed.
@@ -25,24 +25,24 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
     ULONG BytesToRead;
     BOOLEAN IsRecordInUse;
 
-    *File = new(PagedPool, TAG_MFT) FileRecord(Volume, FileRecordSize);
+    *File = new(PagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
     BytesToRead = FileRecordSize;
 
     if (FileRecordNumber == _MFT)
     {
         // The $MFT file is calculated from the MFT LCN.
-        Status = Volume->ReadVolume(MFTDiskOffset,
-                                    FileRecordSize,
-                                    (*File)->Data);
+        Status = DiskVolume->ReadVolume(MFTDiskOffset,
+                                        FileRecordSize,
+                                        (*File)->Data);
         goto FileCheck;
     }
 
     else if (FileRecordNumber == _MFTMirr)
     {
         // The $MFTMirr file is calculated from the MFTMirr LCN.
-        Status = Volume->ReadVolume(MFTMirrDiskOffset,
-                                    FileRecordSize,
-                                    (*File)->Data);
+        Status = DiskVolume->ReadVolume(MFTMirrDiskOffset,
+                                        FileRecordSize,
+                                        (*File)->Data);
         goto FileCheck;
     }
 
@@ -142,7 +142,7 @@ MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
     }
 
     // File is in MFTMirr. Let's try to get it from there.
-    *File = new(PagedPool, TAG_MFT) FileRecord(Volume, FileRecordSize);
+    *File = new(PagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
     BytesToRead = FileRecordSize;
 
     // Grab file from $MFTMirr
@@ -246,7 +246,7 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
         return STATUS_NOT_FOUND;
     }
 
-    CurrentDirectory = new(PagedPool, TAG_MFT) Directory(Volume);
+    CurrentDirectory = new(PagedPool, TAG_MFT) Directory(DiskVolume);
 
     Status = CurrentDirectory->LoadDirectory(CurrentFile);
     if(!NT_SUCCESS(Status))
@@ -290,7 +290,7 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
         if (wcschr(QueryElementPtr, L'\\') &&
             wcschr(QueryElementPtr, L'\\')[1] != L'\0')
         {
-            CurrentDirectory = new(PagedPool, TAG_MFT) Directory(Volume);
+            CurrentDirectory = new(PagedPool, TAG_MFT) Directory(DiskVolume);
             Status = CurrentDirectory->LoadDirectory(CurrentFile);
             if (!NT_SUCCESS(Status))
             {
