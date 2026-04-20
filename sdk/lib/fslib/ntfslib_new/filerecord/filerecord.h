@@ -49,7 +49,7 @@ enum FileRecordNumbers
 
 // Forward declarations for DataRun struct because it's a linked list.
 struct DataRun;
-typedef DataRun* PDataRun;
+typedef struct DataRun *PDataRun;
 
 struct DataRun
 {
@@ -80,6 +80,8 @@ typedef struct
     UINT16 Padding;
     UINT32 MFTRecordNumber;        // Offset 0x2C, Size 4
 } FileRecordHeader, *PFileRecordHeader;
+
+#ifdef __cplusplus
 
 typedef class FileRecord
 {
@@ -142,3 +144,104 @@ private:
                           _In_ PULONG Length,
                           _In_ ULONGLONG Offset = 0);
 } *PFileRecord;
+
+#endif // __cplusplus
+
+// Needed for C API
+typedef struct NtfsFileRecord NtfsFileRecord;
+typedef NtfsFileRecord* PNtfsFileRecord;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+PNtfsFileRecord
+NtfsFileRecordCreate(
+    _In_ void *Volume,
+    _In_ ULONG FileRecordSize);
+
+void
+NtfsFileRecordDestroy(
+    _In_opt_ NtfsFileRecord *FileRecord);
+
+PFileRecordHeader
+NTAPI
+NtfsFileRecordGetHeader(
+    _In_ NtfsFileRecord *FileRecord);
+
+PUCHAR
+NTAPI
+NtfsFileRecordGetData(
+    _In_ NtfsFileRecord *FileRecord);
+
+PAttribute
+NTAPI
+NtfsFileRecordGetAttribute(
+    _In_ NtfsFileRecord *FileRecord,
+    _In_ AttributeType Type,
+    _In_opt_ PWSTR Name);
+
+PDataRun
+NTAPI
+NtfsFileRecordFindNonResidentDataFromAttribute(
+    _In_ NtfsFileRecord *FileRecord,
+    _In_ PAttribute DataAttr);
+
+PDataRun
+NTAPI
+NtfsFileRecordFindNonResidentData(
+    _In_ NtfsFileRecord *FileRecord,
+    _In_ AttributeType Type,
+    _In_opt_ PWSTR Name);
+
+NTSTATUS
+NTAPI
+NtfsFileRecordCopyData(
+    _In_ NtfsFileRecord *FileRecord,
+    _In_ AttributeType Type,
+    _In_opt_ PWSTR Name,
+    _In_ PUCHAR Buffer,
+    _Inout_ PULONG Length,
+    _In_ ULONGLONG Offset);
+
+NTSTATUS
+NTAPI
+NtfsFileRecordCopyDataFromAttribute(
+    _In_ NtfsFileRecord *FileRecord,
+    _In_ PAttribute Attr,
+    _In_ PUCHAR Buffer,
+    _Inout_ PULONG Length,
+    _In_ ULONGLONG Offset);
+
+NTSTATUS
+NTAPI
+NtfsFileRecordWriteFileData(
+    _In_ NtfsFileRecord *FileRecord,
+    _In_ AttributeType AttrType,
+    _In_opt_ PWSTR StreamName,
+    _In_ PUCHAR Buffer,
+    _Inout_ PULONG Length,
+    _In_ PLARGE_INTEGER Offset);
+
+NTSTATUS
+NTAPI
+NtfsFileRecordUpdateResidentData(
+    _In_ NtfsFileRecord *FileRecord,
+    _In_ PAttribute TargetAttribute,
+    _In_ PUCHAR Buffer,
+    _In_ PULONG Length,
+    _In_ ULONGLONG Offset);
+
+NTSTATUS
+NTAPI
+NtfsFileRecordCommitFixup(
+    _In_ NtfsFileRecord *FileRecord);
+
+NTSTATUS
+NTAPI
+NtfsFileRecordApplyFixup(
+    _In_ NtfsFileRecord *FileRecord);
+
+#ifdef __cplusplus
+}
+#endif
