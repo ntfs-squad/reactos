@@ -8,7 +8,7 @@ list(APPEND SOURCE
      ntblockio.c
      ntfsinit.c
      pnp.c
-     read.cpp
+     read.c
      registry.c
      vol.cpp
      write.cpp
