@@ -40,6 +40,8 @@ Buffer[0] == L'.' \
 
 #define DIR_KEY_8DOT3 1
 
+#ifdef __cplusplus
+
 class Directory : BTree
 {
 public:
@@ -112,3 +114,28 @@ private:
     IsLegal8Dot3ShortName(_In_ PWSTR Buffer,
                           _In_ USHORT Length);
 };
+
+typedef Directory* PDirectory;
+
+#endif //__cplusplus
+
+typedef struct NtfsDirectory NtfsDirectory;
+typedef NtfsDirectory* PNtfsDirectory;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+NTSTATUS
+NTAPI
+NtfsDirectoryGetFileBothDirInfo(
+    _In_    PNtfsDirectory Dir,
+    _In_    BOOLEAN ReturnSingleEntry,
+    _In_    BOOLEAN RestartScan,
+    _In_    PUNICODE_STRING FileNameFilter,
+    _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
+    _Inout_ PULONG BufferLength);
+
+#ifdef __cplusplus
+}
+#endif

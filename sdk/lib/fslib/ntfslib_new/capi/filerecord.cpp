@@ -1,7 +1,7 @@
 /*
- * PROJECT:     ReactOS Kernel
+ * PROJECT:     ReactOS NTFS library
  * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     C interface for ntfslib_new FileRecord
+ * PURPOSE:     C interface for FileRecord class
  * COPYRIGHT:   Copyright 2026 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
@@ -18,9 +18,9 @@ NtfsFileRecordCreate(
         return nullptr;
 
     if (FileRecordSize == 0)
-        return reinterpret_cast<PNtfsFileRecord>(new FileRecord(Vol));
+        return reinterpret_cast<PNtfsFileRecord>(new(NonPagedPool, TAG_FILE_RECORD) FileRecord(Vol));
 
-    return reinterpret_cast<PNtfsFileRecord>(new FileRecord(Vol, FileRecordSize));
+    return reinterpret_cast<PNtfsFileRecord>(new(NonPagedPool, TAG_FILE_RECORD) FileRecord(Vol, FileRecordSize));
 }
 
 extern "C" void

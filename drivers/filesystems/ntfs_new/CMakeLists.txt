@@ -3,7 +3,7 @@ list(APPEND SOURCE
      create.cpp
      ea.c
      fastio.c
-     fileinfo.cpp
+     fileinfo.c
      fsctrl.c
      ntblockio.c
      ntfsinit.c

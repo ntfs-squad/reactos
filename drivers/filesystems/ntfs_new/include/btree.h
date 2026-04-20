@@ -6,20 +6,23 @@
 struct _BTreeNode;
 struct _BTreeKey;
 
-typedef struct _BTreeNode
+typedef struct _BTreeNode BTreeNode, *PBTreeNode;
+typedef struct _BTreeKey BTreeKey, *PBTreeKey;
+
+struct _BTreeNode
 {
     ULONGLONG  VCN;
-    _BTreeKey* FirstKey;
-} BTreeNode, *PBTreeNode;
+    PBTreeKey  FirstKey;
+};
 
-typedef struct _BTreeKey
+struct _BTreeKey
 {
-    _BTreeKey*  ParentNodeKey; // Used to get entries linearly.
-    _BTreeNode* ChildNode;
-    _BTreeKey*  NextKey;
+    PBTreeKey   ParentNodeKey; // Used to get entries linearly.
+    PBTreeNode  ChildNode;
+    PBTreeKey   NextKey;
     PIndexEntry Entry;
     ULONG       Flags;
-} BTreeKey, *PBTreeKey;
+};
 
 typedef struct
 {
@@ -28,17 +31,6 @@ typedef struct
     IndexNodeHeader IndexHeader;
 } IndexBuffer, *PIndexBuffer;
 
-typedef class BTree
-{
-public:
-    NTSTATUS ResetCurrentKey();
-    // Hack:
-    // TODO: Make private when we abandon oldbtreefuncs
-    PBTreeNode RootNode;
-protected:
-    ~BTree();
-    PBTreeKey CurrentKey;
-} *PBTree;
 
 /* *** Formerly: btree/directory.h *** */
 #define GetFileName(Key) \
@@ -75,7 +67,21 @@ Buffer[0] == L'.' \
 
 #define DIR_KEY_8DOT3 1
 
-class Directory : BTree
+#ifdef __cplusplus
+
+typedef class BTree
+{
+public:
+    NTSTATUS ResetCurrentKey();
+    // Hack:
+    // TODO: Make private when we abandon oldbtreefuncs
+    PBTreeNode RootNode;
+protected:
+    ~BTree();
+    PBTreeKey CurrentKey;
+} *PBTree;
+
+typedef class Directory : BTree
 {
 public:
     // ./directory.cpp
@@ -146,4 +152,28 @@ private:
     BOOLEAN
     IsLegal8Dot3ShortName(_In_ PWSTR Buffer,
                           _In_ USHORT Length);
-};
+} *PDirectory;
+
+#endif // __cplusplus
+
+typedef struct NtfsDirectory NtfsDirectory;
+typedef NtfsDirectory* PNtfsDirectory;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+NTSTATUS
+NTAPI
+NtfsDirectoryGetFileBothDirInfo(
+    _In_    PNtfsDirectory Dir,
+    _In_    BOOLEAN ReturnSingleEntry,
+    _In_    BOOLEAN RestartScan,
+    _In_    PUNICODE_STRING FileNameFilter,
+    _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
+    _Inout_ PULONG BufferLength);
+
+#ifdef __cplusplus
+}
+#endif
+

@@ -14,7 +14,7 @@
                          _Out_ PFILE_BASIC_INFORMATION Buffer,
                          _Inout_ PULONG Length)
  {
-     PFileRecord File;
+     PNtfsFileRecord File;
      PStandardInformationEx StdInfo;
  
      if (!FileCB)
@@ -27,7 +27,7 @@
  
      // From $STANDARD_INFORMATION
      {
-         PAttribute StdAttr = File->GetAttribute(TypeStandardInformation, NULL);
+         PAttribute StdAttr = NtfsFileRecordGetAttribute(File ,TypeStandardInformation, NULL);
          if (!StdAttr || StdAttr->IsNonResident)
              return STATUS_FILE_CORRUPT_ERROR;
          StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
@@ -50,7 +50,7 @@
                             _Out_ PFILE_STANDARD_INFORMATION Buffer,
                             _Inout_ PULONG Length)
  {
-     PFileRecord File;
+     PNtfsFileRecord File;
      PAttribute DataAttribute;
      size_t FileInfoSize = sizeof(FILE_STANDARD_INFORMATION);
  
@@ -63,8 +63,7 @@
      File = FileCB->FileRec;
  
      // Information from $DATA
-     DataAttribute = File->GetAttribute(TypeData,
-                                        NULL);
+     DataAttribute = NtfsFileRecordGetAttribute(File,TypeData, NULL);
  
      if (DataAttribute)
      {
@@ -88,8 +87,8 @@
      }
  
      // Information from file header
-     Buffer->Directory = !!(File->Header->Flags & FR_IS_DIRECTORY);
-     Buffer->NumberOfLinks = File->Header->HardLinkCount;
+     Buffer->Directory = !!(NtfsFileRecordGetHeader(File)->Flags & FR_IS_DIRECTORY);
+     Buffer->NumberOfLinks = NtfsFileRecordGetHeader(File)->HardLinkCount;
  
      // Information from file context block
      Buffer->DeletePending = !!(FileCB->CreateOptions & FILE_DELETE_ON_CLOSE);
@@ -152,7 +151,7 @@
      if (*Length < sizeof(FILE_INTERNAL_INFORMATION))
          return STATUS_BUFFER_TOO_SMALL;
  
-     Buffer->IndexNumber.QuadPart = FileCB->FileRec->Header->MFTRecordNumber;
+     Buffer->IndexNumber.QuadPart = NtfsFileRecordGetHeader(FileCB->FileRec)->MFTRecordNumber;
  
      *Length -= sizeof(FILE_INTERNAL_INFORMATION);
  
@@ -167,7 +166,7 @@
  {
      PAttribute DataAttribute;
      PStandardInformationEx StdInfo;
-     PFileRecord File;
+     PNtfsFileRecord File;
  
      ASSERT(Buffer);
      ASSERT(FileCB);
@@ -175,8 +174,7 @@
      File = FileCB->FileRec;
  
      // Information from $DATA
-     DataAttribute = File->GetAttribute(TypeData,
-                                        NULL);
+     DataAttribute = NtfsFileRecordGetAttribute(File, TypeData, NULL);
  
      if (DataAttribute)
      {
@@ -203,7 +201,7 @@
  
      // From $STANDARD_INFORMATION
      {
-         PAttribute StdAttr = File->GetAttribute(TypeStandardInformation, NULL);
+         PAttribute StdAttr = NtfsFileRecordGetAttribute(File, TypeStandardInformation, NULL);
          if (!StdAttr || StdAttr->IsNonResident)
              return STATUS_FILE_CORRUPT_ERROR;
          StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
@@ -246,7 +244,7 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
                                 _Out_   PFILE_BOTH_DIR_INFORMATION Buffer,
                                 _Inout_ PULONG Length)
 {
-    Directory* FileDir;
+    PNtfsDirectory FileDir;
     BOOLEAN ReturnSingleEntry, RestartScan;
 
     if (!FileCB)
@@ -273,11 +271,12 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
     else
         ReturnSingleEntry = !!(IrpFlags & SL_RETURN_SINGLE_ENTRY);
 
-    return FileDir->GetFileBothDirInfo(ReturnSingleEntry,
-                                       RestartScan,
-                                       FileNameFilter,
-                                       Buffer,
-                                       Length);
+    return NtfsDirectoryGetFileBothDirInfo(FileDir,
+                                           ReturnSingleEntry,
+                                           RestartScan,
+                                           FileNameFilter,
+                                           Buffer,
+                                           Length);
 }
 
 /* GLOBALS *****************************************************************/
