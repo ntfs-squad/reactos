@@ -31,8 +31,9 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     ULONG Length;
     PFileContextBlock FileCB;
     PFILE_OBJECT FileObj;
-    PVolume DiskVolume;
-    PFileRecord FileRec;
+    PNtfsVolume DiskVolume;
+    PNtfsFileRecord FileRec;
+    PNtfsMasterFileTable Mft;
     AttributeType RequestedType;
     PWSTR RequestedStream;
 
@@ -43,10 +44,11 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     FileObj = IrpSp->FileObject;
     FileCB = (PFileContextBlock)FileObj->FsContext;
     DiskVolume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->DiskVolume;
+    Mft = NtfsVolumeGetMft(DiskVolume);
 
     DPRINT1("NtfsFsdWrite() called!\n");
 
-    if (DiskVolume->IsReadOnly)
+    if (NtfsVolumeIsReadOnly(DiskVolume))
     {
         // Disk is read-only. Don't try to write anything.
         Irp->IoStatus.Information = 0;
@@ -73,8 +75,9 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     else
     {
-        Status = DiskVolume->MFT->GetFileRecordFromQuery(FileObj->FileName.Buffer,
-                                                         &FileRec);
+        Status = NtfsMasterFileTableGetFileRecordFromQuery(Mft,
+                                                           FileObj->FileName.Buffer,
+                                                           &FileRec);
 
         if (!NT_SUCCESS(Status))
         {
@@ -85,14 +88,15 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             return STATUS_INVALID_PARAMETER;
         }
 
-        Status = DiskVolume->GetADSPreference(FileObj,
-                                              &RequestedType,
-                                              &RequestedStream);
+        Status = NtfsVolumeGetADSPreference(DiskVolume,
+                                            FileObj,
+                                            &RequestedType,
+                                            &RequestedStream);
 
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("Unable to find ADS preferences!\n");
-            delete FileRec;
+            ExFreePool(FileRec);
             Irp->IoStatus.Information = 0;
             Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
             IoCompleteRequest(Irp, IO_DISK_INCREMENT);
@@ -100,11 +104,12 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         }
     }
 
-    Status = FileRec->WriteFileData(RequestedType,
-                                    RequestedStream,
-                                    Buffer,
-                                    &Length,
-                                    &ByteOffset);
+    Status = NtfsFileRecordWriteFileData(FileRec,
+                                         RequestedType,
+                                         RequestedStream,
+                                         Buffer,
+                                         &Length,
+                                         &ByteOffset);
 
     if (NT_SUCCESS(Status))
     {
