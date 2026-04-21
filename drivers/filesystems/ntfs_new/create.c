@@ -34,9 +34,10 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     NTSTATUS Status;
     PFILE_OBJECT FileObject;
     BOOLEAN PerformAccessChecks;
-    FileRecord* CurrentFile;
+    PNtfsFileRecord CurrentFile;
     UINT8 Disposition;
-    PVolume DiskVolume;
+    PNtfsVolume DiskVolume;
+    PNtfsMasterFileTable Mft;
     USHORT FileNameLength;
 
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
@@ -54,6 +55,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     FileObject = IrpSp->FileObject;
     Disposition = GetDisposition(IrpSp->Parameters.Create.Options);
     DiskVolume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->DiskVolume;
+    Mft = NtfsVolumeGetMft(DiskVolume);
 
     // Determine if we should check access rights
     PerformAccessChecks = (Irp->RequestorMode == UserMode) ||
@@ -62,8 +64,9 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     // TODO: Check if we have rights to access file.
 
     // Try to find the requested file record.
-    Status = DiskVolume->MFT->GetFileRecordFromQuery(FileObject->FileName.Buffer,
-                                                     &CurrentFile);
+    Status = NtfsMasterFileTableGetFileRecordFromQuery(Mft,
+                                                       FileObject->FileName.Buffer,
+                                                       &CurrentFile);
 
     /* What we do here depends on the CreateDisposition value.
      * See https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntcreatefile
@@ -121,8 +124,11 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     }
 
     // Create file context block.
-    FileCB = new(NonPagedPool) FileContextBlock();
-    RtlZeroMemory(FileCB, sizeof(FileContextBlock));
+    FileCB = (PFileContextBlock)ExAllocatePoolZero(NonPagedPool,
+                                                   sizeof(FileContextBlock),
+                                                   TAG_NTFS);
+    if (!FileCB)
+        __debugbreak();
     
     // Initialize the NT required FCB header and resources
     FsRtlInitializeFileLock(&FileCB->FileLock, NULL, NULL);
@@ -136,7 +142,12 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     // Set file name
     FileNameLength = IrpSp->FileObject->FileName.Length;
-    PWCHAR FileNameBuffer = new(PagedPool) WCHAR[FileNameLength];
+    
+    PWCHAR FileNameBuffer = (PWCHAR)ExAllocatePoolWithTag(PagedPool,
+                                                          FileNameLength * sizeof(WCHAR),
+                                                          TAG_NTFS);
+    if (!FileNameBuffer)
+        __debugbreak();
     RtlCopyMemory(FileNameBuffer,
                   IrpSp->FileObject->FileName.Buffer,
                   FileNameLength);
@@ -146,14 +157,15 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     // NOTE: FileNameBuffer gets freed when the FileCB is cleaned up.
 
     // Get ADS Preferences for the file.
-    Status = DiskVolume->GetADSPreference(FileObject,
-                                          &FileCB->RequestedType,
-                                          &FileCB->RequestedStream);
+    Status = NtfsVolumeGetADSPreference(DiskVolume,
+                                        FileObject,
+                                        &FileCB->RequestedType,
+                                        &FileCB->RequestedStream);
 
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to get ADS preference! Aborting...\n");
-        delete FileCB;
+        ExFreePool(FileCB);
         Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
         Irp->IoStatus.Status = Status;
         IoCompleteRequest(Irp, IO_DISK_INCREMENT);
@@ -170,14 +182,22 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      *
      * TODO: Handle multiple opened files pointing to the same stream properly.
      */
-    FileCB->StreamCB = new(NonPagedPool) StreamContextBlock();
-    FileCB->StreamCB->SectionObjectPointers = {0};
+     (StreamContextBlock*)ExAllocatePoolWithTag(NonPagedPool,
+        sizeof(StreamContextBlock),
+        TAG_NTFS);
+    FileCB->StreamCB = (StreamContextBlock*)ExAllocatePoolWithTag(NonPagedPool,
+                                                                  sizeof(StreamContextBlock),
+                                                                  TAG_NTFS);
+    if (!FileCB->StreamCB)
+        __debugbreak();
+    RtlZeroMemory(&FileCB->StreamCB->SectionObjectPointers,
+                  sizeof(SECTION_OBJECT_POINTERS));
 
-    if (!!(CurrentFile->Header->Flags & FR_IS_DIRECTORY))
+    if (!!(NtfsFileRecordGetHeader(CurrentFile)->Flags & FR_IS_DIRECTORY))
     {
         // Set up btree for this file
-        FileCB->FileDir = new(PagedPool) Directory(DiskVolume);
-        Status = FileCB->FileDir->LoadDirectory(FileCB->FileRec);
+        FileCB->FileDir = NtfsDirectoryCreate(DiskVolume);
+        Status = NtfsDirectoryLoadDirectory(FileCB->FileDir, FileCB->FileRec);
 
         if (!NT_SUCCESS(Status))
         {
@@ -192,7 +212,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         // Use the CommonFCBHeader fields as the canonical CC_FILE_SIZES storage
         PCC_FILE_SIZES FileSizes = (PCC_FILE_SIZES)&FileCB->CommonFCBHeader.AllocationSize;
         // Initialize the common header sizes from attributes
-        PAttribute DataAttr = CurrentFile->GetAttribute(TypeData, NULL);
+        PAttribute DataAttr = NtfsFileRecordGetAttribute(CurrentFile, TypeData, NULL);
         if (DataAttr)
         {
             if (DataAttr->IsNonResident)

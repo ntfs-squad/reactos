@@ -19,6 +19,18 @@ NtfsVolumeGetMft(
         reinterpret_cast<PVolume>(DiskVolume)->MFT);
 }
 
+NTSTATUS
+NtfsVolumeGetADSPreference(
+    _In_ PNtfsVolume DiskVolume,
+    _In_ PFILE_OBJECT FileObject,
+    _Out_ AttributeType* RequestedType,
+    _Out_ PWSTR* RequestedStream)
+{
+    return reinterpret_cast<PVolume>(DiskVolume)->GetADSPreference(reinterpret_cast<PFILE_OBJECT>(FileObject),
+                                                                   RequestedType,
+                                                                   RequestedStream);
+}
+
 #ifdef __cplusplus
 }
 #endif

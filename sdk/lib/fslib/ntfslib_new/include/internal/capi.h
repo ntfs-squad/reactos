@@ -17,6 +17,16 @@ typedef NtfsVolume* PNtfsVolume;
 extern "C" {
 #endif
 
+/* Directory functions */
+PNtfsDirectory
+NtfsDirectoryCreate(
+    _In_ PNtfsVolume DiskVolume);
+
+PNtfsDirectory
+NtfsDirectoryCreateEx(
+    _In_ PNtfsVolume DiskVolume,
+    _In_ PNtfsFileRecord File);
+
 NTSTATUS
 NTAPI
 NtfsDirectoryGetFileBothDirInfo(
@@ -27,6 +37,12 @@ NtfsDirectoryGetFileBothDirInfo(
     _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
     _Inout_ PULONG BufferLength);
 
+NTSTATUS
+NtfsDirectoryLoadDirectory(
+    _In_ PNtfsDirectory Dir,
+    _In_ PNtfsFileRecord File);
+
+/* FileRecord functions */
 PNtfsFileRecord
 NtfsFileRecordCreate(
     _In_ void *DiskVolume,
@@ -114,11 +130,20 @@ NTAPI
 NtfsFileRecordApplyFixup(
     _In_ NtfsFileRecord *FileRecord);
 
+/* MFT functions */
 NTSTATUS
 NtfsMasterFileTableGetFileRecordFromQuery(
     _In_ PNtfsMasterFileTable Mft,
     _In_ PWCHAR Query,
     _Out_ PNtfsFileRecord* File);
+
+/* Volume functions */
+NTSTATUS
+NtfsVolumeGetADSPreference(
+    _In_ PNtfsVolume DiskVolume,
+    _In_ PFILE_OBJECT FileObject,
+    _Out_ AttributeType* RequestedType,
+    _Out_ PWSTR* RequestedStream);
 
 PNtfsMasterFileTable
 NtfsVolumeGetMft(

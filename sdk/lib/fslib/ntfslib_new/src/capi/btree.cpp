@@ -11,6 +11,22 @@
 extern "C" {
 #endif
 
+PNtfsDirectory
+NtfsDirectoryCreate(
+    _In_ PNtfsVolume DiskVolume)
+{
+    return reinterpret_cast<PNtfsDirectory>(new(NonPagedPool) Directory(reinterpret_cast<PVolume>(DiskVolume)));
+}
+
+PNtfsDirectory
+NtfsDirectoryCreateEx(
+    _In_ PNtfsVolume DiskVolume,
+    _In_ PNtfsFileRecord File)
+{
+    return reinterpret_cast<PNtfsDirectory>(new(NonPagedPool) Directory(reinterpret_cast<PVolume>(DiskVolume),
+                                                                        reinterpret_cast<PFileRecord>(File)));
+}
+
 NTSTATUS
 NTAPI
 NtfsDirectoryGetFileBothDirInfo(
@@ -26,6 +42,14 @@ NtfsDirectoryGetFileBothDirInfo(
                                                                  FileNameFilter,
                                                                  Buffer,
                                                                  BufferLength);
+}
+
+NTSTATUS
+NtfsDirectoryLoadDirectory(
+    _In_ PNtfsDirectory Dir,
+    _In_ PNtfsFileRecord File)
+{
+    return reinterpret_cast<PDirectory>(Dir)->LoadDirectory(reinterpret_cast<PFileRecord>(File));
 }
 
 #ifdef __cplusplus
