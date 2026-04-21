@@ -44,3 +44,5 @@ typedef unsigned int UINT;
 #include "btree.h"
 
 #include <debug.h>
+
+#include "capi.h"

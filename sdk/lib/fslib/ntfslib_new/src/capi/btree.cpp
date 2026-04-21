@@ -7,7 +7,11 @@
 
 #include "ntfslib_new.h"
 
-extern "C" NTSTATUS
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+NTSTATUS
 NTAPI
 NtfsDirectoryGetFileBothDirInfo(
     _In_    PNtfsDirectory Dir,
@@ -23,3 +27,7 @@ NtfsDirectoryGetFileBothDirInfo(
                                                                  Buffer,
                                                                  BufferLength);
 }
+
+#ifdef __cplusplus
+}
+#endif

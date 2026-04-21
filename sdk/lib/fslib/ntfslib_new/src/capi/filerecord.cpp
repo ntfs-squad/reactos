@@ -6,8 +6,12 @@
  */
 
 #include "ntfslib_new.h"
- 
-extern "C" PNtfsFileRecord
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+PNtfsFileRecord
 NtfsFileRecordCreate(
     _In_ void *Volume,
     _In_ ULONG FileRecordSize)
@@ -23,7 +27,7 @@ NtfsFileRecordCreate(
     return reinterpret_cast<PNtfsFileRecord>(new(NonPagedPool, TAG_FILE_RECORD) FileRecord(Vol, FileRecordSize));
 }
 
-extern "C" void
+void
 NtfsFileRecordDestroy(
     _In_opt_ PNtfsFileRecord Fr)
 {
@@ -32,7 +36,7 @@ NtfsFileRecordDestroy(
     delete reinterpret_cast<PFileRecord>(Fr);
 }
 
-extern "C" PFileRecordHeader
+PFileRecordHeader
 NTAPI
 NtfsFileRecordGetHeader(
     _In_ PNtfsFileRecord Fr)
@@ -40,7 +44,7 @@ NtfsFileRecordGetHeader(
     return reinterpret_cast<PFileRecord>(Fr)->Header;
 }
 
-extern "C" PUCHAR
+PUCHAR
 NTAPI
 NtfsFileRecordGetData(
     _In_ PNtfsFileRecord Fr)
@@ -48,7 +52,7 @@ NtfsFileRecordGetData(
     return reinterpret_cast<PFileRecord>(Fr)->Data;
 }
 
-extern "C" PAttribute
+PAttribute
 NTAPI
 NtfsFileRecordGetAttribute(
     _In_ PNtfsFileRecord Fr,
@@ -58,7 +62,7 @@ NtfsFileRecordGetAttribute(
     return reinterpret_cast<PFileRecord>(Fr)->GetAttribute(Type, Name);
 }
 
-extern "C" PDataRun
+PDataRun
 NTAPI
 NtfsFileRecordFindNonResidentDataFromAttribute(
     _In_ PNtfsFileRecord Fr,
@@ -67,7 +71,7 @@ NtfsFileRecordFindNonResidentDataFromAttribute(
     return reinterpret_cast<PFileRecord>(Fr)->FindNonResidentData(DataAttr);
 }
 
-extern "C" PDataRun
+PDataRun
 NTAPI
 NtfsFileRecordFindNonResidentData(
     _In_ PNtfsFileRecord Fr,
@@ -77,7 +81,7 @@ NtfsFileRecordFindNonResidentData(
     return reinterpret_cast<PFileRecord>(Fr)->FindNonResidentData(Type, Name);
 }
 
-extern "C" NTSTATUS
+NTSTATUS
 NTAPI
 NtfsFileRecordCopyData(
     _In_ PNtfsFileRecord Fr,
@@ -90,7 +94,7 @@ NtfsFileRecordCopyData(
     return reinterpret_cast<PFileRecord>(Fr)->CopyData(Type, Name, Buffer, Length, Offset);
 }
 
-extern "C" NTSTATUS
+NTSTATUS
 NTAPI
 NtfsFileRecordCopyDataFromAttribute(
     _In_ PNtfsFileRecord Fr,
@@ -102,7 +106,7 @@ NtfsFileRecordCopyDataFromAttribute(
     return reinterpret_cast<PFileRecord>(Fr)->CopyData(Attr, Buffer, Length, Offset);
 }
 
-extern "C" NTSTATUS
+NTSTATUS
 NTAPI
 NtfsFileRecordWriteFileData(
     _In_ PNtfsFileRecord Fr,
@@ -115,7 +119,7 @@ NtfsFileRecordWriteFileData(
     return reinterpret_cast<PFileRecord>(Fr)->WriteFileData(AttrType, StreamName, Buffer, Length, Offset);
 }
 
-extern "C" NTSTATUS
+NTSTATUS
 NTAPI
 NtfsFileRecordUpdateResidentData(
     _In_ PNtfsFileRecord Fr,
@@ -127,7 +131,7 @@ NtfsFileRecordUpdateResidentData(
     return reinterpret_cast<PFileRecord>(Fr)->UpdateResidentData(TargetAttribute, Buffer, Length, Offset);
 }
 
-extern "C" NTSTATUS
+NTSTATUS
 NTAPI
 NtfsFileRecordCommitFixup(
     _In_ PNtfsFileRecord Fr)
@@ -135,10 +139,15 @@ NtfsFileRecordCommitFixup(
     return reinterpret_cast<PFileRecord>(Fr)->CommitFixup();
 }
 
-extern "C" NTSTATUS
+NTSTATUS
 NTAPI
 NtfsFileRecordApplyFixup(
     _In_ PNtfsFileRecord Fr)
 {
     return reinterpret_cast<PFileRecord>(Fr)->ApplyFixup();
 }
+
+#ifdef __cplusplus
+}
+#endif
+

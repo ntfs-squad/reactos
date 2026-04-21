@@ -9,6 +9,8 @@ target_sources(ntfslib_new PRIVATE
     btree/btree.cpp
     capi/btree.cpp
     capi/filerecord.cpp
+    capi/mft.cpp
+    capi/volume.cpp
     filerecord/attributes/addattr.cpp
     filerecord/attributes/findattr.cpp
     filerecord/read/copy.cpp

@@ -36,6 +36,8 @@ struct BootSector
     USHORT EndSector;
 };
 
+#ifdef __cplusplus
+
 typedef class Volume
 {
 public:
@@ -176,3 +178,5 @@ public:
     void SanityCheckBlockIO();
 
 } *PVolume;
+
+#endif // __cplusplus

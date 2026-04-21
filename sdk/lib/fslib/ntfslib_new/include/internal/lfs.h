@@ -339,6 +339,8 @@ typedef struct BitmapRange
 
 /* *** Formerly: lfs/lfs.h *** */
 
+#ifdef __cplusplus
+
 typedef class RestartPage
 {
     PLfsRestartPage Header;
@@ -391,3 +393,5 @@ private:
         return FALSE;
     }
 } *PLogFileService;
+
+#endif // __cplusplus
