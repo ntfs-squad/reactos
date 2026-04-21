@@ -155,24 +155,3 @@ private:
 } *PDirectory;
 
 #endif // __cplusplus
-
-typedef struct NtfsDirectory NtfsDirectory;
-typedef NtfsDirectory* PNtfsDirectory;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-NTSTATUS
-NTAPI
-NtfsDirectoryGetFileBothDirInfo(
-    _In_    PNtfsDirectory Dir,
-    _In_    BOOLEAN ReturnSingleEntry,
-    _In_    BOOLEAN RestartScan,
-    _In_    PUNICODE_STRING FileNameFilter,
-    _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
-    _Inout_ PULONG BufferLength);
-
-#ifdef __cplusplus
-}
-#endif
