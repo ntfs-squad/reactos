@@ -412,8 +412,8 @@ Directory::Directory(_In_ PVolume DiskVolume)
     this->DiskVolume = DiskVolume;
 }
 
-Directory::Directory(_In_ PFileRecord File,
-                     _In_ PVolume DiskVolume)
+Directory::Directory(_In_ PVolume DiskVolume,
+                     _In_ PFileRecord File)
                     : Directory(DiskVolume)
 {
     LoadDirectory(File);

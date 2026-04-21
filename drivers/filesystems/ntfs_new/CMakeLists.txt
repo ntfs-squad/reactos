@@ -1,6 +1,6 @@
 list(APPEND SOURCE
      close.c
-     create.cpp
+     create.c
      ea.c
      fastio.c
      fileinfo.c
