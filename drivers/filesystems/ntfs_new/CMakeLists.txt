@@ -11,7 +11,7 @@ list(APPEND SOURCE
      read.c
      registry.c
      vol.cpp
-     write.cpp
+     write.c
      ntfsvol.cpp)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)

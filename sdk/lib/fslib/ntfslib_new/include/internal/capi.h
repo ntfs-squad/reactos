@@ -149,6 +149,10 @@ PNtfsMasterFileTable
 NtfsVolumeGetMft(
     _In_ PNtfsVolume DiskVolume);
 
+BOOLEAN
+NtfsVolumeIsReadOnly(
+    _In_ PNtfsVolume DiskVolume);
+
 #ifdef __cplusplus
 }
 #endif

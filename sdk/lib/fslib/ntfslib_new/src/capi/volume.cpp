@@ -31,6 +31,13 @@ NtfsVolumeGetADSPreference(
                                                                    RequestedStream);
 }
 
+BOOLEAN
+NtfsVolumeIsReadOnly(
+    _In_ PNtfsVolume DiskVolume)
+{
+    return reinterpret_cast<PVolume>(DiskVolume)->IsReadOnly;
+}
+
 #ifdef __cplusplus
 }
 #endif
