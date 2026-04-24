@@ -8,7 +8,6 @@
 
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
-#include "ntfs_tags.h"
 
 EXTERN_C
 NTSTATUS

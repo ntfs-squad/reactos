@@ -6,8 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
-
 #pragma pack(1)
 struct BootSector
 {

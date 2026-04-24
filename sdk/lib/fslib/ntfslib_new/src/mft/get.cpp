@@ -8,14 +8,6 @@
 
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
-#include "ntfs_tags.h"
-
-#define IsRootFile(Path) \
-Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
-
-#define MFTDiskOffset (MFTLCN * BytesPerCluster(DiskVolume))
-#define MFTMirrDiskOffset (MFTMirrLCN * BytesPerCluster(DiskVolume))
-#define FileRecordOffset(FileRecordNumber) (FileRecordNumber * FileRecordSize)
 
 // NOTE: This function will search $MFTMirr automatically if needed.
 NTSTATUS
