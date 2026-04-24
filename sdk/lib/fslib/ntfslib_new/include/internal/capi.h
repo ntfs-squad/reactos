@@ -6,6 +6,9 @@ typedef NtfsDirectory* PNtfsDirectory;
 typedef struct NtfsFileRecord NtfsFileRecord;
 typedef NtfsFileRecord* PNtfsFileRecord;
 
+typedef struct NtfsLogFileService NtfsLogFileService;
+typedef NtfsLogFileService* PNtfsLogFileService;
+
 typedef struct NtfsMasterFileTable NtfsMasterFileTable;
 typedef NtfsMasterFileTable* PNtfsMasterFileTable;
 
@@ -130,6 +133,16 @@ NTAPI
 NtfsFileRecordApplyFixup(
     _In_ NtfsFileRecord *FileRecord);
 
+/* LFS functions */
+
+NTSTATUS
+NtfsLogFileServiceGetClientMajorVersion(
+    _In_ PNtfsLogFileService LFS);
+
+NTSTATUS
+NtfsLogFileServiceGetClientMinorVersion(
+    _In_ PNtfsLogFileService LFS);
+
 /* MFT functions */
 NTSTATUS
 NtfsMasterFileTableGetFileRecordFromQuery(
@@ -145,13 +158,58 @@ NtfsVolumeGetADSPreference(
     _Out_ AttributeType* RequestedType,
     _Out_ PWSTR* RequestedStream);
 
+UINT8
+NtfsVolumeGetBytesPerSector(
+    _In_ PNtfsVolume DiskVolume);
+
+ULONG
+NtfsVolumeGetClustersInVolume(
+    _In_ PNtfsVolume DiskVolume);
+
+NTSTATUS
+NtfsVolumeGetFreeClusters(
+    _In_ PNtfsVolume DiskVolume,
+    _Out_ PLARGE_INTEGER FreeClusters);
+
+PNtfsLogFileService
+NtfsVolumeGetLFS(
+    _In_ PNtfsVolume DiskVolume);
+
 PNtfsMasterFileTable
 NtfsVolumeGetMft(
     _In_ PNtfsVolume DiskVolume);
 
+USHORT
+NtfsVolumeGetMajorVersion(
+    _In_ PNtfsVolume DiskVolume);
+
+USHORT
+NtfsVolumeGetMinorVersion(
+    _In_ PNtfsVolume DiskVolume);
+
+UINT8
+NtfsVolumeGetSectorsPerCluster(
+    _In_ PNtfsVolume DiskVolume);
+
+UINT64
+NtfsVolumeGetSerialNumber(
+    _In_ PNtfsVolume DiskVolume);
+
+NTSTATUS
+NtfsVolumeGetVolumeLabel(
+    _In_ PNtfsVolume DiskVolume,
+    _Out_ PWSTR VolumeLabel,
+    _Out_ PUSHORT Length);
+
 BOOLEAN
 NtfsVolumeIsReadOnly(
     _In_ PNtfsVolume DiskVolume);
+
+NTSTATUS
+NtfsVolumeSetVolumeLabel(
+    _In_ PNtfsVolume DiskVolume,
+    _In_ PWSTR VolumeLabel,
+    _In_ ULONG Length);
 
 #ifdef __cplusplus
 }

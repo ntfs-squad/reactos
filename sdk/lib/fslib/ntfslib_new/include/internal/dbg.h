@@ -102,7 +102,7 @@ static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
     DbgPrint("Filename:        \"%S\"\n", Attr->Name);
 }
 
-static inline void PrintNTFSBootSector(BootSector* PartBootSector)
+static inline void PrintNTFSBootSector(PBootSector PartBootSector)
 {
     DbgPrint("OEM ID            %s\n", PartBootSector->OEM_ID);
     DbgPrint("Bytes per sector  %ld\n", PartBootSector->BytesPerSector);
@@ -115,16 +115,6 @@ static inline void PrintNTFSBootSector(BootSector* PartBootSector)
     DbgPrint("Clusters/MFT Rec  %d\n", PartBootSector->ClustersPerFileRecord);
     DbgPrint("Clusters/IndexRec %d\n", PartBootSector->ClustersPerIndexRecord);
     DbgPrint("Serial number     0x%X\n", PartBootSector->SerialNumber);
-};
-
-static inline void PrintFileContextBlock(PFileContextBlock FileCB)
-{
-    DbgPrint("File name:          \"%wZ\"\n", &FileCB->FileName);
-
-    if (FileCB->FileDir)
-        DbgPrint("Directory:          TRUE\n");
-    else
-        DbgPrint("Directory:          FALSE\n");
 };
 
 static inline void PrintStdInfoEx(StandardInformationEx* StdInfo)

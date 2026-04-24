@@ -1,0 +1,30 @@
+/*
+ * PROJECT:     ReactOS NTFS library
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     C interface for LFS class
+ * COPYRIGHT:   Copyright 2026 Carl Bialorucki <carl.bialorucki@reactos.org>
+ */
+
+#include "ntfslib_new.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+NTSTATUS
+NtfsLogFileServiceGetClientMajorVersion(
+    _In_ PNtfsLogFileService LFS)
+{
+    return reinterpret_cast<PLogFileService>(LFS)->ClientMajorVersion;
+}
+
+NTSTATUS
+NtfsLogFileServiceGetClientMinorVersion(
+    _In_ PNtfsLogFileService LFS)
+{
+    return reinterpret_cast<PLogFileService>(LFS)->ClientMinorVersion;
+}
+
+#ifdef __cplusplus
+}
+#endif

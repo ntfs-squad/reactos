@@ -7,6 +7,7 @@
  */
 
 #include "ntfspch.h"
+#include <ntfsprobe.h>
 
 extern NPAGED_LOOKASIDE_LIST FileCBLookasideList;
 //TODO:
@@ -44,20 +45,20 @@ NtfsGetSizeInfo(PDEVICE_OBJECT DeviceObject,
                 PFILE_FS_SIZE_INFORMATION Buffer,
                 PULONG Length)
 {
-    PVolume DiskVolume;
+    PNtfsVolume DiskVolume;
 
     if (*Length < sizeof(FILE_FS_SIZE_INFORMATION))
         return STATUS_BUFFER_OVERFLOW;
 
-       DiskVolume = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->DiskVolume;
+    DiskVolume = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->DiskVolume;
 
     if (!DiskVolume)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    DiskVolume->GetFreeClusters(&Buffer->AvailableAllocationUnits);
-    Buffer->TotalAllocationUnits.QuadPart = DiskVolume->ClustersInVolume;
-    Buffer->SectorsPerAllocationUnit = DiskVolume->SectorsPerCluster;
-    Buffer->BytesPerSector = DiskVolume->BytesPerSector;
+    NtfsVolumeGetFreeClusters(DiskVolume, &Buffer->AvailableAllocationUnits);
+    Buffer->TotalAllocationUnits.QuadPart = NtfsVolumeGetClustersInVolume(DiskVolume);
+    Buffer->SectorsPerAllocationUnit = NtfsVolumeGetSectorsPerCluster(DiskVolume);
+    Buffer->BytesPerSector = NtfsVolumeGetBytesPerSector(DiskVolume);
 
     *Length -= sizeof(FILE_FS_SIZE_INFORMATION);
 
@@ -66,7 +67,7 @@ NtfsGetSizeInfo(PDEVICE_OBJECT DeviceObject,
 
 static
 NTSTATUS
-NtfsGetAttributeInfo(PVolume DiskVolume,
+NtfsGetAttributeInfo(PNtfsVolume DiskVolume,
                      PFILE_FS_ATTRIBUTE_INFORMATION Buffer,
                      PULONG Length)
 {
@@ -74,6 +75,7 @@ NtfsGetAttributeInfo(PVolume DiskVolume,
     size_t BytesToWrite;
     LPCWSTR NTFSVerFormat;
     UNICODE_STRING NTFSVer;
+    PNtfsLogFileService LFS;
 
     if (gShowVersionInfo)
     {
@@ -81,6 +83,7 @@ NtfsGetAttributeInfo(PVolume DiskVolume,
         BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 38;
         if (*Length < BytesToWrite)
             goto fallback;
+        LFS = NtfsVolumeGetLFS(DiskVolume);
         Buffer->FileSystemNameLength = 40;
         NTFSVerFormat = L"NTFS %1ld.%1ld, Client %1ld.%1ld";
         RtlInitEmptyUnicodeString(&NTFSVer,
@@ -88,10 +91,10 @@ NtfsGetAttributeInfo(PVolume DiskVolume,
                                   40);
         Status = RtlUnicodeStringPrintf(&NTFSVer,
                                         NTFSVerFormat,
-                                        DiskVolume->NtfsMajorVersion,
-                                        DiskVolume->NtfsMinorVersion,
-                                        DiskVolume->LFS->ClientMajorVersion,
-                                        DiskVolume->LFS->ClientMinorVersion);
+                                        NtfsVolumeGetMajorVersion(DiskVolume),
+                                        NtfsVolumeGetMinorVersion(DiskVolume),
+                                        NtfsLogFileServiceGetClientMajorVersion(LFS),
+                                        NtfsLogFileServiceGetClientMinorVersion(LFS));
         if (!NT_SUCCESS(Status))
             goto fallback;
     }
@@ -117,7 +120,7 @@ fallback:
                                    | FILE_UNICODE_ON_DISK
                                    | FILE_NAMED_STREAMS;
 
-    if (DiskVolume->IsReadOnly)
+    if (NtfsVolumeIsReadOnly(DiskVolume))
         Buffer->FileSystemAttributes |= FILE_READ_ONLY_VOLUME;
 
     Buffer->MaximumComponentNameLength = 255;
@@ -132,19 +135,24 @@ NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
                    _In_ PULONG Length)
 {
     NTSTATUS Status;
-    PVolume DiskVolume;
+    PNtfsVolume DiskVolume;
 
     DiskVolume = ((PVolumeContextBlock)(DeviceObject->DeviceExtension))->DiskVolume;
 
     if (!DiskVolume || !NewLabel)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    DiskVolume->SetVolumeLabel(NewLabel->VolumeLabel, NewLabel->VolumeLabelLength);
+    Status = NtfsVolumeSetVolumeLabel(DiskVolume,
+                                      NewLabel->VolumeLabel,
+                                      NewLabel->VolumeLabelLength);
+    
+    if (!NT_SUCCESS(Status))
+        return Status;
 
     // Re-read volume label.
-    Status = DiskVolume->GetVolumeLabel(DeviceObject->Vpb->VolumeLabel,
-                                        &DeviceObject->Vpb->VolumeLabelLength);
-
+    Status = NtfsVolumeGetVolumeLabel(DiskVolume,
+                                      DeviceObject->Vpb->VolumeLabel,
+                                      &DeviceObject->Vpb->VolumeLabelLength);
     return Status;
 }
 
@@ -282,23 +290,59 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                 IN PDEVICE_OBJECT FsDeviceObject)
 {
     PDEVICE_OBJECT FSDeviceObject;
-    PVolume DiskVolume;
+    PNtfsVolume DiskVolume;
     NTSTATUS Status;
     PVolumeContextBlock VolCB;
     LARGE_INTEGER FilesystemSize;
+    DISK_GEOMETRY DiskGeometry;
+    ULONG Size;
+    PUCHAR PartitionBootSector;
 
-    /* The function here returns, but it's not an error.
+    // Get disk geometry.
+    Size = sizeof(DISK_GEOMETRY);
+    Status = DeviceIoControl(TargetDeviceObject,
+                             IOCTL_DISK_GET_DRIVE_GEOMETRY,
+                             NULL,
+                             0,
+                             &DiskGeometry,
+                             &Size,
+                             TRUE);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("NtfsDeviceIoControl() failed (Status %lx)\n", Status);
+        __debugbreak(); //ASSERT?
+    }
+
+    // Get boot sector.
+    PartitionBootSector = ExAllocatePoolWithTag(NonPagedPool, sizeof(BootSector), TAG_NTFS);
+    if (!PartitionBootSector)
+    {
+        DPRINT1("Failed to allocate memory for boot sector!\n");
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Status = ReadDisk(TargetDeviceObject,
+                      0,
+                      DiskGeometry.BytesPerSector,
+                      PartitionBootSector);
+
+    if (!NT_SUCCESS(Status))
+        goto Cleanup;
+    
+    /* Check if we're really NTFS. It's OK if we're not.
      * We're a boot driver, NT will try every possible filesystem.
      */
-    DiskVolume = new(PagedPool) Volume();
-    Status = DiskVolume->LoadNTFSDevice(TargetDeviceObject);
+    Status = NtfsProbePartitionAndOpenVolume(DiskGeometry.BytesPerSector,
+                                             PartitionBootSector,
+                                             &DiskVolume);
 
     DPRINT1("LoadNTFSDevice() returned %lx\n", Status);
-    if (Status != STATUS_SUCCESS)
-        return Status;
+
+    if (!NT_SUCCESS(Status))
+        goto Cleanup;
 
     // Currently used for debugging output.
-    DiskVolume->RunSanityChecks();
+    // DiskVolume->RunSanityChecks();
 
     // Create file system device object.
     Status = IoCreateDevice(NtfsDriverObject,
@@ -340,20 +384,26 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                                                        VolCB->StorageDevice);
 
     // Set file system size information.
-    FilesystemSize.QuadPart = DiskVolume->ClustersInVolume
-                            * DiskVolume->SectorsPerCluster
-                            * DiskVolume->BytesPerSector;
+    FilesystemSize.QuadPart = NtfsVolumeGetClustersInVolume(DiskVolume)
+                            * NtfsVolumeGetSectorsPerCluster(DiskVolume)
+                            * NtfsVolumeGetBytesPerSector(DiskVolume);
 
     // Get serial number.
-    FSDeviceObject->Vpb->SerialNumber = DiskVolume->SerialNumber;
+    FSDeviceObject->Vpb->SerialNumber = NtfsVolumeGetSerialNumber(DiskVolume);
 
     // Get volume label.
-    Status = DiskVolume->GetVolumeLabel(FSDeviceObject->Vpb->VolumeLabel,
-                                        &FSDeviceObject->Vpb->VolumeLabelLength);
+    Status = NtfsVolumeGetVolumeLabel(DiskVolume,
+                                      FSDeviceObject->Vpb->VolumeLabel,
+                                      &FSDeviceObject->Vpb->VolumeLabelLength);
 
     // Mount volume.
     FsRtlNotifyVolumeEvent(VolCB->StreamFileObject, FSRTL_VOLUME_MOUNT);
 
     Status = STATUS_SUCCESS;
+
+Cleanup:
+    if (PartitionBootSector)
+        ExFreePool(PartitionBootSector);
+    
     return Status;
 }
