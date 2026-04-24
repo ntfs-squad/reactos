@@ -6,6 +6,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfs_tags.h"
 
 #ifdef __cplusplus
 extern "C" {

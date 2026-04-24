@@ -10,6 +10,7 @@
 
 #define InvalidMftZoneReservation(Num) Num < 0 || Num > 4
 #define InvalidDisableLastAccessUpdate(Num) Num < 0 || Num > 3
+#define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
 #define KEYVAL_BUFFER_SIZE ROUND_UP(sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG), 0x10)
 
 BOOLEAN gAllowExtChar8dot3;

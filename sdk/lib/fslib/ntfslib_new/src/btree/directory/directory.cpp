@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfs_tags.h"
 
 #define BytesPerIndexRecord(DiskVolume) \
 (BytesPerCluster(DiskVolume) * DiskVolume->ClustersPerIndexRecord)

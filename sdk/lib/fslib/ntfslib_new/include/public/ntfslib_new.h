@@ -3,18 +3,16 @@
 // Hack: This should only be in enviornments/km.cpp
 #include <ntifs.h>
 
-// Hack: This should not be in any public header.
-#include "ntfs_tags.h"
-
-// Hack: This is a driver-specific setting. Our lib should not care.
-extern "C" {
-    extern BOOLEAN gShowMetadataFiles;
-}
-
+#ifdef __cplusplus
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
+extern "C" {
+    // Hack: This is a driver-specific setting. Our lib should not care.
+    extern BOOLEAN gShowMetadataFiles;
+}
+#endif
 
 #define GetWStrLength(x) ((x) * sizeof(WCHAR))
 #define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))

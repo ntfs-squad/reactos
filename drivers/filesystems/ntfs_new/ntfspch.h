@@ -10,7 +10,6 @@
 #define _NTFSPROCS_
 
 #include <ntifs.h>
-
 #include <ntddscsi.h>
 #include <scsi.h>
 #include <ntddcdrm.h>
@@ -21,14 +20,18 @@
 #include <ntstrsafe.h>
 #include <debug.h>
 
+#include <attributes.h>
+#include "include/dispatch.h"
+#include "include/reg.h"
+#include "include/ctxblks.h"
+#include <ntfs_tags.h>
+#include <ntfsvol.h>
+#include <filerecord.h>
+#include <capi.h>
+#include <ntfs_km.h>
+
 #define NTFS_DEBUG
 
-#define GetWStrLength(x) x * sizeof(WCHAR)
-#define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
-#define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
-#define ULONG_ROUND_UP(x)   ROUND_UP((x), (sizeof(ULONG)))
-#define MAX_SHORTNAME_LENGTH 12
-#define FileRef(Key) (Key)->Entry->Data.Directory.IndexedFile
 #define GetUserBuffer(Irp) Irp->MdlAddress ?\
 MmGetSystemAddressForMdlSafe(Irp->MdlAddress, ((Irp->Flags & IRP_PAGING_IO) ? HighPagePriority : NormalPagePriority)) :\
 Irp->UserBuffer
@@ -43,19 +46,6 @@ typedef enum _TYPE_OF_OPEN {
     DirectoryFile,
     EaFile,
 } TYPE_OF_OPEN;
-
-#include <ntfs_tags.h>
-#include "include/dispatch.h"
-#include <attributes.h>
-#include "include/reg.h"
-#include "include/ctxblks.h"
-#include <ntfsvol.h>
-#include <filerecord.h>
-#include <btree.h>
-#include <mft.h>
-#include <lfs.h>
-#include <capi.h>
-#include <ntfs_km.h>
 
 extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 extern PDRIVER_OBJECT NtfsDriverObject;
