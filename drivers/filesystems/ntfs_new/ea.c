@@ -21,7 +21,6 @@
 
 _Function_class_(IRP_MJ_QUERY_EA)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdQueryEa(_In_ PDEVICE_OBJECT VolumeDeviceObject,
@@ -39,7 +38,6 @@ NtfsFsdQueryEa(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_SET_EA)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdSetEa(_In_ PDEVICE_OBJECT VolumeDeviceObject,

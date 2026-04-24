@@ -166,7 +166,6 @@ NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
 /* FUNCTIONS ****************************************************************/
 _Function_class_(IRP_MJ_QUERY_VOLUME_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdQueryVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
@@ -234,7 +233,6 @@ NtfsFsdQueryVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_SET_VOLUME_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
@@ -283,7 +281,6 @@ NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 }
 
 _Requires_lock_held_(_Global_critical_region_)
-EXTERN_C
 NTSTATUS
 NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                 IN PVPB Vpb,

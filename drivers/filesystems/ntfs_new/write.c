@@ -14,7 +14,6 @@
 
 _Function_class_(IRP_MJ_WRITE)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,

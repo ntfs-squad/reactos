@@ -57,14 +57,6 @@ typedef enum _TYPE_OF_OPEN {
 #include <capi.h>
 #include <ntfs_km.h>
 
-#ifndef __cplusplus
-extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
-#endif
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 extern PDRIVER_OBJECT NtfsDriverObject;
 extern FAST_IO_DISPATCH FastIoDispatch;
@@ -78,18 +70,5 @@ extern INT gDisableLastAccessUpdate;
 extern BOOLEAN gDisableLfsDowngrade;
 extern BOOLEAN gDisableLfsUpgrade;
 extern INT gMftZoneReservation;
-
-#ifdef __cplusplus
-}
-#endif
-
-#ifdef __cplusplus
-
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
-
-#endif /* __cplusplus */
 
 #endif // _NTFSPROCS_

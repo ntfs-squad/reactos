@@ -139,7 +139,6 @@ SetBooleanRegistryValue(_In_ HANDLE RegistryKey,
     return SetDwordRegistryValue(RegistryKey, Name, Data ? 1 : 0);
 }
 
-EXTERN_C
 VOID
 GetGlobalSettingsFromRegistry()
 {

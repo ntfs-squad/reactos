@@ -18,7 +18,6 @@
 
 _Function_class_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,

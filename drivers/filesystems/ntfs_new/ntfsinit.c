@@ -33,7 +33,6 @@ NPAGED_LOOKASIDE_LIST FcbLookasideList;
 NPAGED_LOOKASIDE_LIST AttrCtxtLookasideList;
 PDRIVER_OBJECT NtfsDriverObject;
 /* FUNCTIONS ****************************************************************/
-EXTERN_C
 NTSTATUS
 NTAPI
 DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
@@ -109,7 +108,6 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
 
 _Function_class_(IRP_MJ_LOCK_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdLockControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
@@ -125,7 +123,6 @@ NtfsFsdLockControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_DEVICE_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdDeviceControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
@@ -155,7 +152,6 @@ NtfsFsdDeviceControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_SHUTDOWN)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdShutdown (_In_ PDEVICE_OBJECT VolumeDeviceObject,
@@ -172,7 +168,6 @@ NtfsFsdShutdown (_In_ PDEVICE_OBJECT VolumeDeviceObject,
 }
 
 _Function_class_(DRIVER_UNLOAD)
-EXTERN_C
 VOID
 NTAPI
 NtfsUnload(_In_ _Unreferenced_parameter_ PDRIVER_OBJECT DriverObject)
@@ -183,7 +178,6 @@ NtfsUnload(_In_ _Unreferenced_parameter_ PDRIVER_OBJECT DriverObject)
 
 _Function_class_(IRP_MJ_CLEANUP)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdCleanup(_In_ PDEVICE_OBJECT VolumeDeviceObject,
