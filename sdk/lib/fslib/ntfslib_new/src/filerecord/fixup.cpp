@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfslib_new_internal.h"
 
 #define GetUpdateSequenceNumber(Header) \
 (PUSHORT)((ULONG_PTR)Header + Header->Header.UpdateSequenceOffset)

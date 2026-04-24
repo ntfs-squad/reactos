@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfslib_new_internal.h"
 
 NTSTATUS
 Directory::AddFileToDirectory(_In_ PFileNameEx FileToAdd)

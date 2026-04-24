@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfslib_new_internal.h"
 
 #define RESTART_PAGE_2_OFFSET 4096
 

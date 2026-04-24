@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfslib_new_internal.h"
 
 MasterFileTable::MasterFileTable(_In_ PVolume TargetVolume,
                                  _In_ UINT64 MFTLCN,

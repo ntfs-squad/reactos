@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfslib_new_internal.h"
 
 BOOLEAN
 Directory::IsLegalShortNameCharacterW(_In_ WCHAR Char)
