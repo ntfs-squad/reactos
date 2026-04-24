@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfslib_new_internal.h"
 
 NTSTATUS
 Volume::UpcaseWideString(_Inout_ PWSTR WideString,

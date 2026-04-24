@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfslib_new_internal.h"
 
 #define IsOffsetEndOfFile(Offset) \
 Offset->HighPart == -1 && Offset->LowPart == FILE_WRITE_TO_END_OF_FILE

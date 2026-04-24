@@ -4,7 +4,7 @@ add_dependencies(ntfslib_new psdk)
 
 target_include_directories(ntfslib_new
     PUBLIC include/public
-    PUBLIC include/internal # hack
+    PRIVATE include/internal
 )
 
 add_subdirectory(env)

@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfslib_new_internal.h"
 #define GetWStrLength(x) ((x) * sizeof(WCHAR))
 #define MAX_SHORTNAME_LENGTH 12
 

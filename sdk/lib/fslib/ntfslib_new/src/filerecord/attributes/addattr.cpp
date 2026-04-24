@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfslib_new_internal.h"
 
 #define UpdatedAttributeSize(OldAttribute, NewDataLength) \
 ROUND_UP(OldAttribute->Resident.DataOffset + NewDataLength, 8)
