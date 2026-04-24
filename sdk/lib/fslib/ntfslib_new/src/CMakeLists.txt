@@ -21,9 +21,9 @@ target_sources(ntfslib_new PRIVATE
     lfs/lfs.cpp
     mft/get.cpp
     mft/mft.cpp
-    ntfsvol/metadata/attrdef.cpp
-    ntfsvol/metadata/bitmap.cpp
-    ntfsvol/metadata/upcase.cpp
-    ntfsvol/metadata/volume.cpp
-    ntfsvol/ntfsvol.cpp
+    volume/metadata/attrdef.cpp
+    volume/metadata/bitmap.cpp
+    volume/metadata/upcase.cpp
+    volume/metadata/volume.cpp
+    volume/volume.cpp
 )
