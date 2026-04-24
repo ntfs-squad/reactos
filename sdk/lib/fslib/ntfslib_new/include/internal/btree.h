@@ -67,6 +67,11 @@ Buffer[0] == L'.' \
 
 #define DIR_KEY_8DOT3 1
 
+#define GetWStrLength(x) ((x) * sizeof(WCHAR))
+#define MAX_SHORTNAME_LENGTH 12
+// #define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
+#define ULONG_ROUND_UP(x) ROUND_UP((x), (sizeof(ULONG)))
+
 #ifdef __cplusplus
 
 typedef class BTree

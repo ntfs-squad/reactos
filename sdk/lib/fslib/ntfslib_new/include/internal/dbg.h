@@ -4,6 +4,24 @@
 DbgPrint("    %s\n", FlagName); \
 /* Debug print functions. REMOVE WHEN DONE. */
 
+static inline void PrintNTFSBootSector(PBootSector PartBootSector)
+{
+    DbgPrint("OEM ID            %s\n", PartBootSector->OEM_ID);
+    DbgPrint("Bytes per sector  %ld\n", PartBootSector->BytesPerSector);
+    DbgPrint("Sectors/cluster   %ld\n", PartBootSector->SectorsPerCluster);
+    DbgPrint("Sectors per track %ld\n", PartBootSector->SectorsPerTrack);
+    DbgPrint("Number of heads   %ld\n", PartBootSector->NumberOfHeads);
+    DbgPrint("Sectors in volume %ld\n", PartBootSector->SectorsInVolume);
+    DbgPrint("LCN for $MFT      %ld\n", PartBootSector->MFTLCN);
+    DbgPrint("LCN for $MFT_MIRR %ld\n", PartBootSector->MFTMirrLCN);
+    DbgPrint("Clusters/MFT Rec  %d\n", PartBootSector->ClustersPerFileRecord);
+    DbgPrint("Clusters/IndexRec %d\n", PartBootSector->ClustersPerIndexRecord);
+    DbgPrint("Serial number     0x%X\n", PartBootSector->SerialNumber);
+};
+
+#if 0
+// Most of these broke with the driver migration.
+
 static inline void PrintUpCaseTable(PUCHAR UpCaseData,
                                     ULONG Length)
 {
@@ -14,12 +32,12 @@ static inline void PrintUpCaseTable(PUCHAR UpCaseData,
     }
 }
 
-static inline void PrintAttrDefTable(PFileRecord AttrDef)
+static inline void PrintAttrDefTable(PNtfsFileRecord AttrDef)
 {
     PAttrDefEntry TableEntry;
     ULONG AttrDefEntryIndex, AttrDefDataSize, MaxIndex;
     PUCHAR Buffer;
-    PAttribute DataAttr;
+    PNtfsAttribute DataAttr;
 
     DataAttr = AttrDef->GetAttribute(TypeData, NULL);
     AttrDefDataSize = DataAttr->NonResident.DataSize;
@@ -101,21 +119,6 @@ static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
     DbgPrint("Flags:            0x%X\n", Attr->Flags);
     DbgPrint("Filename:        \"%S\"\n", Attr->Name);
 }
-
-static inline void PrintNTFSBootSector(PBootSector PartBootSector)
-{
-    DbgPrint("OEM ID            %s\n", PartBootSector->OEM_ID);
-    DbgPrint("Bytes per sector  %ld\n", PartBootSector->BytesPerSector);
-    DbgPrint("Sectors/cluster   %ld\n", PartBootSector->SectorsPerCluster);
-    DbgPrint("Sectors per track %ld\n", PartBootSector->SectorsPerTrack);
-    DbgPrint("Number of heads   %ld\n", PartBootSector->NumberOfHeads);
-    DbgPrint("Sectors in volume %ld\n", PartBootSector->SectorsInVolume);
-    DbgPrint("LCN for $MFT      %ld\n", PartBootSector->MFTLCN);
-    DbgPrint("LCN for $MFT_MIRR %ld\n", PartBootSector->MFTMirrLCN);
-    DbgPrint("Clusters/MFT Rec  %d\n", PartBootSector->ClustersPerFileRecord);
-    DbgPrint("Clusters/IndexRec %d\n", PartBootSector->ClustersPerIndexRecord);
-    DbgPrint("Serial number     0x%X\n", PartBootSector->SerialNumber);
-};
 
 static inline void PrintStdInfoEx(StandardInformationEx* StdInfo)
 {
@@ -204,5 +207,6 @@ static inline void PrintFileCreateOptions(UINT8 Disposition, ULONG CreateOptions
     // PrintFlag(CreateOptions, FILE_OPEN_REQUIRING_OPLOCK, "FILE_OPEN_REQUIRING_OPLOCK");
     PrintFlag(CreateOptions, FILE_RESERVE_OPFILTER, "FILE_RESERVE_OPFILTER");
 }
+#endif // 0 (hack comment out)
 
 #endif // NTFS_DEBUG
