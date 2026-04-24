@@ -9,6 +9,7 @@ target_sources(ntfslib_new PRIVATE
     btree/btree.cpp
     capi/btree.cpp
     capi/filerecord.cpp
+    capi/lfs.cpp
     capi/mft.cpp
     capi/volume.cpp
     filerecord/attributes/addattr.cpp
@@ -24,4 +25,5 @@ target_sources(ntfslib_new PRIVATE
     ntfsvol/metadata/bitmap.cpp
     ntfsvol/metadata/upcase.cpp
     ntfsvol/metadata/volume.cpp
+    ntfsvol/ntfsvol.cpp
 )

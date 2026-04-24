@@ -61,29 +61,33 @@ extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
 #endif
 
 #ifdef __cplusplus
-
 extern "C" {
-    extern BOOLEAN gAllowExtChar8dot3;
-    extern BOOLEAN gShowMetadataFiles;
-    extern BOOLEAN gShowVersionInfo;
-    extern BOOLEAN gBugCheckOnCorrupt;
-    extern BOOLEAN gDisable8dot3NameCreation;
-    extern INT gDisableLastAccessUpdate;
-    extern BOOLEAN gDisableLfsDowngrade;
-    extern BOOLEAN gDisableLfsUpgrade;
-    extern INT gMftZoneReservation;
+#endif
 
-    extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
-    extern PDRIVER_OBJECT NtfsDriverObject;
-    extern FAST_IO_DISPATCH FastIoDispatch;
+extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;
+extern PDRIVER_OBJECT NtfsDriverObject;
+extern FAST_IO_DISPATCH FastIoDispatch;
+
+extern BOOLEAN gAllowExtChar8dot3;
+extern BOOLEAN gShowMetadataFiles;
+extern BOOLEAN gShowVersionInfo;
+extern BOOLEAN gBugCheckOnCorrupt;
+extern BOOLEAN gDisable8dot3NameCreation;
+extern INT gDisableLastAccessUpdate;
+extern BOOLEAN gDisableLfsDowngrade;
+extern BOOLEAN gDisableLfsUpgrade;
+extern INT gMftZoneReservation;
+
+#ifdef __cplusplus
 }
+#endif
+
+#ifdef __cplusplus
 
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
-
-#include "include/dbg.h"
 
 #endif /* __cplusplus */
 

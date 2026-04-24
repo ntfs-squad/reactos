@@ -36,6 +36,9 @@ struct BootSector
     USHORT EndSector;
 };
 
+typedef struct BootSector BootSector;
+typedef struct BootSector* PBootSector;
+
 #ifdef __cplusplus
 
 typedef class Volume
@@ -59,6 +62,8 @@ public:
     class LogFileService* LFS;
     BOOLEAN IsReadOnly = FALSE;
 
+    ~Volume();
+    
     /**
      * Gets an attribute type value from the name of the attribute. This
      * performs a lookup against the $AttrDef metadata file on the volume.
@@ -154,18 +159,8 @@ public:
                          _In_    ULONG Length,
                          _Inout_ PUCHAR Buffer);
 
-    /**
-     * Loads a partition as an NTFS Volume.
-     *
-     * @param DeviceToMount
-     * The partition to load as an NTFS Volume.
-     *
-     * @return
-     * STATUS_SUCCESS if the volume is NTFS and is successfully loaded.
-     * STATUS_UNRECOGNIZED_VOLUME if the volume is not NTFS.
-     */
     NTSTATUS
-    LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount);
+    Initialize(_In_ PUCHAR BootSectorData);
 
     NTSTATUS
     GetADSPreference(_In_  PFILE_OBJECT FileObj,

@@ -8,39 +8,19 @@
 
 #include "ntfslib_new.h"
 
+EXTERN_C
 NTSTATUS
-Volume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
+NtfsProbePartition(
+    _In_ ULONG BytesPerSector,
+    _In_ PUCHAR BootSectorData)
 {
-    DISK_GEOMETRY DiskGeometry;
-    NTSTATUS Status;
-    ULONG ClusterSize, Size;
+    BootSector* PartitionBootSector;
+    ULONG ClusterSize;
     USHORT i;
-    BootSector* PartBootSector;
-    PFileRecord VolumeFile = NULL;
-    PVolumeInformationEx VolumeInfo;
-    PAttribute VolumeInfoAttribute;
-
-    PartDeviceObj = DeviceToMount;
-
-    Size = sizeof(DISK_GEOMETRY);
-    Status = DeviceIoControl(DeviceToMount,
-                             IOCTL_DISK_GET_DRIVE_GEOMETRY,
-                             NULL,
-                             0,
-                             &DiskGeometry,
-                             &Size,
-                             TRUE);
-    if (Status != STATUS_SUCCESS)
-    {
-        DPRINT1("NtfsDeviceIoControl() failed (Status %lx)\n", Status);
-        __debugbreak(); //ASSERT?
-    }
-
-    // Check if we are actually NTFS.
 
     // Check bytes per sector.
-    if (DiskGeometry.BytesPerSector != 512
-        && DiskGeometry.BytesPerSector != 4096)
+    if (BytesPerSector != 512
+        && BytesPerSector != 4096)
     {
         /* NOTE:
          * Per Microsoft's documentation, bytes per sector can either be
@@ -48,42 +28,26 @@ Volume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
          *
          * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iobuildsynchronousfsdrequest
          */
-        DPRINT1("Volume has invalid sector size! (%ld bytes)\n", DiskGeometry.BytesPerSector);
+        DPRINT1("Volume has invalid sector size! (%ld bytes)\n", BytesPerSector);
         return STATUS_UNRECOGNIZED_VOLUME;
     }
 
-    // Get boot sector information.
-    PartBootSector = new(PagedPool) BootSector();
-    if (!PartBootSector)
-    {
-        DPRINT1("Failed to allocate memory for boot sector!\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    Status = ReadDisk(DeviceToMount,
-                      0,
-                      DiskGeometry.BytesPerSector,
-                      (PUCHAR)PartBootSector);
-
-    if (!NT_SUCCESS(Status))
-        goto Cleanup;
+    PartitionBootSector = (BootSector*)BootSectorData;
 
     // Check if OEM_ID is "NTFS    ".
-    if (RtlCompareMemory(PartBootSector->OEM_ID, "NTFS    ", 8) != 8)
+    if (RtlCompareMemory(PartitionBootSector->OEM_ID, "NTFS    ", 8) != 8)
     {
-        DPRINT1("Failed with NTFS-identifier: [%.8s]\n", PartBootSector->OEM_ID);
-        Status = STATUS_UNRECOGNIZED_VOLUME;
-        goto Cleanup;
+        DPRINT1("Failed with NTFS identifier: [%.8s]\n", PartitionBootSector->OEM_ID);
+        return STATUS_UNRECOGNIZED_VOLUME;
     }
 
     // Check if Reserved0 is NULL.
     for (i = 0; i < 7; i++)
     {
-        if (PartBootSector->Reserved0[i] != 0)
+        if (PartitionBootSector->Reserved0[i] != 0)
         {
-            DPRINT1("Failed in field Reserved0: [%.7s]\n", PartBootSector->Reserved0);
-            Status = STATUS_UNRECOGNIZED_VOLUME;
-            goto Cleanup;
+            DPRINT1("Failed in field Reserved0: [%.7s]\n", PartitionBootSector->Reserved0);
+            return STATUS_UNRECOGNIZED_VOLUME;
         }
     }
 
@@ -91,90 +55,137 @@ Volume::LoadNTFSDevice(_In_ PDEVICE_OBJECT DeviceToMount)
     // TODO: Why doesn't this check work?
     /*for (i = 0; i < 7; i++)
     {
-        if (PartBootSector->Reserved3[i] != 0)
+        if (PartitionBootSector->Reserved3[i] != 0)
         {
-            DPRINT1("Failed in field Reserved3: [%.7s]\n", PartBootSector->Reserved3);
-            Status = STATUS_UNRECOGNIZED_VOLUME;
-            goto Cleanup;
+            DPRINT1("Failed in field Reserved3: [%.7s]\n", PartitionBootSector->Reserved3);
+            return STATUS_UNRECOGNIZED_VOLUME;
         }
     }*/
 
     // Check cluster size.
-    ClusterSize = PartBootSector->BytesPerSector * PartBootSector->SectorsPerCluster;
+    ClusterSize = PartitionBootSector->BytesPerSector
+                * PartitionBootSector->SectorsPerCluster;
+
     if (ClusterSize != 512 && ClusterSize != 1024 &&
         ClusterSize != 2048 && ClusterSize != 4096 &&
         ClusterSize != 8192 && ClusterSize != 16384 &&
         ClusterSize != 32768 && ClusterSize != 65536)
     {
         DPRINT1("Cluster size failed: %hu, %hu, %hu\n",
-                PartBootSector->BytesPerSector,
-                PartBootSector->SectorsPerCluster,
+                PartitionBootSector->BytesPerSector,
+                PartitionBootSector->SectorsPerCluster,
                 ClusterSize);
-        Status = STATUS_UNRECOGNIZED_VOLUME;
-        goto Cleanup;
+        return STATUS_UNRECOGNIZED_VOLUME;
     }
 
-    // We are NTFS. Store only the boot sector information we need in memory.
+    // We are NTFS.
 #ifdef NTFS_DEBUG
-    PrintNTFSBootSector(PartBootSector);
+    PrintNTFSBootSector(PartitionBootSector);
 #endif
+    return STATUS_SUCCESS;
+}
 
-    RtlCopyMemory(&BytesPerSector,
-                  &PartBootSector->BytesPerSector,
-                  sizeof(UINT16));
-    RtlCopyMemory(&SectorsPerCluster,
-                  &PartBootSector->SectorsPerCluster,
-                  sizeof(UINT8));
-    ClustersInVolume = (PartBootSector->SectorsInVolume) / (PartBootSector->SectorsPerCluster);
-    RtlCopyMemory(&ClustersPerIndexRecord,
-                  &PartBootSector->ClustersPerIndexRecord,
-                  sizeof(INT8));
-    RtlCopyMemory(&SerialNumber,
-                  &PartBootSector->SerialNumber,
-                  sizeof(UINT64));
+EXTERN_C
+NTSTATUS
+NtfsProbePartitionAndOpenVolume(
+    _In_ ULONG BytesPerSector,
+    _In_ PUCHAR BootSectorData,
+    _Out_ void** VolumeOut)
+{
+    NTSTATUS Status;
+    PVolume VolumeObject;
+
+    // Make sure volume pointer is null if we fail for any reason.
+    *VolumeOut = NULL;
+    VolumeObject = NULL;
+
+    Status = NtfsProbePartition(BytesPerSector, BootSectorData);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    // Initialize the volume object.
+    VolumeObject = new(NonPagedPool) Volume();
+    if (!VolumeObject)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = VolumeObject->Initialize(BootSectorData);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to initialize volume object! (Status %lx)\n", Status);
+        delete VolumeObject;
+        return Status;
+    }
+
+    *VolumeOut = VolumeObject;
+    return Status;
+}
+
+Volume::~Volume()
+{
+    delete MFT;
+    delete LFS;
+}
+
+NTSTATUS
+Volume::Initialize(_In_ PUCHAR BootSectorData)
+{
+    BootSector* PartitionBootSector;
+    PVolumeInformationEx VolumeInfo;
+    PAttribute VolumeInfoAttribute;
+    PFileRecord VolumeFile;
+    NTSTATUS Status;
+    
+    PartitionBootSector = (BootSector*)BootSectorData;
+    VolumeFile = NULL;
+
+    // Pull in relevant information from the boot sector.
+    BytesPerSector = PartitionBootSector->BytesPerSector;
+    SectorsPerCluster = PartitionBootSector->SectorsPerCluster;
+    ClustersInVolume = (PartitionBootSector->SectorsInVolume) / (PartitionBootSector->SectorsPerCluster);
+    ClustersPerIndexRecord = PartitionBootSector->ClustersPerIndexRecord;
+    SerialNumber = PartitionBootSector->SerialNumber;
 
     // Initialize Master File Table
     MFT = new(PagedPool, TAG_MFT) MasterFileTable(this,
-                                                  PartBootSector->MFTLCN,
-                                                  PartBootSector->MFTMirrLCN,
-                                                  PartBootSector->ClustersPerFileRecord);
-
-    // Allocate Log File Service Object
-    LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
-
+                                                  PartitionBootSector->MFTLCN,
+                                                  PartitionBootSector->MFTMirrLCN,
+                                                  PartitionBootSector->ClustersPerFileRecord);
+    if (!MFT)
+        return STATUS_INSUFFICIENT_RESOURCES;
+    
     // Get the NTFS Major and Minor versions from $Volume.
     Status = MFT->GetFileAttributeFromFileRecordNumber(TypeVolumeInformation,
                                                        NULL,
                                                        _Volume,
                                                        &VolumeFile,
                                                        &VolumeInfoAttribute);
+    
     if (!NT_SUCCESS(Status))
-        goto Cleanup;
-
+        return Status;
+    
     VolumeInfo = (PVolumeInformationEx)GetResidentDataPointer(VolumeInfoAttribute);
-
-    // Set NTFS major and minor versions
+    
     NtfsMajorVersion = VolumeInfo->MajorVersion;
     NtfsMinorVersion = VolumeInfo->MinorVersion;
     DPRINT1("NTFS Version %ld.%ld\n", VolumeInfo->MajorVersion, VolumeInfo->MinorVersion);
+    
+    // Initialize Log File Service
+    LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
 
-    // Initialize LFS
+    if (!LFS)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
     Status = LFS->InitializeLFS();
 
     if (Status == STATUS_LOG_BLOCK_VERSION)
     {
         /* The version of LFS is incompatible with our LFS.
-         * Open volume as readonly.
-         */
-        DPRINT1("Opening disk as readonly!\n");
+        * Open volume as readonly.
+        */
+        DPRINT1("LFS version is incompatible. Opening disk as readonly.\n");
         IsReadOnly = TRUE;
         Status = STATUS_SUCCESS;
     }
 
-Cleanup:
-    delete PartBootSector;
-    if (VolumeFile)
-        delete VolumeFile;
     return Status;
 }
-

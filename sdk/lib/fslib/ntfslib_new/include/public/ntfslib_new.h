@@ -43,6 +43,9 @@ typedef unsigned int UINT;
 
 #include "btree.h"
 
+#define NTFS_DEBUG
+
 #include <debug.h>
+#include <dbg.h>
 
 #include "capi.h"

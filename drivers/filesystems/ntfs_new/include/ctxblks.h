@@ -6,8 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#pragma once
-
 #include <ntifs.h>
 
 // attributes.h needs to be included before this one.
@@ -17,18 +15,18 @@
 #define GetDisposition(x) ((x >> 24) & 0xFF)
 #define GetCreateOptions(x) (x & 0xFFFFFF)
 
-#ifdef __cplusplus
-class Volume;
-class FileRecord;
-#endif
+typedef struct NtfsVolume NtfsVolume;
+typedef NtfsVolume* PNtfsVolume;
+
+typedef struct NtfsFileRecord NtfsFileRecord;
+typedef NtfsFileRecord* PNtfsFileRecord;
+
+typedef struct NtfsDirectory NtfsDirectory;
+typedef NtfsDirectory* PNtfsDirectory;
 
 typedef struct _VolumeContextBlock
 {
-#ifdef __cplusplus
-    Volume *DiskVolume;
-#else
-    void* DiskVolume;
-#endif
+    PNtfsVolume DiskVolume;
     PDEVICE_OBJECT StorageDevice;
     PFILE_OBJECT StreamFileObject;
 } VolumeContextBlock, *PVolumeContextBlock;
@@ -40,11 +38,7 @@ typedef struct _SCB
 
 typedef struct _FCB
 {
-#ifdef __cplusplus
-    FileRecord* FileRec;
-#else
-    void* FileRec;
-#endif
+    PNtfsFileRecord FileRec;
     ULONG CreateOptions;
     ACCESS_MASK DesiredAccess;
 
@@ -56,11 +50,7 @@ typedef struct _FCB
     PWSTR RequestedStream;
 
     // Used for query directory requests
-#ifdef __cplusplus
-    class Directory* FileDir;
-#else
-    void* FileDir;
-#endif
+    PNtfsDirectory FileDir;
 
     // Consider moving, multiple files can point to the same stream in NTFS.
     PStreamContextBlock StreamCB;

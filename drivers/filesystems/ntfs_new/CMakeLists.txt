@@ -10,7 +10,7 @@ list(APPEND SOURCE
      pnp.c
      read.c
      registry.c
-     vol.cpp
+     vol.c
      write.c
      ntfsvol.cpp)
 
