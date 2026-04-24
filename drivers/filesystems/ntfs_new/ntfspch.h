@@ -20,17 +20,12 @@
 #include <ntstrsafe.h>
 #include <debug.h>
 
-#include <attributes.h>
-#include "include/dispatch.h"
-#include "include/reg.h"
-#include "include/ctxblks.h"
-#include <ntfs_tags.h>
-#include <ntfsvol.h>
-#include <filerecord.h>
-#include <capi.h>
-#include <ntfs_km.h>
-
 #define NTFS_DEBUG
+#include <ntfslib_new.h>
+#include <ntfs_km.h>
+#include "include/dispatch.h"
+#include "include/ctxblks.h"
+#include "include/reg.h"
 
 #define GetUserBuffer(Irp) Irp->MdlAddress ?\
 MmGetSystemAddressForMdlSafe(Irp->MdlAddress, ((Irp->Flags & IRP_PAGING_IO) ? HighPagePriority : NormalPagePriority)) :\

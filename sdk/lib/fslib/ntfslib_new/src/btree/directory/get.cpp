@@ -7,6 +7,8 @@
  */
 
 #include "ntfslib_new.h"
+#define GetWStrLength(x) ((x) * sizeof(WCHAR))
+#define MAX_SHORTNAME_LENGTH 12
 
 static
 NTSTATUS
