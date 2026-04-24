@@ -291,7 +291,6 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
 
 _Function_class_(IRP_MJ_QUERY_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -386,7 +385,6 @@ Done:
 
 _Function_class_(IRP_MJ_SET_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
@@ -404,7 +402,6 @@ NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_DIRECTORY_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,

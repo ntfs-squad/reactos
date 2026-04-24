@@ -34,7 +34,6 @@
 /* INCOMPLETE */
 _Function_class_(IRP_MJ_FILE_SYSTEM_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdFileSystemControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
@@ -100,7 +99,6 @@ NtfsFsdFileSystemControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 }
 
 _Requires_lock_held_(_Global_critical_region_)
-EXTERN_C
 NTSTATUS
 NtfsCommonFileSystemControl(_In_ PIRP Irp)
 {
@@ -136,7 +134,6 @@ NtfsCommonFileSystemControl(_In_ PIRP Irp)
 
 _Function_class_(IRP_MJ_FLUSH_BUFFERS)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdFlushBuffers(_In_ PDEVICE_OBJECT VolumeDeviceObject,

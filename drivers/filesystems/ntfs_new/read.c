@@ -13,7 +13,6 @@
 /* FUNCTIONS ****************************************************************/
 _Function_class_(IRP_MJ_READ)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,

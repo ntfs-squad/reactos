@@ -1,12 +1,10 @@
 // io/ntfsinit.cpp
 
 _Function_class_(DRIVER_UNLOAD)
-EXTERN_C
 VOID
 NTAPI
 NtfsUnload(_In_ _Unreferenced_parameter_ PDRIVER_OBJECT DriverObject);
 
-EXTERN_C
 NTSTATUS
 NTAPI
 DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
@@ -14,7 +12,6 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
 
 _Function_class_(IRP_MJ_CLEANUP)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdCleanup (_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -22,7 +19,6 @@ NtfsFsdCleanup (_In_    PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_LOCK_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdLockControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -30,7 +26,6 @@ NtfsFsdLockControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_DEVICE_CONTROL)
 _Function_class_(DRIVER_DISPATCH);
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdDeviceControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -38,32 +33,26 @@ NtfsFsdDeviceControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_SHUTDOWN)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdShutdown (_In_    PDEVICE_OBJECT VolumeDeviceObject,
                  _Inout_ PIRP Irp);
 // io/fastio
-EXTERN_C
 BOOLEAN NTAPI
 NtfsAcqLazyWrite(PVOID Context,
                  BOOLEAN Wait);
 
-EXTERN_C
 VOID NTAPI
 NtfsRelLazyWrite(PVOID Context);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsAcqReadAhead(PVOID Context,
                  BOOLEAN Wait);
 
-EXTERN_C
 VOID NTAPI
 NtfsRelReadAhead(PVOID Context);
 
 // FastIo function declarations
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoCheckIfPossible(
     _In_ PFILE_OBJECT FileObject,
@@ -75,7 +64,6 @@ NtfsFastIoCheckIfPossible(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoRead(
     _In_ PFILE_OBJECT FileObject,
@@ -87,7 +75,6 @@ NtfsFastIoRead(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoWrite(
     _In_ PFILE_OBJECT FileObject,
@@ -99,7 +86,6 @@ NtfsFastIoWrite(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoQueryBasicInfo(
     _In_ PFILE_OBJECT FileObject,
@@ -108,7 +94,6 @@ NtfsFastIoQueryBasicInfo(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoQueryStandardInfo(
     _In_ PFILE_OBJECT FileObject,
@@ -117,7 +102,6 @@ NtfsFastIoQueryStandardInfo(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoQueryNetworkOpenInfo(
     _In_ PFILE_OBJECT FileObject,
@@ -126,7 +110,6 @@ NtfsFastIoQueryNetworkOpenInfo(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoQueryDirectory(
     _In_ PFILE_OBJECT FileObject,
@@ -140,30 +123,25 @@ NtfsFastIoQueryDirectory(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoAcquireFile(
     _In_ PFILE_OBJECT FileObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoReleaseFile(
     _In_ PFILE_OBJECT FileObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoDetachDevice(
     _In_ PDEVICE_OBJECT SourceDevice,
     _In_ PDEVICE_OBJECT TargetDevice);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoQueryOpen(
     _In_ PIRP Irp,
     _Out_ PFILE_NETWORK_OPEN_INFORMATION NetworkInformation,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoPrepareMdlWrite(
     _In_ PFILE_OBJECT FileObject,
@@ -174,7 +152,6 @@ NtfsFastIoPrepareMdlWrite(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoMdlWriteComplete(
     _In_ PFILE_OBJECT FileObject,
@@ -182,7 +159,6 @@ NtfsFastIoMdlWriteComplete(
     _In_ PMDL MdlChain,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoReadCompressed(
     _In_ PFILE_OBJECT FileObject,
@@ -194,7 +170,6 @@ NtfsFastIoReadCompressed(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoWriteCompressed(
     _In_ PFILE_OBJECT FileObject,
@@ -206,7 +181,6 @@ NtfsFastIoWriteCompressed(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoMdlRead(
     _In_ PFILE_OBJECT FileObject,
@@ -217,32 +191,27 @@ NtfsFastIoMdlRead(
     _Out_ PIO_STATUS_BLOCK IoStatus,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoMdlReadComplete(
     _In_ PFILE_OBJECT FileObject,
     _In_ PMDL MdlChain,
     _In_ PDEVICE_OBJECT DeviceObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoAcquireFileForNtCreateSection(
     _In_ PFILE_OBJECT FileObject);
 
-EXTERN_C
 BOOLEAN NTAPI
 NtfsFastIoReleaseFileForNtCreateSection(
     _In_ PFILE_OBJECT FileObject);
 
 // io/fsctrl
 _Requires_lock_held_(_Global_critical_region_)
-EXTERN_C
 NTSTATUS
 NtfsCommonFileSystemControl(_In_ PIRP Irp);
 
 _Function_class_(IRP_MJ_FILE_SYSTEM_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdFileSystemControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -250,7 +219,6 @@ NtfsFsdFileSystemControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_FLUSH_BUFFERS)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdFlushBuffers (_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -259,7 +227,6 @@ NtfsFsdFlushBuffers (_In_    PDEVICE_OBJECT VolumeDeviceObject,
 // io/create.cpp
 _Function_class_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdCreate(_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -268,7 +235,6 @@ NtfsFsdCreate(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 // io/close.cpp
 _Function_class_(IRP_MJ_CLOSE)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdClose (_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -277,7 +243,6 @@ NtfsFsdClose (_In_    PDEVICE_OBJECT VolumeDeviceObject,
 // io/read.cpp
 _Function_class_(IRP_MJ_READ)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdRead(_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -286,7 +251,6 @@ NtfsFsdRead(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 // io/write.cpp
 _Function_class_(IRP_MJ_WRITE)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdWrite (_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -296,7 +260,6 @@ NtfsFsdWrite (_In_    PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_QUERY_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -304,7 +267,6 @@ NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_DIRECTORY_CONTROL)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdDirectoryControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -312,7 +274,6 @@ NtfsFsdDirectoryControl(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_SET_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdSetInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -320,7 +281,6 @@ NtfsFsdSetInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 // io/ea.cpp
 _Function_class_(IRP_MJ_QUERY_EA)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdQueryEa(_In_   PDEVICE_OBJECT VolumeDeviceObject,
@@ -328,7 +288,6 @@ NtfsFsdQueryEa(_In_   PDEVICE_OBJECT VolumeDeviceObject,
 
 _Function_class_(IRP_MJ_SET_EA)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdSetEa(_In_   PDEVICE_OBJECT VolumeDeviceObject,
@@ -337,14 +296,12 @@ NtfsFsdSetEa(_In_   PDEVICE_OBJECT VolumeDeviceObject,
 // io/vol.cpp
 _Function_class_(IRP_MJ_QUERY_VOLUME_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdQueryVolumeInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                               _Inout_ PIRP Irp);
 
 _Requires_lock_held_(_Global_critical_region_)
-EXTERN_C
 NTSTATUS
 NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                 IN PVPB Vpb,
@@ -352,7 +309,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
 
 _Function_class_(IRP_MJ_SET_VOLUME_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdSetVolumeInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
@@ -360,27 +316,23 @@ NtfsFsdSetVolumeInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 // io/pnp.cpp
 _Function_class_(IRP_MJ_PNP)
 _Function_class_(DRIVER_DISPATCH)
-EXTERN_C
 NTSTATUS
 NTAPI
 NtfsFsdPnp(_In_    PDEVICE_OBJECT VolumeDeviceObject,
            _Inout_ PIRP Irp);
 
-EXTERN_C
 NTSTATUS
 ReadDisk(_In_    PDEVICE_OBJECT DeviceToRead,
          _In_    ULONGLONG Offset,
          _In_    ULONG Length,
          _Inout_ PUCHAR Buffer);
 
-EXTERN_C
 NTSTATUS
 WriteDisk(_In_    PDEVICE_OBJECT DeviceToWrite,
           _In_    ULONGLONG Offset,
           _In_    ULONG Length,
           _In_    PUCHAR Buffer);
 
-EXTERN_C
 NTSTATUS
 DeviceIoControl(_In_    PDEVICE_OBJECT DeviceObject,
                 _In_    ULONG ControlCode,
