@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfs_tags.h"
 #define LONGLONG_SIGN_EXTEND(Number, Bytes) \
 (Number << ((sizeof(LONGLONG) - Bytes) * 8)) >> ((sizeof(LONGLONG) - Bytes) * 8)
 

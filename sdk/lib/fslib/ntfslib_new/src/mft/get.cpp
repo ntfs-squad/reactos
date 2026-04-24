@@ -7,6 +7,7 @@
  */
 
 #include "ntfslib_new.h"
+#include "ntfs_tags.h"
 
 #define IsRootFile(Path) \
 Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
