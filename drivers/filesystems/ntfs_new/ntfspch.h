@@ -55,6 +55,7 @@ typedef enum _TYPE_OF_OPEN {
 #include <mft.h>
 #include <lfs.h>
 #include <capi.h>
+#include <ntfs_km.h>
 
 #ifndef __cplusplus
 extern PDEVICE_OBJECT NtfsDiskFileSystemDeviceObject;

@@ -328,6 +328,13 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
 
     if (!NT_SUCCESS(Status))
         goto Cleanup;
+
+    // Set up NTFS library to use disk routines.
+    Status = NtfsDiskInitializeKm(TargetDeviceObject,
+                                  DiskGeometry.BytesPerSector);
+    
+    if (!NT_SUCCESS(Status))
+        goto Cleanup;
     
     /* Check if we're really NTFS. It's OK if we're not.
      * We're a boot driver, NT will try every possible filesystem.
