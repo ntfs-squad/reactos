@@ -25,5 +25,6 @@ target_sources(ntfslib_new PRIVATE
     volume/metadata/bitmap.cpp
     volume/metadata/upcase.cpp
     volume/metadata/volume.cpp
+    volume/disk.cpp
     volume/volume.cpp
 )

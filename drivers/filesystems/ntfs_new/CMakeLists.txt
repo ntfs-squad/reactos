@@ -12,7 +12,7 @@ list(APPEND SOURCE
      registry.c
      vol.c
      write.c
-     ntfsvol.cpp)
+)
 
 add_library(ntfs MODULE ${SOURCE} ntfs.rc)
 set_module_type(ntfs kernelmodedriver)
