@@ -7,7 +7,6 @@
  */
 
 #include "ntfspch.h"
-#include <ntfsprobe.h>
 
 extern NPAGED_LOOKASIDE_LIST FileCBLookasideList;
 //TODO:

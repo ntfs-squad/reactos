@@ -8,15 +8,6 @@
 
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
-#include "ntfs_tags.h"
-
-#define BytesPerIndexRecord(DiskVolume) \
-(BytesPerCluster(DiskVolume) * DiskVolume->ClustersPerIndexRecord)
-
-// Used for LoadDirectory()
-#define MayHaveShortKey(SearchKey) \
-!(SearchKey->Flags & DIR_KEY_8DOT3) \
-&& !(SearchKey->Entry->Flags & INDEX_ENTRY_END)
 
 NTSTATUS
 Directory::VerifyUpdateSequenceArray(PNTFSRecordHeader Record)
