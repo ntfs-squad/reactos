@@ -1,5 +1,14 @@
 
-/* File record */
+#ifdef __cplusplus
+void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
+void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
+void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
+void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
+extern "C" {
+    // Hack: This is a driver-specific setting. Our lib should not care.
+    extern BOOLEAN gShowMetadataFiles;
+}
+#endif
 
 /* Private macros */
 #define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
@@ -75,6 +84,26 @@ Buffer[0] == L'.' \
 
 #define GetSubnodeVCN(Entry) (PULONGLONG)((ULONG_PTR)Entry + Entry->EntryLength - 8)
 
+// Macro to get data pointer from a resident attribute pointer.
+#define GetResidentDataPointer(Attrib) (char*)(((ULONG_PTR)Attrib) + \
+                                               (Attrib->Resident.DataOffset))
+
+// Macro to free memory from data run.
+#define FreeDataRun(x) while(x) {\
+    PDataRun tmp = x->NextRun;\
+    delete x;\
+    x = tmp;\
+}
+
+// Macros to get values from a file reference
+#define GetFRNFromFileRef(x) (x & 0xFFFFFFFFFFFF)
+#define GetSQNFromFileRef(x) ((x << 48) >> 48) & 0xFFFF
+
+#define GetNamePointer(x) (((char*)x) + (x->NameOffset))
+
+#define GetAttributeDataSize(Attribute1) \
+Attribute1->IsNonResident ? Attribute1->NonResident.DataSize : Attribute1->Resident.DataLength
+
 /* Private functions */
 NTSTATUS
 NtfsReadVolume(_In_    ULONGLONG Offset,
@@ -89,11 +118,11 @@ NtfsWriteVolume(_In_    ULONGLONG Offset,
 // =========================
 // NTFS Memory Tags
 // =========================
-// HACK: These should be private or in *km target.
+// HACK: These should probably only be in *km target.
 
-// #ifndef TAG_NTFS
-// #define TAG_NTFS 'NTFS'
-// #endif
+#ifndef TAG_NTFS
+#define TAG_NTFS 'NTFS'
+#endif
 #ifndef TAG_MFT
 #define TAG_MFT '$MFT'
 #endif

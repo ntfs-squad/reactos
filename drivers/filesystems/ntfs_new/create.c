@@ -181,14 +181,12 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      *
      * TODO: Handle multiple opened files pointing to the same stream properly.
      */
-     (StreamContextBlock*)ExAllocatePoolWithTag(NonPagedPool,
-        sizeof(StreamContextBlock),
-        TAG_NTFS);
     FileCB->StreamCB = (StreamContextBlock*)ExAllocatePoolWithTag(NonPagedPool,
                                                                   sizeof(StreamContextBlock),
                                                                   TAG_NTFS);
     if (!FileCB->StreamCB)
         __debugbreak();
+
     RtlZeroMemory(&FileCB->StreamCB->SectionObjectPointers,
                   sizeof(SECTION_OBJECT_POINTERS));
 
