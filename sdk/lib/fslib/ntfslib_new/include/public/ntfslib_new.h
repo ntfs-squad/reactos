@@ -3,24 +3,9 @@
 // Hack: This should only be in enviornments/km.cpp
 #include <ntifs.h>
 
-#ifdef __cplusplus
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
-extern "C" {
-    // Hack: This is a driver-specific setting. Our lib should not care.
-    extern BOOLEAN gShowMetadataFiles;
-}
-#endif
-
+// Hack: we shouldn't be defining UINT.
 #ifndef UINT
 typedef unsigned int UINT;
-#endif
-
-// Hack: This should be private or in *km target.
-#ifndef TAG_NTFS
-#define TAG_NTFS 'NTFS'
 #endif
 
 // Attribute end marker
@@ -89,10 +74,7 @@ enum AttributeType
     TypeLoggedUtilityStream = 0x100,
     TypeAttributeEndMarker  = 0xFFFFFFFF
 };
-
-#ifndef __cplusplus
 typedef enum AttributeType AttributeType;
-#endif
 
 typedef struct
 {
@@ -136,25 +118,6 @@ typedef struct
     };
 } Attribute, *PAttribute;
 
-// Macro to get data pointer from a resident attribute pointer. */
-#define GetResidentDataPointer(Attrib) (char*)(((ULONG_PTR)Attrib) + \
-                                               (Attrib->Resident.DataOffset))
-
-#define GetNamePointer(x) (((char*)x) + (x->NameOffset))
-
-#define GetAttributeDataSize(Attribute1) \
-Attribute1->IsNonResident ? Attribute1->NonResident.DataSize : Attribute1->Resident.DataLength
-
-// Macro to free memory from data run.
-#define FreeDataRun(x) while(x) {\
-    PDataRun tmp = x->NextRun;\
-    delete x;\
-    x = tmp;\
-}
-
-// Macros to get values from a file reference
-#define GetFRNFromFileRef(x) (x & 0xFFFFFFFFFFFF)
-#define GetSQNFromFileRef(x) ((x << 48) >> 48) & 0xFFFF
 
 /* *** $ATTRDEF ENTRIES *** */
 
