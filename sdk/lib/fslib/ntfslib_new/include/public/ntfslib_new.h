@@ -333,7 +333,6 @@ struct BootSector
     UCHAR  BootStrap[426];
     USHORT EndSector;
 };
-
 typedef struct BootSector BootSector;
 typedef struct BootSector* PBootSector;
 
@@ -594,6 +593,9 @@ public:
     // ./find.cpp
     PAttribute GetAttribute(_In_     AttributeType Type,
                             _In_opt_ PWSTR Name);
+    NTSTATUS GetAttributeData(_In_     AttributeType Type,
+                              _In_opt_ PWSTR Name,
+                              _Out_    PUCHAR *Data);
     PDataRun FindNonResidentData(_In_ PAttribute DataAttr);
     PDataRun FindNonResidentData(_In_     AttributeType Type,
                                  _In_opt_ PWSTR Name);
@@ -834,37 +836,38 @@ NtfsFileRecordDestroy(
     _In_opt_ NtfsFileRecord *FileRecord);
 
 PFileRecordHeader
-NTAPI
 NtfsFileRecordGetHeader(
     _In_ NtfsFileRecord *FileRecord);
 
 PUCHAR
-NTAPI
 NtfsFileRecordGetData(
     _In_ NtfsFileRecord *FileRecord);
 
 PAttribute
-NTAPI
 NtfsFileRecordGetAttribute(
     _In_ NtfsFileRecord *FileRecord,
     _In_ AttributeType Type,
     _In_opt_ PWSTR Name);
 
+NTSTATUS
+NtfsFileRecordGetAttributeData(
+    _In_     PNtfsFileRecord Fr,
+    _In_     AttributeType Type,
+    _In_opt_ PWSTR Name,
+    _Out_    PUCHAR *Data);
+
 PDataRun
-NTAPI
 NtfsFileRecordFindNonResidentDataFromAttribute(
     _In_ NtfsFileRecord *FileRecord,
     _In_ PAttribute DataAttr);
 
 PDataRun
-NTAPI
 NtfsFileRecordFindNonResidentData(
     _In_ NtfsFileRecord *FileRecord,
     _In_ AttributeType Type,
     _In_opt_ PWSTR Name);
 
 NTSTATUS
-NTAPI
 NtfsFileRecordCopyData(
     _In_ NtfsFileRecord *FileRecord,
     _In_ AttributeType Type,
@@ -874,7 +877,6 @@ NtfsFileRecordCopyData(
     _In_ ULONGLONG Offset);
 
 NTSTATUS
-NTAPI
 NtfsFileRecordCopyDataFromAttribute(
     _In_ NtfsFileRecord *FileRecord,
     _In_ PAttribute Attr,
@@ -883,7 +885,6 @@ NtfsFileRecordCopyDataFromAttribute(
     _In_ ULONGLONG Offset);
 
 NTSTATUS
-NTAPI
 NtfsFileRecordWriteFileData(
     _In_ NtfsFileRecord *FileRecord,
     _In_ AttributeType AttrType,
@@ -893,7 +894,6 @@ NtfsFileRecordWriteFileData(
     _In_ PLARGE_INTEGER Offset);
 
 NTSTATUS
-NTAPI
 NtfsFileRecordUpdateResidentData(
     _In_ NtfsFileRecord *FileRecord,
     _In_ PAttribute TargetAttribute,
@@ -902,12 +902,10 @@ NtfsFileRecordUpdateResidentData(
     _In_ ULONGLONG Offset);
 
 NTSTATUS
-NTAPI
 NtfsFileRecordCommitFixup(
     _In_ NtfsFileRecord *FileRecord);
 
 NTSTATUS
-NTAPI
 NtfsFileRecordApplyFixup(
     _In_ NtfsFileRecord *FileRecord);
 

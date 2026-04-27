@@ -101,6 +101,44 @@ FileRecord::GetAttribute(_In_     AttributeType Type,
     return NULL;
 }
 
+NTSTATUS
+FileRecord::GetAttributeData(_In_     AttributeType Type,
+                             _In_opt_ PWSTR Name,
+                             _Out_    PUCHAR *Data)
+{
+    PAttribute Attr;
+
+    Attr = GetAttribute(Type, Name);
+
+    if (!Attr)
+    {
+        // TODO: Some attributes should always be present.
+        // If they're not, we should return STATUS_FILE_CORRUPT_ERROR.
+        return STATUS_NOT_FOUND;
+    }
+
+    // These types are always resident. If they're not, this file is corrupt.
+    // TODO: Add more types to this list.
+    if (Attr->IsNonResident
+        && Type == TypeStandardInformation)
+    {
+        return STATUS_FILE_CORRUPT_ERROR;
+    }
+
+    // Test for invalid resident data window for $STANDARD_INFORMATION.
+    if (Type == TypeStandardInformation
+        && (Attr->Resident.DataOffset < 0x18 ||
+            (Attr->Resident.DataOffset + Attr->Resident.DataLength) > Attr->Length))
+    {
+        return STATUS_FILE_CORRUPT_ERROR;
+    }
+
+    *Data = reinterpret_cast<PUCHAR>(GetResidentDataPointer(Attr));
+
+    return STATUS_SUCCESS;
+}
+
+
 PDataRun
 FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
 {
