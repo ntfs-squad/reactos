@@ -95,10 +95,15 @@ void __cdecl operator delete[](void* pObject)
 NTSTATUS
 NtfsDiskInitializeKm(
     _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ ULONG BytesPerSector)
+    _In_ ULONG SectorBytes)
 {
     PartDeviceObj = DeviceObject;
-    BytesPerSector = BytesPerSector;
+    BytesPerSector = SectorBytes;
+
+    // TODO: Some bytes per sector are invalid for NTFS. Should we fail here?
+    if (BytesPerSector == 0 || !PartDeviceObj)
+        return STATUS_INVALID_PARAMETER;
+
     return STATUS_SUCCESS;
 }
 
