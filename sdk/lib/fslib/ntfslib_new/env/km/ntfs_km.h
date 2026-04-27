@@ -6,7 +6,7 @@ extern "C" {
 NTSTATUS
 NtfsDiskInitializeKm(
     _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ ULONG BytesPerSector);
+    _In_ ULONG SectorBytes);
 
 #ifdef __cplusplus
 }
