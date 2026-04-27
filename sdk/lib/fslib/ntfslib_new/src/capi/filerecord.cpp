@@ -38,7 +38,6 @@ NtfsFileRecordDestroy(
 }
 
 PFileRecordHeader
-NTAPI
 NtfsFileRecordGetHeader(
     _In_ PNtfsFileRecord Fr)
 {
@@ -46,7 +45,6 @@ NtfsFileRecordGetHeader(
 }
 
 PUCHAR
-NTAPI
 NtfsFileRecordGetData(
     _In_ PNtfsFileRecord Fr)
 {
@@ -54,7 +52,6 @@ NtfsFileRecordGetData(
 }
 
 PAttribute
-NTAPI
 NtfsFileRecordGetAttribute(
     _In_ PNtfsFileRecord Fr,
     _In_ AttributeType Type,
@@ -63,8 +60,17 @@ NtfsFileRecordGetAttribute(
     return reinterpret_cast<PFileRecord>(Fr)->GetAttribute(Type, Name);
 }
 
+NTSTATUS
+NtfsFileRecordGetAttributeData(
+    _In_     PNtfsFileRecord Fr,
+    _In_     AttributeType Type,
+    _In_opt_ PWSTR Name,
+    _Out_    PUCHAR *Data)
+{
+    return reinterpret_cast<PFileRecord>(Fr)->GetAttributeData(Type, Name, Data);
+}
+
 PDataRun
-NTAPI
 NtfsFileRecordFindNonResidentDataFromAttribute(
     _In_ PNtfsFileRecord Fr,
     _In_ PAttribute DataAttr)
@@ -73,7 +79,6 @@ NtfsFileRecordFindNonResidentDataFromAttribute(
 }
 
 PDataRun
-NTAPI
 NtfsFileRecordFindNonResidentData(
     _In_ PNtfsFileRecord Fr,
     _In_ AttributeType Type,
@@ -83,7 +88,6 @@ NtfsFileRecordFindNonResidentData(
 }
 
 NTSTATUS
-NTAPI
 NtfsFileRecordCopyData(
     _In_ PNtfsFileRecord Fr,
     _In_ AttributeType Type,
@@ -96,7 +100,6 @@ NtfsFileRecordCopyData(
 }
 
 NTSTATUS
-NTAPI
 NtfsFileRecordCopyDataFromAttribute(
     _In_ PNtfsFileRecord Fr,
     _In_ PAttribute Attr,
@@ -108,7 +111,6 @@ NtfsFileRecordCopyDataFromAttribute(
 }
 
 NTSTATUS
-NTAPI
 NtfsFileRecordWriteFileData(
     _In_ PNtfsFileRecord Fr,
     _In_ AttributeType AttrType,
@@ -121,7 +123,6 @@ NtfsFileRecordWriteFileData(
 }
 
 NTSTATUS
-NTAPI
 NtfsFileRecordUpdateResidentData(
     _In_ PNtfsFileRecord Fr,
     _In_ PAttribute TargetAttribute,
@@ -133,7 +134,6 @@ NtfsFileRecordUpdateResidentData(
 }
 
 NTSTATUS
-NTAPI
 NtfsFileRecordCommitFixup(
     _In_ PNtfsFileRecord Fr)
 {
@@ -141,7 +141,6 @@ NtfsFileRecordCommitFixup(
 }
 
 NTSTATUS
-NTAPI
 NtfsFileRecordApplyFixup(
     _In_ PNtfsFileRecord Fr)
 {

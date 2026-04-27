@@ -50,30 +50,18 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     ASSERT(FileCB->FileRec);
 
     // Ensure the file has a valid resident StandardInformation attribute
+    Status = NtfsFileRecordGetAttributeData(FileCB->FileRec,
+                                            TypeStandardInformation,
+                                            NULL,
+                                            (PUCHAR*)&StdInfo);
+
+    if (!NT_SUCCESS(Status))
     {
-        
-        PAttribute StdAttr = NtfsFileRecordGetAttribute(FileCB->FileRec,
-                                                        TypeStandardInformation,
-                                                        NULL);
-        if (!StdAttr || StdAttr->IsNonResident)
-        {
-            DPRINT1("NtfsFsdRead(): Missing or invalid $STANDARD_INFORMATION attribute!\n");
-            Irp->IoStatus.Information = 0;
-            Irp->IoStatus.Status = STATUS_FILE_CORRUPT_ERROR;
-            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-            return STATUS_FILE_CORRUPT_ERROR;
-        }
-        // Validate resident data window
-        if (StdAttr->Resident.DataOffset < 0x18 ||
-            (StdAttr->Resident.DataOffset + StdAttr->Resident.DataLength) > StdAttr->Length)
-        {
-            DPRINT1("NtfsFsdRead(): Corrupt $STANDARD_INFORMATION resident layout!\n");
-            Irp->IoStatus.Information = 0;
-            Irp->IoStatus.Status = STATUS_FILE_CORRUPT_ERROR;
-            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-            return STATUS_FILE_CORRUPT_ERROR;
-        }
-        StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
+        DPRINT1("NtfsFsdRead(): Missing or corrupt $STANDARD_INFORMATION attribute!\n");
+        Irp->IoStatus.Information = 0;
+        Irp->IoStatus.Status = Status;
+        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+        return Status;
     }
 
     ASSERT(!(StdInfo->FilePermissions & FILE_PERM_COMPRESSED));

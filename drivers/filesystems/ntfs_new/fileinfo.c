@@ -14,34 +14,36 @@
                          _Out_ PFILE_BASIC_INFORMATION Buffer,
                          _Inout_ PULONG Length)
  {
-     PNtfsFileRecord File;
-     PStandardInformationEx StdInfo;
+    NTSTATUS Status;
+    PNtfsFileRecord File;
+    PStandardInformationEx StdInfo;
  
-     if (!FileCB)
-         return STATUS_INVALID_PARAMETER;
+    if (!FileCB)
+        return STATUS_INVALID_PARAMETER;
  
-     if (*Length < sizeof(FILE_BASIC_INFORMATION))
-         return STATUS_BUFFER_TOO_SMALL;
+    if (*Length < sizeof(FILE_BASIC_INFORMATION))
+        return STATUS_BUFFER_TOO_SMALL;
  
-     File = FileCB->FileRec;
+    File = FileCB->FileRec;
  
-     // From $STANDARD_INFORMATION
-     {
-         PAttribute StdAttr = NtfsFileRecordGetAttribute(File ,TypeStandardInformation, NULL);
-         if (!StdAttr || StdAttr->IsNonResident)
-             return STATUS_FILE_CORRUPT_ERROR;
-         StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
-     }
+    // From $STANDARD_INFORMATION
+    Status = NtfsFileRecordGetAttributeData(File,
+                                            TypeStandardInformation,
+                                            NULL,
+                                            (PUCHAR*)&StdInfo);
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+     
+    Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
+    Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
+    Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
+    Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
+    Buffer->FileAttributes = StdInfo->FilePermissions;
  
-     Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
-     Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
-     Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
-     Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
-     Buffer->FileAttributes = StdInfo->FilePermissions;
+    *Length -= sizeof(FILE_BASIC_INFORMATION);
  
-     *Length -= sizeof(FILE_BASIC_INFORMATION);
- 
-     return STATUS_SUCCESS;
+    return STATUS_SUCCESS;
  }
  
  static
@@ -158,65 +160,67 @@
      return STATUS_SUCCESS;
  }
  
- static
- NTSTATUS
- GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
-                               _Out_ PFILE_NETWORK_OPEN_INFORMATION Buffer,
-                               _Inout_ PULONG Length)
- {
-     PAttribute DataAttribute;
-     PStandardInformationEx StdInfo;
-     PNtfsFileRecord File;
- 
-     ASSERT(Buffer);
-     ASSERT(FileCB);
- 
-     File = FileCB->FileRec;
- 
-     // Information from $DATA
-     DataAttribute = NtfsFileRecordGetAttribute(File, TypeData, NULL);
- 
-     if (DataAttribute)
-     {
-         if (DataAttribute->IsNonResident)
-         {
-             Buffer->EndOfFile.QuadPart = DataAttribute->NonResident.DataSize;
-             Buffer->AllocationSize.QuadPart = DataAttribute->NonResident.AllocatedSize;
-         }
- 
-         else
-         {
-             Buffer->EndOfFile.QuadPart = DataAttribute->Resident.DataLength;
-             Buffer->AllocationSize.QuadPart = 0;
-         }
-     }
- 
-     else
-     {
-         Buffer->EndOfFile.QuadPart = 0;
-         Buffer->AllocationSize.QuadPart = 0;
-     }
- 
-     File = FileCB->FileRec;
- 
-     // From $STANDARD_INFORMATION
-     {
-         PAttribute StdAttr = NtfsFileRecordGetAttribute(File, TypeStandardInformation, NULL);
-         if (!StdAttr || StdAttr->IsNonResident)
-             return STATUS_FILE_CORRUPT_ERROR;
-         StdInfo = (PStandardInformationEx) GetResidentDataPointer(StdAttr);
-     }
- 
-     Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
-     Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
-     Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
-     Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
-     Buffer->FileAttributes = StdInfo->FilePermissions;
- 
-     *Length -= (sizeof(PFILE_NETWORK_OPEN_INFORMATION));
- 
-     return STATUS_SUCCESS;
- }
+static
+NTSTATUS
+GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
+                              _Out_ PFILE_NETWORK_OPEN_INFORMATION Buffer,
+                              _Inout_ PULONG Length)
+{
+    NTSTATUS Status;
+    PAttribute DataAttribute;
+    PStandardInformationEx StdInfo;
+    PNtfsFileRecord File;
+
+    ASSERT(Buffer);
+    ASSERT(FileCB);
+
+    File = FileCB->FileRec;
+
+    // Information from $DATA
+    DataAttribute = NtfsFileRecordGetAttribute(File, TypeData, NULL);
+
+    if (DataAttribute)
+    {
+        if (DataAttribute->IsNonResident)
+        {
+            Buffer->EndOfFile.QuadPart = DataAttribute->NonResident.DataSize;
+            Buffer->AllocationSize.QuadPart = DataAttribute->NonResident.AllocatedSize;
+        }
+
+        else
+        {
+            Buffer->EndOfFile.QuadPart = DataAttribute->Resident.DataLength;
+            Buffer->AllocationSize.QuadPart = 0;
+        }
+    }
+
+    else
+    {
+        Buffer->EndOfFile.QuadPart = 0;
+        Buffer->AllocationSize.QuadPart = 0;
+    }
+
+    File = FileCB->FileRec;
+
+    // From $STANDARD_INFORMATION
+    Status = NtfsFileRecordGetAttributeData(File,
+                                            TypeStandardInformation,
+                                            NULL,
+                                            (PUCHAR*)&StdInfo);
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
+    Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
+    Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
+    Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
+    Buffer->FileAttributes = StdInfo->FilePermissions;
+
+    *Length -= (sizeof(PFILE_NETWORK_OPEN_INFORMATION));
+
+    return STATUS_SUCCESS;
+}
 
 static
 inline

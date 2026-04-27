@@ -32,11 +32,6 @@ MmGetSystemAddressForMdlSafe(Irp->MdlAddress, ((Irp->Flags & IRP_PAGING_IO) ? Hi
 Irp->UserBuffer
 #define GetBuffer(Irp) Irp->AssociatedIrp.SystemBuffer ? Irp->AssociatedIrp.SystemBuffer : GetUserBuffer(Irp)
 
-// HACK: Our driver shouldn't use this.
-#define GetResidentDataPointer(Attrib) (char*)(((ULONG_PTR)Attrib) + \
-                                               (Attrib->Resident.DataOffset))
-
-// HACK: or this.
 #ifndef TAG_NTFS
 #define TAG_NTFS 'NTFS'
 #endif
