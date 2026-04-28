@@ -263,6 +263,7 @@ WriteDisk(_In_ PDEVICE_OBJECT DeviceObject,
     //  And return to our caller.
     return Status;
 }
+
 NTSTATUS
 NtfsReadVolume(_In_    ULONGLONG Offset,
                _In_    ULONG Length,
