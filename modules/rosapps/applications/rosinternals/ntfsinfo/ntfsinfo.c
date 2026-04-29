@@ -9,7 +9,6 @@
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 // #include <ntfslib_new.h>
 
-
 typedef struct _NTFS_INFORMATION
 {
     ULONGLONG VolumeSize;
@@ -191,6 +190,10 @@ int wmain(int argc, wchar_t* argv[])
     NTFS_INFORMATION NtfsInformation;
     HANDLE VolumeHandle;
     const BOOL NoBanner = (argc > 1) && (_wcsicmp(argv[1], L"-nobanner") == 0);
+    ULONG BytesPerSector;
+    // PNtfsVolume VolumeObject;
+    // TODO: Maybe this should go in NtfsProbePartition?
+    // PUCHAR BootSectorData;
 
     if (!NoBanner)
         PrintBanner();
@@ -215,35 +218,55 @@ int wmain(int argc, wchar_t* argv[])
     }
 
     // We now have a file handle to the volume. Let's get the NTFS information.
-    Status = NtfsDiskInitializeUm(VolumeHandle);
+    Status = NtfsDiskInitializeUm(VolumeHandle,
+                                  &BytesPerSector);
     if (!NT_SUCCESS(Status))
     {
         PrintLastError("Error initializing disk routines");
         return 1;
     }
 
+    // // Get the boot sector data
+    // BootSectorData = (PUCHAR)malloc(BytesPerSector);
+    // if (!BootSectorData)
+    // {
+    //     PrintLastError("Error allocating boot sector data");
+    //     return 1;
+    // }
 
+    // Status = NtfsReadVolume(0, BytesPerSector, BootSectorData);
+    // if (!NT_SUCCESS(Status))
+    // {
+    //     PrintLastError("Error reading boot sector data");
+    //     free(BootSectorData);
+    //     return 1;
+    // }
+
+    // Status = NtfsProbePartitionAndOpenVolume(BytesPerSector,
+    //                                          BootSectorData,
+    //                                          &VolumeObject);
     // If the specificed volume is not NTFS, print an error and exit.
-    if (FALSE)
+    if (!NT_SUCCESS(Status))
     {
         PrintLastError("Error obtaining NTFS information");
         return 1;
     }
 
+    // free(BootSectorData);
     // Let's find the NTFS information and print it.
     // HACK: This is just mock data for now.
     NtfsInformation.VolumeSize = 475967ull * 1024 * 1024;
     NtfsInformation.SectorsPerCluster = 8;
     NtfsInformation.TotalClusters = 192881;
     NtfsInformation.FreeClusters = 192881;
-    NtfsInformation.BytesPerSector = 512;
+    NtfsInformation.BytesPerSector = BytesPerSector;
     NtfsInformation.BytesPerCluster = 512 * 8;
     NtfsInformation.ClustersPerMftRecord = 1;
     NtfsInformation.MftSize = 192881 * 512;
     NtfsInformation.MftStartCluster = 1;
     NtfsInformation.MftZoneStartCluster = 1;
     NtfsInformation.MftZoneEndCluster = 1;
-    NtfsInformation.MftMirrorStartCluster = 2;
+    NtfsInformation.MftMirrorStartCluster = 2;  
     NtfsInformation._MftSize = 0;
     NtfsInformation._MftMirrSize = 0;
     NtfsInformation._LogFileSize = 0;

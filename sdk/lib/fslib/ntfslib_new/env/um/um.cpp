@@ -7,17 +7,29 @@
 
 #include <windows.h>
 #include <ntfs_um.h>
+#include <debug.h>
+
+// Hack: we shouldn't be defining these status codes.
+#define STATUS_SUCCESS                   1
+#define STATUS_NOT_IMPLEMENTED           ((NTSTATUS)0xC0000002L)
+#define STATUS_UNSUCCESSFUL              ((NTSTATUS)0xC0000001L)
+#ifndef STATUS_INVALID_PARAMETER
+#define STATUS_INVALID_PARAMETER         ((NTSTATUS)0xC000000DL)
+#endif
+#define STATUS_INVALID_DEVICE_REQUEST    ((NTSTATUS)0xC0000010L)
 
 HANDLE VolumeHandle = NULL;
 ULONG SectorSize = 0;
 
 NTSTATUS
 NtfsDiskInitializeUm(
-    _In_ HANDLE FileHandle)
+    _In_      HANDLE FileHandle,
+    _Out_opt_ ULONG* BytesPerSector)
 {
     BOOL Result;
     DISK_GEOMETRY DiskGeometry;
     VolumeHandle = FileHandle;
+    ULONG BytesReturned;
 
     if (!VolumeHandle || VolumeHandle == INVALID_HANDLE_VALUE)
         return STATUS_INVALID_PARAMETER;
@@ -28,13 +40,16 @@ NtfsDiskInitializeUm(
                              0,
                              &DiskGeometry,
                              sizeof(DiskGeometry),
-                             NULL,
+                             &BytesReturned,
                              NULL);
     
     if (!Result)
         return STATUS_INVALID_DEVICE_REQUEST;
 
     SectorSize = DiskGeometry.BytesPerSector;
+
+    if (BytesPerSector)
+        *BytesPerSector = SectorSize;
 
     return STATUS_SUCCESS;
 }
@@ -44,55 +59,14 @@ NtfsReadVolume(_In_    ULONGLONG Offset,
                _In_    ULONG Length,
                _Inout_ PUCHAR Buffer)
 {
-    NTSTATUS Status = STATUS_SUCCESS;
-    PUCHAR AlignedBuffer = NULL;
-    ULONGLONG AlignedOffset;
-    ULONG AlignedLength;
-    ULONG Delta;
-    DWORD BytesRead;
-    LARGE_INTEGER FileOffset;
-
-    AlignedOffset = Offset & ~((ULONGLONG)SectorSize - 1);
-    Delta = (ULONG)(Offset - AlignedOffset);
-
-    AlignedLength = Delta + Length;
-    AlignedLength = (AlignedLength + (SectorSize - 1)) & ~(SectorSize - 1);
-
-    AlignedBuffer = (PUCHAR)_aligned_malloc(AlignedLength, SectorSize);
-    if (AlignedBuffer == NULL)
-        return STATUS_INSUFFICIENT_RESOURCES;
-
-    FileOffset.QuadPart = AlignedOffset;
-
-    if (!SetFilePointerEx(VolumeHandle, FileOffset, NULL, FILE_BEGIN))
-    {
-        Status = STATUS_UNSUCCESSFUL;
-        goto Cleanup;
-    }
-
+    // Hack: We're assuming buffering is used in readfile below.
     if (!ReadFile(VolumeHandle,
-                  AlignedBuffer,
-                  AlignedLength,
-                  &BytesRead,
+                  Buffer,
+                  Length,
+                  NULL,
                   NULL))
-    {
-        Status = STATUS_UNSUCCESSFUL;
-        goto Cleanup;
-    }
-
-    if (BytesRead < Delta + Length)
-    {
-        Status = STATUS_END_OF_FILE;
-        goto Cleanup;
-    }
-
-    RtlCopyMemory(Buffer, AlignedBuffer + Delta, Length);
-
-Cleanup:
-    if (AlignedBuffer)
-        _aligned_free(AlignedBuffer);
-
-    return Status;
+                  return STATUS_UNSUCCESSFUL;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
