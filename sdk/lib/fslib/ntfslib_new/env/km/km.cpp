@@ -8,6 +8,16 @@
 
 #include <ntifs.h>
 #include <ntfs_km.h>
+#ifdef __cplusplus
+void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
+void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
+void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
+void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
+extern "C" {
+    // Hack: This is a driver-specific setting. Our lib should not care.
+    extern BOOLEAN gShowMetadataFiles;
+}
+#endif
 
 #ifndef TAG_NTFS
 #define TAG_NTFS 'NTFS'
@@ -16,81 +26,32 @@
 PDEVICE_OBJECT PartDeviceObj = NULL;
 ULONG BytesPerSector = 0;
 
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType)
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void*
+NtfsAllocatePoolWithTag(POOL_TYPE PoolType, size_t Size, ULONG Tag)
 {
-
-    Size = (Size != 0) ? Size : 1;
-    void* pObject = ExAllocatePoolWithTag(PoolType, Size, TAG_NTFS);
-
-#if DBG
-    if (pObject != NULL)
-        RtlFillMemory(pObject, Size, 0xCD);
-#endif // DBG
-
-    return pObject;
+    return ExAllocatePoolWithTag(PoolType, Size, Tag);
 }
 
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType)
+void NtfsFreePool(void* pObject)
 {
-
-    Size = (Size != 0) ? Size : 1;
-
-    void* pObject = ExAllocatePoolWithTag(PoolType, Size, TAG_NTFS);
-
-#if DBG
-    if (pObject != NULL)
-        RtlFillMemory(pObject, Size, 0xCD);
-#endif // DBG
-
-    return pObject;
+    ExFreePool(pObject);
 }
 
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag)
+void
+NtfsFillMemory(_In_ PVOID Buffer,
+               _In_ size_t Size,
+               _In_ UCHAR Value)
 {
-
-    Size = (Size != 0) ? Size : 1;
-    void* pObject = ExAllocatePoolWithTag(PoolType, Size, Tag);
-
-#if DBG
-    if (pObject != NULL)
-        RtlFillMemory(pObject, Size, 0xCD);
-#endif // DBG
-
-    return pObject;
+    RtlFillMemory(Buffer, Size, Value);
 }
 
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag)
-{
-
-    Size = (Size != 0) ? Size : 1;
-
-    void* pObject = ExAllocatePoolWithTag(PoolType, Size, Tag);
-
-#if DBG
-    if (pObject != NULL)
-        RtlFillMemory(pObject, Size, 0xCD);
-#endif // DBG
-
-    return pObject;
+#ifdef __cplusplus
 }
-
-void __cdecl operator delete(void* pObject)
-{
-    if (pObject != NULL)
-        ExFreePool(pObject);
-}
-
-void __cdecl operator delete(void* pObject, size_t s)
-{
-    UNREFERENCED_PARAMETER( s );
-    ::operator delete( pObject );
-}
-
-void __cdecl operator delete[](void* pObject)
-{
-    if (pObject != NULL)
-        ExFreePool(pObject);
-}
+#endif
 
 NTSTATUS
 NtfsDiskInitializeKm(
@@ -264,6 +225,10 @@ WriteDisk(_In_ PDEVICE_OBJECT DeviceObject,
     return Status;
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 NTSTATUS
 NtfsReadVolume(_In_    ULONGLONG Offset,
                _In_    ULONG Length,
@@ -377,3 +342,19 @@ NtfsWriteVolume(_In_    ULONGLONG Offset,
 
     return Status;
 }
+
+BOOLEAN
+NtfsIsNameInExpression(_In_     PUNICODE_STRING Expression,
+                       _In_     PUNICODE_STRING Name,
+                       _In_     BOOLEAN IgnoreCase,
+                       _In_opt_ PWCHAR UpcaseTable)
+{
+    return FsRtlIsNameInExpression(Expression,
+                                   Name,
+                                   IgnoreCase,
+                                   UpcaseTable);
+}
+
+#ifdef __cplusplus
+}
+#endif

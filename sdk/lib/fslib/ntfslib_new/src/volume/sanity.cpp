@@ -58,7 +58,9 @@ Volume::SanityCheckBlockIO()
 void
 Volume::RunSanityChecks()
 {
+#ifdef NTFS_KERNEL_MODE
     PAGED_CODE();
+#endif
 
     DPRINT1("RunSanityChecks() called\n");
     // SanityCheckBlockIO();

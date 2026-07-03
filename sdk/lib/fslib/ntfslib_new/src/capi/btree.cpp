@@ -29,7 +29,6 @@ NtfsDirectoryCreateEx(
 }
 
 NTSTATUS
-NTAPI
 NtfsDirectoryGetFileBothDirInfo(
     _In_    PNtfsDirectory Dir,
     _In_    BOOLEAN ReturnSingleEntry,
