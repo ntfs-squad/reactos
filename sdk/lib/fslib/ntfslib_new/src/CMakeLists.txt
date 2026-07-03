@@ -1,5 +1,4 @@
 target_sources(ntfslib_new PRIVATE
-    btree/directory/create.cpp
     btree/directory/dbg.cpp
     btree/directory/directory.cpp
     btree/directory/editdir.cpp
@@ -21,10 +20,12 @@ target_sources(ntfslib_new PRIVATE
     lfs/lfs.cpp
     mft/get.cpp
     mft/mft.cpp
+    NtfsIsNameInExpression.cpp
     volume/metadata/attrdef.cpp
     volume/metadata/bitmap.cpp
     volume/metadata/upcase.cpp
     volume/metadata/volume.cpp
     volume/disk.cpp
     volume/volume.cpp
+    util.cpp
 )

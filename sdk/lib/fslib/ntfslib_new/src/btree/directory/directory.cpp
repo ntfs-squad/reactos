@@ -61,9 +61,9 @@ Directory::CreateNode(_In_    PFileRecord File,
     NewNode = new(PagedPool, TAG_BTREE) BTreeNode();
     CurrentKey = new(PagedPool, TAG_BTREE) BTreeKey();
     NewNode->FirstKey = CurrentKey;
-    NodeBuffer = (PIndexBuffer)ExAllocatePoolWithTag(PagedPool,
-                                                     IndexBufferSize,
-                                                     TAG_NTFS);
+    NodeBuffer = (PIndexBuffer)NtfsAllocatePoolWithTag(PagedPool,
+                                                       IndexBufferSize,
+                                                       TAG_NTFS);
 
     // TODO: Confirm index bitmap has this node marked as in-use
     Status = File->CopyData(IndexAllocationAttribute,
@@ -94,9 +94,9 @@ Directory::CreateNode(_In_    PFileRecord File,
     while ((ULONG_PTR)CurrentEntry < EndOfIndexBuffer)
     {
         // Allocate memory for the current entry
-        CurrentKey->Entry = (PIndexEntry)ExAllocatePoolWithTag(PagedPool,
-                                                               CurrentEntry->EntryLength,
-                                                               TAG_NTFS);
+        CurrentKey->Entry = (PIndexEntry)NtfsAllocatePoolWithTag(PagedPool,
+                                                                 CurrentEntry->EntryLength,
+                                                                 TAG_NTFS);
         // Add the parent node
         CurrentKey->ParentNodeKey = ParentNodeKey;
 
@@ -193,9 +193,9 @@ Directory::CreateRootNode(_In_  PFileRecord File,
         ASSERT(CurrentEntry->EntryLength);
 
         // Create current entry
-        CurrentKey->Entry = (PIndexEntry)ExAllocatePoolWithTag(NonPagedPool,
-                                                               CurrentEntry->EntryLength,
-                                                               TAG_NTFS);
+        CurrentKey->Entry = (PIndexEntry)NtfsAllocatePoolWithTag(NonPagedPool,
+                                                                 CurrentEntry->EntryLength,
+                                                                 TAG_NTFS);
 
         // Copy the current entry to its key
         RtlCopyMemory(CurrentKey->Entry,
@@ -332,10 +332,10 @@ Directory::DoesFileNameMatch(PUNICODE_STRING NameFilter,
         }
     }
 
-    return FsRtlIsNameInExpression(NameFilter,
-                                   &FileNameString,
-                                   IgnoreCase,
-                                   NULL);
+    return NtfsIsNameInExpression(NameFilter,
+                                  &FileNameString,
+                                  IgnoreCase,
+                                  NULL);
 }
 
 PBTreeKey

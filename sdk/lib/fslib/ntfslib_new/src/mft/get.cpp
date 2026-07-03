@@ -14,7 +14,9 @@ NTSTATUS
 MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
                                _Out_  PFileRecord* File)
 {
+#ifdef NTFS_KERNEL_MODE
     PAGED_CODE();
+#endif
     NTSTATUS Status;
     ULONG BytesToRead;
     BOOLEAN IsRecordInUse;
