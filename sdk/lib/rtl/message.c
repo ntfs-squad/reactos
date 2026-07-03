@@ -146,13 +146,7 @@ RtlFormatMessageEx(
             ReturnLength, Flags);
 
     UNIMPLEMENTED;
-    
-    if (vswprintf(Buffer, Message, *Arguments) != -1)
-    {
-        return STATUS_SUCCESS;
-    }
-    
-    return STATUS_NOT_IMPLEMENTED;      
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 /**********************************************************************
