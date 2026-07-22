@@ -72,9 +72,11 @@ PciIdeXPdoInitDma(
         return FALSE;
     }
 
-    /* See what transfer length we actually got. Round down in case we have some extra pages */
+    /* See what transfer length we actually got. Round down in case we have some extra pages.
+     * Reserve one page from the map register budget for transfers
+     * that do not start at a page-aligned address. */
     ChanData->Current.MaximumTransferLength = min(ChanData->Current.MaximumTransferLength,
-                                                 ChanData->MaximumPhysicalPages << PAGE_SHIFT);
+                                                 (ChanData->MaximumPhysicalPages - 1) << PAGE_SHIFT);
     INFO("CH %lu: Allocated %lu PRD pages, maximum transfer length 0x%lx\n",
          ChanData->Channel,
          ChanData->MaximumPhysicalPages,

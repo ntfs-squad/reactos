@@ -228,7 +228,7 @@ AtaReqReleaseResources(
 
         DmaOperations->PutScatterGatherList(DmaAdapter,
                                             Request->SgList,
-                                            !!(Request->Flags & REQUEST_FLAG_DATA_IN));
+                                            !!(Request->Flags & REQUEST_FLAG_DATA_OUT));
     }
     else if (Request->Flags & REQUEST_FLAG_HAS_RESERVED_MAPPING)
     {
@@ -613,6 +613,8 @@ AtaReqGetScatterGatherList(
 
     ASSERT(Request->Mdl);
 
+    /* WriteToDevice is TRUE when data flows to the device (DATA_OUT).
+     * Getting this wrong breaks the map register bounce path. */
     Status = DmaOperations->GetScatterGatherList(DmaAdapter,
                                                  PortData->ChannelObject,
                                                  Request->Mdl,
@@ -620,7 +622,7 @@ AtaReqGetScatterGatherList(
                                                  Request->DataTransferLength,
                                                  AtaReqPreparePrdTable,
                                                  Request,
-                                                 !!(Request->Flags & REQUEST_FLAG_DATA_IN));
+                                                 !!(Request->Flags & REQUEST_FLAG_DATA_OUT));
     if (NT_SUCCESS(Status))
         return TRUE;
 

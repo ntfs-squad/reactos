@@ -295,7 +295,11 @@ HalpGrowMapBuffers(IN PADAPTER_OBJECT AdapterObject,
     HighestAcceptableAddress = HalpGetAdapterMaximumPhysicalAddress(AdapterObject);
     LowestAcceptableAddress.HighPart = 0;
     LowestAcceptableAddress.LowPart = HighestAcceptableAddress.LowPart == 0xFFFFFFFF ? 0x1000000 : 0;
-    BoundryAddressMultiple.QuadPart = 0;
+
+    /* Prevent the buffer from crossing a 64K boundary: crossings force gap
+     * entries below, fragmenting the pool so that large register runs can
+     * never be satisfied and requesters wait on the adapter queue forever */
+    BoundryAddressMultiple.QuadPart = 0x10000;
 
     VirtualAddress = MmAllocateContiguousMemorySpecifyCache(MapRegisterCount << PAGE_SHIFT,
                                                             LowestAcceptableAddress,
@@ -640,6 +644,48 @@ HalpDmaInitializeEisaAdapter(IN PADAPTER_OBJECT AdapterObject,
 
 #ifndef _MINIHAL_
 /**
+ * @name HalpPhysicalMemoryExceeds4GB
+ *
+ * Determine (once) whether any installed physical memory lies above the
+ * 4 GB boundary, in which case 32-bit DMA masters need map registers to
+ * bounce transfers targeting the memory they cannot reach.
+ */
+static
+BOOLEAN
+HalpPhysicalMemoryExceeds4GB(VOID)
+{
+    static LONG QueryState = 0; /* 0 = unknown, 1 = below 4 GB, 2 = above */
+    PPHYSICAL_MEMORY_RANGE Ranges;
+    BOOLEAN Above4GB = FALSE;
+    ULONG i;
+
+    if (QueryState == 0)
+    {
+        Ranges = MmGetPhysicalMemoryRanges();
+        if (!Ranges)
+        {
+            /* Assume the worst */
+            return TRUE;
+        }
+
+        for (i = 0; Ranges[i].NumberOfBytes.QuadPart != 0; i++)
+        {
+            if ((Ranges[i].BaseAddress.QuadPart +
+                 Ranges[i].NumberOfBytes.QuadPart) > 0x100000000LL)
+            {
+                Above4GB = TRUE;
+                break;
+            }
+        }
+        ExFreePool(Ranges);
+
+        InterlockedExchange(&QueryState, Above4GB ? 2 : 1);
+    }
+
+    return (QueryState == 2);
+}
+
+/**
  * @name HalGetAdapter
  *
  * Allocate an adapter object for DMA device.
@@ -713,7 +759,22 @@ HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
         ((DeviceDescription->InterfaceType == Eisa) ||
          (DeviceDescription->InterfaceType == PCIBus)))
     {
-        MapRegisters = 0;
+        if ((DeviceDescription->Master) &&
+            !(DeviceDescription->Dma64BitAddresses) &&
+            (HalpPhysicalMemoryExceeds4GB()))
+        {
+            /*
+             * The device cannot reach physical memory above the 4 GB
+             * boundary, so transfers may need to be bounced through
+             * map register buffers.
+             */
+            MapRegisters = BYTES_TO_PAGES(MaximumLength) + 1;
+            if (MapRegisters > 16) MapRegisters = 16;
+        }
+        else
+        {
+            MapRegisters = 0;
+        }
     }
     else if ((DeviceDescription->ScatterGather) && !(DeviceDescription->Master))
     {
@@ -1146,17 +1207,27 @@ HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT DeviceObject,
 						 IN BOOLEAN WriteToDevice)
 {
     PSCATTER_GATHER_CONTEXT AdapterControlContext = (PSCATTER_GATHER_CONTEXT)ScatterGather->Reserved;
+	PROS_MAP_REGISTER_ENTRY MapRegisterBase = AdapterControlContext->MapRegisterBase;
 	ULONG i;
 
 	for (i = 0; i < ScatterGather->NumberOfElements; i++)
 	{
+	     ULONG Length = ScatterGather->Elements[i].Length;
+
 	     IoFlushAdapterBuffers(AdapterObject,
 		                       AdapterControlContext->Mdl,
-							   AdapterControlContext->MapRegisterBase,
+							   MapRegisterBase,
 							   AdapterControlContext->CurrentVa,
-							   ScatterGather->Elements[i].Length,
+							   Length,
 							   AdapterControlContext->WriteToDevice);
-		 AdapterControlContext->CurrentVa += ScatterGather->Elements[i].Length;
+
+		 /* Advance to the map registers used by the next element,
+		    mirroring the Counter arithmetic in IoMapTransfer */
+		 if (MapRegisterBase)
+		 {
+		     MapRegisterBase += BYTES_TO_PAGES(BYTE_OFFSET(AdapterControlContext->CurrentVa) + Length);
+		 }
+		 AdapterControlContext->CurrentVa += Length;
 	}
 
 	IoFreeMapRegisters(AdapterObject,
@@ -1188,7 +1259,9 @@ HalCalculateScatterGatherListSize(
 
     UNIMPLEMENTED_ONCE;
 
-    NumberOfMapRegisters = PAGE_ROUND_UP(Length) >> PAGE_SHIFT;
+    /* Use the number of pages the buffer actually spans: a transfer that
+     * does not start page-aligned occupies one extra map register */
+    NumberOfMapRegisters = ADDRESS_AND_SIZE_TO_SPAN_PAGES(CurrentVa, Length);
     SgSize = sizeof(SCATTER_GATHER_CONTEXT);
 
     *ScatterGatherListSize = SgSize;
