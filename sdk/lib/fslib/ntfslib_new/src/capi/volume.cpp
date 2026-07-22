@@ -12,14 +12,24 @@
 extern "C" {
 #endif
 
+/* Shows the super hidden NTFS metadata files in directory listings. */
+BOOLEAN NtfsShowMetadataFiles = FALSE;
+
+void
+NtfsSetShowMetadataFiles(
+    _In_ BOOLEAN Show)
+{
+    NtfsShowMetadataFiles = Show;
+}
+
 NTSTATUS
 NtfsVolumeGetADSPreference(
     _In_ PNtfsVolume DiskVolume,
-    _In_ PFILE_OBJECT FileObject,
+    _In_ PUNICODE_STRING FileName,
     _Out_ AttributeType* RequestedType,
     _Out_ PWSTR* RequestedStream)
 {
-    return reinterpret_cast<PVolume>(DiskVolume)->GetADSPreference(reinterpret_cast<PFILE_OBJECT>(FileObject),
+    return reinterpret_cast<PVolume>(DiskVolume)->GetADSPreference(FileName,
                                                                    RequestedType,
                                                                    RequestedStream);
 }

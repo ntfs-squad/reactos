@@ -11,6 +11,11 @@
 
 #define RESTART_PAGE_2_OFFSET 4096
 
+/* We only need the two restart pages for now, not the whole (usually
+ * 64MB) $LogFile contents.
+ */
+#define RESTART_PAGES_SIZE (2 * RESTART_PAGE_2_OFFSET)
+
 LogFileService::LogFileService(_In_ PVolume TargetVolume)
 {
     // Store volume pointer
@@ -47,10 +52,10 @@ LogFileService::InitializeLFS()
         return STATUS_NOT_FOUND;
     }
 
-    LogFileSize = GetAttributeDataSize(FileDataAttr);
+    LogFileSize = min(GetAttributeDataSize(FileDataAttr), RESTART_PAGES_SIZE);
     LogFileData = new(PagedPool) UCHAR[LogFileSize];
 
-    // Copy the data from the log file
+    // Copy the restart pages from the log file
     Status = LogFile->CopyData(FileDataAttr,
                                LogFileData,
                                &LogFileSize);
@@ -69,6 +74,7 @@ LogFileService::InitializeLFS()
         RestartPage1 = NULL;
         RestartPage2 = NULL;
         delete LogFileData;
+        LogFileData = NULL; // The destructor frees it too.
         Status = STATUS_LOG_BLOCK_VERSION;
         goto Done;
     }

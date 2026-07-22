@@ -292,7 +292,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     LARGE_INTEGER FilesystemSize;
     DISK_GEOMETRY DiskGeometry;
     ULONG Size;
-    PUCHAR PartitionBootSector;
 
     // Get disk geometry.
     Size = sizeof(DISK_GEOMETRY);
@@ -309,43 +308,23 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
         __debugbreak(); //ASSERT?
     }
 
-    // Get boot sector.
-    PartitionBootSector = ExAllocatePoolWithTag(NonPagedPool, sizeof(BootSector), TAG_NTFS);
-    if (!PartitionBootSector)
-    {
-        DPRINT1("Failed to allocate memory for boot sector!\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    Status = ReadDisk(TargetDeviceObject,
-                      0,
-                      DiskGeometry.BytesPerSector,
-                      PartitionBootSector);
-
-    if (!NT_SUCCESS(Status))
-        goto Cleanup;
-
     // Set up NTFS library to use disk routines.
     Status = NtfsDiskInitializeKm(TargetDeviceObject,
                                   DiskGeometry.BytesPerSector);
-    
+
     if (!NT_SUCCESS(Status))
         goto Cleanup;
-    
+
     /* Check if we're really NTFS. It's OK if we're not.
      * We're a boot driver, NT will try every possible filesystem.
      */
     Status = NtfsProbePartitionAndOpenVolume(DiskGeometry.BytesPerSector,
-                                             PartitionBootSector,
                                              &DiskVolume);
 
     DPRINT1("LoadNTFSDevice() returned %lx\n", Status);
 
     if (!NT_SUCCESS(Status))
         goto Cleanup;
-
-    // Currently used for debugging output.
-    // DiskVolume->RunSanityChecks();
 
     // Create file system device object.
     Status = IoCreateDevice(NtfsDriverObject,
@@ -405,8 +384,5 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     Status = STATUS_SUCCESS;
 
 Cleanup:
-    if (PartitionBootSector)
-        ExFreePool(PartitionBootSector);
-    
     return Status;
 }

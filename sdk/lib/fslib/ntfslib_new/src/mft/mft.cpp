@@ -37,6 +37,31 @@ MasterFileTable::MasterFileTable(_In_ PVolume TargetVolume,
     Status = GetFileRecord(_MFTMirr, &MFTMirrFile);
     if (!NT_SUCCESS(Status))
         DPRINT1("Failed to get $MFTMirr!\n");
+
+    /* Cache the $DATA attributes and their decoded run lists so
+     * GetFileRecord() doesn't re-decode them on every call.
+     */
+    if (MFTFile)
+    {
+        MFTDataAttr = MFTFile->GetAttribute(TypeData, NULL);
+        if (MFTDataAttr && MFTDataAttr->IsNonResident)
+            MFTDataRuns = MFTFile->FindNonResidentData(MFTDataAttr);
+    }
+
+    if (MFTMirrFile)
+    {
+        MFTMirrDataAttr = MFTMirrFile->GetAttribute(TypeData, NULL);
+        if (MFTMirrDataAttr && MFTMirrDataAttr->IsNonResident)
+            MFTMirrDataRuns = MFTMirrFile->FindNonResidentData(MFTMirrDataAttr);
+    }
+}
+
+MasterFileTable::~MasterFileTable()
+{
+    FreeDataRun(MFTDataRuns);
+    FreeDataRun(MFTMirrDataRuns);
+    delete MFTFile;
+    delete MFTMirrFile;
 }
 
 NTSTATUS

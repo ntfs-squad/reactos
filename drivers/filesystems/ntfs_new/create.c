@@ -157,7 +157,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     // Get ADS Preferences for the file.
     Status = NtfsVolumeGetADSPreference(DiskVolume,
-                                        FileObject,
+                                        &FileObject->FileName,
                                         &FileCB->RequestedType,
                                         &FileCB->RequestedStream);
 

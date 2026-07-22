@@ -9,6 +9,23 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
+#ifdef NTFS_DEBUG
+static void PrintNTFSBootSector(PBootSector PartBootSector)
+{
+    DbgPrint("OEM ID            %s\n", PartBootSector->OEM_ID);
+    DbgPrint("Bytes per sector  %ld\n", PartBootSector->BytesPerSector);
+    DbgPrint("Sectors/cluster   %ld\n", PartBootSector->SectorsPerCluster);
+    DbgPrint("Sectors per track %ld\n", PartBootSector->SectorsPerTrack);
+    DbgPrint("Number of heads   %ld\n", PartBootSector->NumberOfHeads);
+    DbgPrint("Sectors in volume %ld\n", PartBootSector->SectorsInVolume);
+    DbgPrint("LCN for $MFT      %ld\n", PartBootSector->MFTLCN);
+    DbgPrint("LCN for $MFT_MIRR %ld\n", PartBootSector->MFTMirrLCN);
+    DbgPrint("Clusters/MFT Rec  %d\n", PartBootSector->ClustersPerFileRecord);
+    DbgPrint("Clusters/IndexRec %d\n", PartBootSector->ClustersPerIndexRecord);
+    DbgPrint("Serial number     0x%X\n", PartBootSector->SerialNumber);
+}
+#endif
+
 EXTERN_C
 NTSTATUS
 NtfsProbePartition(
@@ -52,16 +69,18 @@ NtfsProbePartition(
         }
     }
 
-    // Check if Reserved3 is NULL.
-    // TODO: Why doesn't this check work?
-    /*for (i = 0; i < 7; i++)
+    /* Check if Reserved3 is NULL.
+     * Note: Reserved3 is only 4 bytes; reading 7 like Reserved0 walks into
+     * the following (nonzero) field, which is why this check used to fail.
+     */
+    for (i = 0; i < 4; i++)
     {
         if (PartitionBootSector->Reserved3[i] != 0)
         {
-            DPRINT1("Failed in field Reserved3: [%.7s]\n", PartitionBootSector->Reserved3);
+            DPRINT1("Failed in field Reserved3: [%.4s]\n", PartitionBootSector->Reserved3);
             return STATUS_UNRECOGNIZED_VOLUME;
         }
-    }*/
+    }
 
     // Check cluster size.
     ClusterSize = PartitionBootSector->BytesPerSector
@@ -90,34 +109,51 @@ EXTERN_C
 NTSTATUS
 NtfsProbePartitionAndOpenVolume(
     _In_ ULONG BytesPerSector,
-    _In_ PUCHAR BootSectorData,
-    _Out_ void** VolumeOut)
+    _Out_ PNtfsVolume* VolumeOut)
 {
     NTSTATUS Status;
     PVolume VolumeObject;
+    PUCHAR BootSectorData;
 
     // Make sure volume pointer is null if we fail for any reason.
     *VolumeOut = NULL;
-    VolumeObject = NULL;
+
+    // Read the boot sector through the environment's disk routines.
+    BootSectorData = new(NonPagedPool) UCHAR[BytesPerSector];
+    if (!BootSectorData)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = NtfsReadVolume(0, BytesPerSector, BootSectorData);
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failed to read the boot sector! (Status %lx)\n", Status);
+        goto Done;
+    }
 
     Status = NtfsProbePartition(BytesPerSector, BootSectorData);
     if (!NT_SUCCESS(Status))
-        return Status;
+        goto Done;
 
     // Initialize the volume object.
     VolumeObject = new(NonPagedPool) Volume();
     if (!VolumeObject)
-        return STATUS_INSUFFICIENT_RESOURCES;
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Done;
+    }
 
     Status = VolumeObject->Initialize(BootSectorData);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to initialize volume object! (Status %lx)\n", Status);
         delete VolumeObject;
-        return Status;
+        goto Done;
     }
 
-    *VolumeOut = VolumeObject;
+    *VolumeOut = reinterpret_cast<PNtfsVolume>(VolumeObject);
+
+Done:
+    delete[] BootSectorData;
     return Status;
 }
 
@@ -125,6 +161,7 @@ Volume::~Volume()
 {
     delete MFT;
     delete LFS;
+    delete[] UpcaseTable;
 }
 
 NTSTATUS

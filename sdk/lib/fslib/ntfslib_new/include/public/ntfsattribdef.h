@@ -243,6 +243,10 @@ typedef struct
     IndexNodeHeader Header;               // Offset 0x10, Size 16
 } IndexRootEx, *PIndexRootEx;
 
+// Index entry flags
+#define INDEX_ENTRY_NODE 1
+#define INDEX_ENTRY_END  2
+
 typedef struct
 {
     union
@@ -273,12 +277,10 @@ typedef struct
     UINT16 Padding;                        // Offset 0x06, Size 2
 } ReparsePointEx, *PReparsePointEx;
 
-// TODO: Simplify this so we're not defining ReparsePointEx twice.
+// Third-party reparse points append a GUID to the common header.
 typedef struct _ThirdPartyReparsePointEx
 {
-    UINT32 ReparseType;                    // Offset 0x00, Size 4
-    UINT16 ReparseDataLength;              // Offset 0x04, Size 2
-    UINT16 Padding;                        // Offset 0x06, Size 2
+    ReparsePointEx Header;                 // Offset 0x00, Size 8
     GUID ReparseGUID;                      // Offset 0x08, Size 16
 } ThirdPartyReparsePointEx, *PThirdPartyReparsePointEx;
 

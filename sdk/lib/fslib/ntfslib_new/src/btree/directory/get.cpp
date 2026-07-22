@@ -8,8 +8,6 @@
 
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
-#define GetWStrLength(x) ((x) * sizeof(WCHAR))
-#define MAX_SHORTNAME_LENGTH 12
 
 static
 NTSTATUS
@@ -25,7 +23,8 @@ AddKeyToBothDirInfo(_In_     PBTreeKey Key,
 
     // Set the file name data pointer
     FileNameData = GetFileName(Key);
-    EntrySize = ULONG_ROUND_UP(sizeof(FILE_BOTH_DIR_INFORMATION) + GetWStrLength(FileNameData->NameLength));
+    EntrySize = ALIGN_UP_BY(sizeof(FILE_BOTH_DIR_INFORMATION) + GetWStrLength(FileNameData->NameLength),
+                            sizeof(ULONG));
 
     if (*BufferLength < EntrySize)
     {
@@ -96,9 +95,9 @@ Directory::IsEligibleForFileDir(PBTreeKey Key,
         && !DoesFileNameMatch(FileNameFilter, Key))
         return FALSE;
 
-    // Is this a super hidden metadata file (MFT file records 0-26)?
-    if (GetFRNFromFileRef(FileRef(Key)) <= 26
-        && !gShowMetadataFiles)
+    // Is this a super hidden metadata file?
+    if (GetFRNFromFileRef(FileRef(Key)) <= NTFS_LAST_RESERVED_FILE_RECORD
+        && !NtfsShowMetadataFiles)
         return FALSE;
 
     // Is this a duplicated short name?
@@ -132,6 +131,12 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
     // Restart scan if requested.
     if (RestartScan)
         ResetCurrentKey();
+
+    /* Upcase the filter once for the case-insensitive matching done in
+     * DoesFileNameMatch() (see the note there).
+     */
+    if (FileNameFilter)
+        RtlUpcaseUnicodeString(FileNameFilter, FileNameFilter, FALSE);
 
     TotalBufferLength = *BufferLength;
 

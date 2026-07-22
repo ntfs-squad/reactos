@@ -9,7 +9,7 @@ void* __cdecl operator new(size_t Size, POOL_TYPE PoolType)
 
 #if DBG
     if (pObject != NULL)
-        NtfsFillMemory(pObject, Size, 0xCD);
+        RtlFillMemory(pObject, Size, 0xCD);
 #endif // DBG
 
     return pObject;
@@ -24,7 +24,7 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType)
 
 #if DBG
     if (pObject != NULL)
-        NtfsFillMemory(pObject, Size, 0xCD);
+        RtlFillMemory(pObject, Size, 0xCD);
 #endif // DBG
 
     return pObject;
@@ -38,7 +38,7 @@ void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag)
 
 #if DBG
     if (pObject != NULL)
-        NtfsFillMemory(pObject, Size, 0xCD);
+        RtlFillMemory(pObject, Size, 0xCD);
 #endif // DBG
 
     return pObject;
@@ -53,7 +53,7 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag)
 
 #if DBG
     if (pObject != NULL)
-        NtfsFillMemory(pObject, Size, 0xCD);
+        RtlFillMemory(pObject, Size, 0xCD);
 #endif // DBG
 
     return pObject;

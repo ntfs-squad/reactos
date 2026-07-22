@@ -12,14 +12,14 @@
 extern "C" {
 #endif
 
-NTSTATUS
+ULONG
 NtfsLogFileServiceGetClientMajorVersion(
     _In_ PNtfsLogFileService LFS)
 {
     return reinterpret_cast<PLogFileService>(LFS)->ClientMajorVersion;
 }
 
-NTSTATUS
+ULONG
 NtfsLogFileServiceGetClientMinorVersion(
     _In_ PNtfsLogFileService LFS)
 {

@@ -6,11 +6,6 @@
 #include <ntdef.h>
 #endif
 
-// Hack: we shouldn't be defining UINT.
-#ifndef UINT
-typedef unsigned int UINT;
-#endif
-
 #include "ntfsattribdef.h"
 
 #pragma pack(push, 1)
@@ -61,6 +56,11 @@ enum FileRecordNumbers
     _Extend  = 11,
 };
 
+/* File records up to and including this number are reserved for
+ * NTFS metadata files and are hidden from directory enumeration.
+ */
+#define NTFS_LAST_RESERVED_FILE_RECORD 26
+
 /* File record flags */
 #define FR_IN_USE        0x01
 #define FR_IS_DIRECTORY  0x02
@@ -81,17 +81,6 @@ enum FileRecordNumbers
 #define FILE_PERM_OFFLINE    0x1000
 #define FILE_PERM_NOT_INDXED 0x2000
 #define FILE_PERM_ENCRYPTED  0x4000
-
-// Forward declarations for DataRun struct because it's a linked list.
-struct DataRun;
-typedef struct DataRun *PDataRun;
-
-struct DataRun
-{
-    PDataRun  NextRun;
-    ULONGLONG LCN;
-    ULONGLONG Length; // In clusters
-};
 
 typedef struct
 {
@@ -115,30 +104,6 @@ typedef struct
     UINT16 Padding;
     UINT32 MFTRecordNumber;        // Offset 0x2C, Size 4
 } FileRecordHeader, *PFileRecordHeader;
-
-#define INDEX_ENTRY_NODE 1
-#define INDEX_ENTRY_END  2
-
-struct _BTreeNode;
-struct _BTreeKey;
-
-typedef struct _BTreeNode BTreeNode, *PBTreeNode;
-typedef struct _BTreeKey BTreeKey, *PBTreeKey;
-
-struct _BTreeNode
-{
-    ULONGLONG  VCN;
-    PBTreeKey  FirstKey;
-};
-
-struct _BTreeKey
-{
-    PBTreeKey   ParentNodeKey; // Used to get entries linearly.
-    PBTreeNode  ChildNode;
-    PBTreeKey   NextKey;
-    PIndexEntry Entry;
-    ULONG       Flags;
-};
 
 typedef struct
 {
@@ -176,11 +141,6 @@ PNtfsDirectory
 NtfsDirectoryCreate(
     _In_ PNtfsVolume DiskVolume);
 
-PNtfsDirectory
-NtfsDirectoryCreateEx(
-    _In_ PNtfsVolume DiskVolume,
-    _In_ PNtfsFileRecord File);
-
 NTSTATUS
 NtfsDirectoryLoadDirectory(
     _In_ PNtfsDirectory Dir,
@@ -189,7 +149,7 @@ NtfsDirectoryLoadDirectory(
 /* FileRecord functions */
 PNtfsFileRecord
 NtfsFileRecordCreate(
-    _In_ void *DiskVolume,
+    _In_ PNtfsVolume DiskVolume,
     _In_ ULONG FileRecordSize);
 
 void
@@ -198,10 +158,6 @@ NtfsFileRecordDestroy(
 
 PFileRecordHeader
 NtfsFileRecordGetHeader(
-    _In_ NtfsFileRecord *FileRecord);
-
-PUCHAR
-NtfsFileRecordGetData(
     _In_ NtfsFileRecord *FileRecord);
 
 PAttribute
@@ -217,30 +173,11 @@ NtfsFileRecordGetAttributeData(
     _In_opt_ PWSTR Name,
     _Out_    PUCHAR *Data);
 
-PDataRun
-NtfsFileRecordFindNonResidentDataFromAttribute(
-    _In_ NtfsFileRecord *FileRecord,
-    _In_ PAttribute DataAttr);
-
-PDataRun
-NtfsFileRecordFindNonResidentData(
-    _In_ NtfsFileRecord *FileRecord,
-    _In_ AttributeType Type,
-    _In_opt_ PWSTR Name);
-
 NTSTATUS
 NtfsFileRecordCopyData(
     _In_ NtfsFileRecord *FileRecord,
     _In_ AttributeType Type,
     _In_opt_ PWSTR Name,
-    _In_ PUCHAR Buffer,
-    _Inout_ PULONG Length,
-    _In_ ULONGLONG Offset);
-
-NTSTATUS
-NtfsFileRecordCopyDataFromAttribute(
-    _In_ NtfsFileRecord *FileRecord,
-    _In_ PAttribute Attr,
     _In_ PUCHAR Buffer,
     _Inout_ PULONG Length,
     _In_ ULONGLONG Offset);
@@ -254,28 +191,12 @@ NtfsFileRecordWriteFileData(
     _Inout_ PULONG Length,
     _In_ PLARGE_INTEGER Offset);
 
-NTSTATUS
-NtfsFileRecordUpdateResidentData(
-    _In_ NtfsFileRecord *FileRecord,
-    _In_ PAttribute TargetAttribute,
-    _In_ PUCHAR Buffer,
-    _In_ PULONG Length,
-    _In_ ULONGLONG Offset);
-
-NTSTATUS
-NtfsFileRecordCommitFixup(
-    _In_ NtfsFileRecord *FileRecord);
-
-NTSTATUS
-NtfsFileRecordApplyFixup(
-    _In_ NtfsFileRecord *FileRecord);
-
 /* LFS functions */
-NTSTATUS
+ULONG
 NtfsLogFileServiceGetClientMajorVersion(
     _In_ PNtfsLogFileService LFS);
 
-NTSTATUS
+ULONG
 NtfsLogFileServiceGetClientMinorVersion(
     _In_ PNtfsLogFileService LFS);
 
@@ -292,13 +213,27 @@ NtfsProbePartition(
     _In_ ULONG BytesPerSector,
     _In_ PUCHAR BootSectorData);
 
+/* Reads the boot sector through the environment's disk routines
+ * (initialize them first) and mounts the volume if it is NTFS.
+ */
 NTSTATUS
 NtfsProbePartitionAndOpenVolume(
     _In_ ULONG BytesPerSector,
-    _In_ PUCHAR BootSectorData,
-    _Out_ void** VolumeOut);
+    _Out_ PNtfsVolume* VolumeOut);
+
+/* Library options */
+void
+NtfsSetShowMetadataFiles(
+    _In_ BOOLEAN Show);
 
 /* Volume functions */
+NTSTATUS
+NtfsVolumeGetADSPreference(
+    _In_ PNtfsVolume DiskVolume,
+    _In_ PUNICODE_STRING FileName,
+    _Out_ AttributeType* RequestedType,
+    _Out_ PWSTR* RequestedStream);
+
 UINT8
 NtfsVolumeGetBytesPerSector(
     _In_ PNtfsVolume DiskVolume);
@@ -354,13 +289,6 @@ NtfsVolumeSetVolumeLabel(
 
 #ifdef __cplusplus
 }
-#endif
-
-// =========================
-// NTFS C++ Classes
-// =========================
-#ifdef __cplusplus
-// TODO: Add Pimpl classes for Volume, MasterFileTable, LogFileService, Directory, FileRecord.
 #endif
 
 #endif /* _NTFSLIB_NEW_H_ */

@@ -17,7 +17,7 @@ FileRecord::GetAttribute(_In_     AttributeType Type,
 {
     ULONG DataPtr;
     PAttribute TestAttr;
-    UINT NameLength = 0;
+    ULONG NameLength = 0;
 
     // Validate header before using it
     if (!Header || !Data)
@@ -164,11 +164,13 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
     UINT8 LengthSize, OffsetSize;
     ULONGLONG PreviousLCN = 0;
     LONGLONG TestOffset = 0;
-    ULONGLONG AllocatedSize = DataAttr->NonResident.AllocatedSize;
+    ULONGLONG AllocatedSize;
     ULONGLONG ReadSize = 0;
 
     if (!DataAttr || !DataAttr->IsNonResident)
         return NULL;
+
+    AllocatedSize = DataAttr->NonResident.AllocatedSize;
 
     // Get pointer to data run.
     DataRunPtr = (PUCHAR)DataAttr + DataAttr->NonResident.DataRunsOffset;
@@ -193,7 +195,7 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
     // Populate children data runs for head, if available.
     Temp = Head;
     PreviousLCN = Temp->LCN;
-    ReadSize += (Head->Length) * DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector;
+    ReadSize += GetRunSize(Head);
     DataRunPtr += 1 + LengthSize + OffsetSize;
 
     while (*DataRunPtr != '\0')
@@ -215,7 +217,7 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
                       DataRunPtr + 1,
                       LengthSize);
 
-        ReadSize += (Temp->Length) * DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector;
+        ReadSize += GetRunSize(Temp);
 
         /* Note: Child LCN's are relative to previous offset. They can be negative.
          * So the real LCN = Previous LCN + Current LCN.

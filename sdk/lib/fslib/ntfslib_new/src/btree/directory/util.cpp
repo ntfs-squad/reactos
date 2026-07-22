@@ -15,12 +15,12 @@ Directory::IsLegalShortNameCharacterW(_In_ WCHAR Char)
     /* Legal characters include:
      * 0-9, A-Z, !, #, $, %, &, ', (, ), -, @, ^, _, `, {, }, ~
      */
-    WCHAR AllowedCharacters[17] = L"!#$%&'()-@^_`{}~";
+    static const WCHAR AllowedCharacters[] = L"!#$%&'()-@^_`{}~";
 
     if ((Char >= L'0' && Char <= L'9') || (Char >= L'A' && Char <= L'Z'))
         return TRUE;
 
-    for (int i = 0; i < wcslen(AllowedCharacters); i++)
+    for (int i = 0; AllowedCharacters[i] != L'\0'; i++)
     {
         if (Char == AllowedCharacters[i])
             return TRUE;

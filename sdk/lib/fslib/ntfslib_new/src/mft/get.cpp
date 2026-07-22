@@ -14,9 +14,6 @@ NTSTATUS
 MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
                                _Out_  PFileRecord* File)
 {
-#ifdef NTFS_KERNEL_MODE
-    PAGED_CODE();
-#endif
     NTSTATUS Status;
     ULONG BytesToRead;
     BOOLEAN IsRecordInUse;
@@ -62,10 +59,10 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
         goto Failed;
     }
 
-    // Grab file from $MFT
-    Status = MFTFile ?
-             MFTFile->CopyData(TypeData,
-                               NULL,
+    // Grab file from $MFT, reusing the cached $DATA attribute and run list.
+    Status = MFTDataAttr ?
+             MFTFile->CopyData(MFTDataAttr,
+                               MFTDataRuns,
                                (*File)->Data,
                                &BytesToRead,
                                FileRecordOffset(FileRecordNumber))
@@ -141,10 +138,10 @@ MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
     *File = new(PagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
     BytesToRead = FileRecordSize;
 
-    // Grab file from $MFTMirr
-    Status = MFTMirrFile ?
-             MFTMirrFile->CopyData(TypeData,
-                                   NULL,
+    // Grab file from $MFTMirr, reusing the cached $DATA attribute and run list.
+    Status = MFTMirrDataAttr ?
+             MFTMirrFile->CopyData(MFTMirrDataAttr,
+                                   MFTMirrDataRuns,
                                    (*File)->Data,
                                    &BytesToRead,
                                    FileRecordOffset(FileRecordNumber))

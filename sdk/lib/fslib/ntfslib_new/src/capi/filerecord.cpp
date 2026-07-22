@@ -14,10 +14,10 @@ extern "C" {
 
 PNtfsFileRecord
 NtfsFileRecordCreate(
-    _In_ void *Volume,
+    _In_ PNtfsVolume DiskVolume,
     _In_ ULONG FileRecordSize)
 {
-    PVolume Vol = static_cast<PVolume>(Volume);
+    PVolume Vol = reinterpret_cast<PVolume>(DiskVolume);
 
     if (!Vol)
         return nullptr;
@@ -44,13 +44,6 @@ NtfsFileRecordGetHeader(
     return reinterpret_cast<PFileRecord>(Fr)->Header;
 }
 
-PUCHAR
-NtfsFileRecordGetData(
-    _In_ PNtfsFileRecord Fr)
-{
-    return reinterpret_cast<PFileRecord>(Fr)->Data;
-}
-
 PAttribute
 NtfsFileRecordGetAttribute(
     _In_ PNtfsFileRecord Fr,
@@ -70,23 +63,6 @@ NtfsFileRecordGetAttributeData(
     return reinterpret_cast<PFileRecord>(Fr)->GetAttributeData(Type, Name, Data);
 }
 
-PDataRun
-NtfsFileRecordFindNonResidentDataFromAttribute(
-    _In_ PNtfsFileRecord Fr,
-    _In_ PAttribute DataAttr)
-{
-    return reinterpret_cast<PFileRecord>(Fr)->FindNonResidentData(DataAttr);
-}
-
-PDataRun
-NtfsFileRecordFindNonResidentData(
-    _In_ PNtfsFileRecord Fr,
-    _In_ AttributeType Type,
-    _In_opt_ PWSTR Name)
-{
-    return reinterpret_cast<PFileRecord>(Fr)->FindNonResidentData(Type, Name);
-}
-
 NTSTATUS
 NtfsFileRecordCopyData(
     _In_ PNtfsFileRecord Fr,
@@ -100,17 +76,6 @@ NtfsFileRecordCopyData(
 }
 
 NTSTATUS
-NtfsFileRecordCopyDataFromAttribute(
-    _In_ PNtfsFileRecord Fr,
-    _In_ PAttribute Attr,
-    _In_ PUCHAR Buffer,
-    _Inout_ PULONG Length,
-    _In_ ULONGLONG Offset)
-{
-    return reinterpret_cast<PFileRecord>(Fr)->CopyData(Attr, Buffer, Length, Offset);
-}
-
-NTSTATUS
 NtfsFileRecordWriteFileData(
     _In_ PNtfsFileRecord Fr,
     _In_ AttributeType AttrType,
@@ -120,31 +85,6 @@ NtfsFileRecordWriteFileData(
     _In_ PLARGE_INTEGER Offset)
 {
     return reinterpret_cast<PFileRecord>(Fr)->WriteFileData(AttrType, StreamName, Buffer, Length, Offset);
-}
-
-NTSTATUS
-NtfsFileRecordUpdateResidentData(
-    _In_ PNtfsFileRecord Fr,
-    _In_ PAttribute TargetAttribute,
-    _In_ PUCHAR Buffer,
-    _In_ PULONG Length,
-    _In_ ULONGLONG Offset)
-{
-    return reinterpret_cast<PFileRecord>(Fr)->UpdateResidentData(TargetAttribute, Buffer, Length, Offset);
-}
-
-NTSTATUS
-NtfsFileRecordCommitFixup(
-    _In_ PNtfsFileRecord Fr)
-{
-    return reinterpret_cast<PFileRecord>(Fr)->CommitFixup();
-}
-
-NTSTATUS
-NtfsFileRecordApplyFixup(
-    _In_ PNtfsFileRecord Fr)
-{
-    return reinterpret_cast<PFileRecord>(Fr)->ApplyFixup();
 }
 
 #ifdef __cplusplus

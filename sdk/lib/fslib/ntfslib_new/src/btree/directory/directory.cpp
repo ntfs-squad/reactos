@@ -42,6 +42,7 @@ Directory::VerifyUpdateSequenceArray(PNTFSRecordHeader Record)
 NTSTATUS
 Directory::CreateNode(_In_    PFileRecord File,
                       _In_    PAttribute  IndexAllocationAttribute,
+                      _In_    PDataRun    IndexAllocationRuns,
                       _Inout_ PBTreeKey   ParentNodeKey)
 {
     NTSTATUS Status;
@@ -54,7 +55,7 @@ Directory::CreateNode(_In_    PFileRecord File,
     ULONG_PTR EndOfIndexBuffer;
 
     // Get VCN from the end of the node entry
-    VCN = (PULONGLONG)((char*)ParentNodeKey->Entry + ParentNodeKey->Entry->EntryLength - sizeof(ULONGLONG));
+    VCN = GetSubnodeVCN(ParentNodeKey->Entry);
     IndexBufferSize = BytesPerIndexRecord(DiskVolume);
 
     // Create the new node and first key.
@@ -67,6 +68,7 @@ Directory::CreateNode(_In_    PFileRecord File,
 
     // TODO: Confirm index bitmap has this node marked as in-use
     Status = File->CopyData(IndexAllocationAttribute,
+                            IndexAllocationRuns,
                             (PUCHAR)NodeBuffer,
                             &IndexBufferSize,
                             GetAllocationOffsetFromVCN(*VCN));
@@ -109,6 +111,7 @@ Directory::CreateNode(_In_    PFileRecord File,
         {
             Status = CreateNode(File,
                                 IndexAllocationAttribute,
+                                IndexAllocationRuns,
                                 CurrentKey);
 
             if (!NT_SUCCESS(Status))
@@ -154,6 +157,7 @@ Directory::CreateRootNode(_In_  PFileRecord File,
     PBTreeNode RootNode;
     PBTreeKey CurrentKey, NextKey;
     PIndexEntry CurrentEntry;
+    PDataRun IndexAllocationRuns = NULL;
     ULONG_PTR EndOfIndexRootData;
 
     // Get $INDEX_ROOT attribute.
@@ -178,6 +182,12 @@ Directory::CreateRootNode(_In_  PFileRecord File,
         __debugbreak();
         return STATUS_FILE_CORRUPT_ERROR;
     }
+
+    /* Decode the index allocation runs once so every node created below
+     * doesn't have to re-decode them.
+     */
+    if (IndexAllocationAttribute && IndexAllocationAttribute->IsNonResident)
+        IndexAllocationRuns = File->FindNonResidentData(IndexAllocationAttribute);
 
     // Initialize variables
     RootNode = new(PagedPool, TAG_BTREE) BTreeNode();
@@ -209,6 +219,7 @@ Directory::CreateRootNode(_In_  PFileRecord File,
             // Create child node
             Status = CreateNode(File,
                                 IndexAllocationAttribute,
+                                IndexAllocationRuns,
                                 CurrentKey);
 
             if (!NT_SUCCESS(Status))
@@ -238,9 +249,11 @@ Directory::CreateRootNode(_In_  PFileRecord File,
         }
     }
 
+    FreeDataRun(IndexAllocationRuns);
     *NewRootNode = RootNode;
     return STATUS_SUCCESS;
 Failed:
+    FreeDataRun(IndexAllocationRuns);
     delete RootNode;
     return Status;
 }
@@ -314,24 +327,16 @@ Directory::DoesFileNameMatch(PUNICODE_STRING NameFilter,
                               ((FileNameData->NameLength) * sizeof(WCHAR)));
     FileNameString.Length = FileNameString.MaximumLength;
 
-    if (IgnoreCase)
-    {
-        /* Note: if we want to do case-insensitive searching, we must make
-         * NameFilter all uppercase.
-         *
-         * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtlisnameinexpression
-        */
-
-        // TODO: Should this be replaced with DiskVolume->UpcaseWideString()?
-        NTSTATUS Status = RtlUpcaseUnicodeString(NameFilter, NameFilter, FALSE);
-        if (!NT_SUCCESS(Status))
-        {
-            // Failed to upcase name filter! Perform case sensitive matching...
-            __debugbreak();
-            IgnoreCase = FALSE;
-        }
-    }
-
+    /* Note: for case-insensitive matching, NameFilter must already be all
+     * uppercase — the search/enumeration entry points upcase it once
+     * instead of us re-upcasing it for every key tested.
+     *
+     * Rtl NLS upcasing is used for the filter; matching against the
+     * volume's own $UpCase table (Volume::UpcaseWideString) would need
+     * NtfsIsNameInExpression to take that table in every environment.
+     *
+     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtlisnameinexpression
+     */
     return NtfsIsNameInExpression(NameFilter,
                                   &FileNameString,
                                   IgnoreCase,
@@ -403,11 +408,4 @@ Directory::GetShortNameKey(_In_ PBTreeKey Key,
 Directory::Directory(_In_ PVolume DiskVolume)
 {
     this->DiskVolume = DiskVolume;
-}
-
-Directory::Directory(_In_ PVolume DiskVolume,
-                     _In_ PFileRecord File)
-                    : Directory(DiskVolume)
-{
-    LoadDirectory(File);
 }

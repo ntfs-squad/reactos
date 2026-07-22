@@ -1,14 +1,12 @@
 
 
+#define WIN32_NO_STATUS
 #include <windows.h>
+#include <ndk/umtypes.h> // NTSTATUS, NT_SUCCESS, UNICODE_STRING
 #include <stdio.h>
 #include <wchar.h>
 #include <ntfs_um.h>
 #include <ntfslib_new.h>
-// Hack: We shouldn't be defining this here.
-#ifndef NT_SUCCESS
-#define NT_SUCCESS(Status) ((Status) >= 0)
-#endif
 
 typedef struct _NTFS_INFORMATION
 {
@@ -193,8 +191,6 @@ int wmain(int argc, wchar_t* argv[])
     const BOOL NoBanner = (argc > 1) && (_wcsicmp(argv[1], L"-nobanner") == 0);
     ULONG BytesPerSector;
     PNtfsVolume VolumeObject;
-    // TODO: Maybe this should go in NtfsProbePartition?
-    PUCHAR BootSectorData;
 
     if (!NoBanner)
         PrintBanner();
@@ -227,24 +223,7 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
-    // // Get the boot sector data
-    BootSectorData = (PUCHAR)malloc(BytesPerSector);
-    if (!BootSectorData)
-    {
-        PrintLastError("Error allocating boot sector data");
-        return 1;
-    }
-
-    Status = NtfsReadVolume(0, BytesPerSector, BootSectorData);
-    if (!NT_SUCCESS(Status))
-    {
-        PrintLastError("Error reading boot sector data");
-        free(BootSectorData);
-        return 1;
-    }
-
     Status = NtfsProbePartitionAndOpenVolume(BytesPerSector,
-                                             BootSectorData,
                                              &VolumeObject);
 
     // If the specificed volume is not NTFS, print an error and exit.
@@ -254,7 +233,6 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
-    free(BootSectorData);
     // Let's find the NTFS information and print it.
     // HACK: This is just mock data for now.
     NtfsInformation.VolumeSize = 475967ull * 1024 * 1024;

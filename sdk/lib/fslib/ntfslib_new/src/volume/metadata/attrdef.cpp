@@ -17,7 +17,7 @@ Volume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
     PFileRecord AttrDefFile;
     PAttribute DataAttr;
     PAttrDefEntry TableEntry;
-    ULONG AttrDefEntryIndex, AttrDefDataSize, MaxIndex, NameCompareLength;
+    ULONG AttrDefDataSize, MaxIndex, NameLength, NameCompareLength;
     PUCHAR Buffer = NULL;
 
     // NOTE: Lookup is case-insensitive.
@@ -33,7 +33,8 @@ Volume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
     if (!NT_SUCCESS(Status))
         return Status;
 
-    Status = UpcaseWideString(AttributeTypeName, wcslen(AttributeTypeName));
+    NameLength = wcslen(AttributeTypeName);
+    Status = UpcaseWideString(AttributeTypeName, NameLength);
     if (!NT_SUCCESS(Status))
         goto Done;
 
@@ -44,12 +45,11 @@ Volume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
                           &AttrDefDataSize,
                           0);
     AttrDefDataSize = DataAttr->NonResident.DataSize - AttrDefDataSize;
-    AttrDefEntryIndex = 0;
     MaxIndex = AttrDefDataSize / sizeof(AttrDefEntry);
     TableEntry = (PAttrDefEntry)Buffer;
-    NameCompareLength = wcslen(AttributeTypeName) * sizeof(WCHAR);
+    NameCompareLength = NameLength * sizeof(WCHAR);
 
-    for (int i = 0; i < MaxIndex; i++)
+    for (ULONG i = 0; i < MaxIndex; i++)
     {
         if ((wcslen(TableEntry->Label) * sizeof(WCHAR)) == NameCompareLength &&
             RtlCompareMemory(TableEntry->Label,
@@ -75,18 +75,29 @@ Done:
     return Status;
 }
 
+/* Allocates a NUL-terminated copy of the first Length characters of Source. */
+static PWSTR
+CopyStreamName(_In_ PWSTR Source,
+               _In_ ULONG Length)
+{
+    PWSTR StreamName = new(NonPagedPool) WCHAR[Length + 1];
+
+    RtlCopyMemory(StreamName, Source, Length * sizeof(WCHAR));
+    StreamName[Length] = L'\0';
+    return StreamName;
+}
+
 NTSTATUS
-Volume::GetADSPreference(_In_  PFILE_OBJECT FileObj,
+Volume::GetADSPreference(_In_  PUNICODE_STRING FileName,
                          _Out_ AttributeType* RequestedType,
                          _Out_ PWSTR* RequestedStream)
 {
     NTSTATUS Status;
     PWSTR FileNameQuery, ADSPtr, ADSTypePtr;
-    ULONG StreamNameLength;
 
-    ASSERT(FileObj);
+    ASSERT(FileName);
 
-    FileNameQuery = FileObj->FileName.Buffer;
+    FileNameQuery = FileName->Buffer;
 
     if (!FileNameQuery)
     {
@@ -126,12 +137,7 @@ Volume::GetADSPreference(_In_  PFILE_OBJECT FileObj,
             else
             {
                 // Copy the requested stream name.
-                StreamNameLength = ADSTypePtr - ADSPtr - 1;
-                *RequestedStream = new(NonPagedPool) WCHAR[StreamNameLength + 1];
-                RtlCopyMemory(*RequestedStream,
-                              ADSPtr,
-                              StreamNameLength * sizeof(WCHAR));
-                (*RequestedStream)[StreamNameLength] = L'\0';
+                *RequestedStream = CopyStreamName(ADSPtr, ADSTypePtr - ADSPtr - 1);
             }
 
             // Stream name is copied, get the attribute type
@@ -149,12 +155,7 @@ Volume::GetADSPreference(_In_  PFILE_OBJECT FileObj,
         else
         {
             // Copy the stream name
-            StreamNameLength = wcslen(ADSPtr);
-            *RequestedStream = new(NonPagedPool) WCHAR[StreamNameLength + 1];
-            RtlCopyMemory(*RequestedStream,
-                          ADSPtr,
-                          wcslen(ADSPtr) * sizeof(WCHAR));
-            (*RequestedStream)[StreamNameLength] = L'\0';
+            *RequestedStream = CopyStreamName(ADSPtr, wcslen(ADSPtr));
 
             // No type specified, use $DATA
             *RequestedType = TypeData;

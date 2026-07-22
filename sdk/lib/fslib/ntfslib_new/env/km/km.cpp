@@ -8,20 +8,7 @@
 
 #include <ntifs.h>
 #include <ntfs_km.h>
-#ifdef __cplusplus
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
-extern "C" {
-    // Hack: This is a driver-specific setting. Our lib should not care.
-    extern BOOLEAN gShowMetadataFiles;
-}
-#endif
-
-#ifndef TAG_NTFS
-#define TAG_NTFS 'NTFS'
-#endif
+#include <ntfslib_new_internal.h>
 
 PDEVICE_OBJECT PartDeviceObj = NULL;
 ULONG BytesPerSector = 0;
@@ -39,14 +26,6 @@ NtfsAllocatePoolWithTag(POOL_TYPE PoolType, size_t Size, ULONG Tag)
 void NtfsFreePool(void* pObject)
 {
     ExFreePool(pObject);
-}
-
-void
-NtfsFillMemory(_In_ PVOID Buffer,
-               _In_ size_t Size,
-               _In_ UCHAR Value)
-{
-    RtlFillMemory(Buffer, Size, Value);
 }
 
 #ifdef __cplusplus
@@ -242,7 +221,8 @@ NtfsReadVolume(_In_    ULONGLONG Offset,
     ASSERT(Length);
 
     SectorAlignedOffset = Offset - (Offset % BytesPerSector);
-    SectorAlignedLength = ALIGN_UP_BY(Length, BytesPerSector);
+    SectorAlignedLength = ALIGN_UP_BY((Offset - SectorAlignedOffset) + Length,
+                                      BytesPerSector);
 
     if (SectorAlignedOffset == Offset
         && SectorAlignedLength == Length)
@@ -256,10 +236,6 @@ NtfsReadVolume(_In_    ULONGLONG Offset,
 
     else
     {
-        // Read an extra sector if needed.
-        if (SectorAlignedOffset != Offset)
-            SectorAlignedLength += BytesPerSector;
-
         // Create the read buffer
         ReadBuffer = new(NonPagedPool) UCHAR[SectorAlignedLength];
 
@@ -295,7 +271,8 @@ NtfsWriteVolume(_In_    ULONGLONG Offset,
     ULONG SectorAlignedLength;
 
     SectorAlignedOffset = Offset - (Offset % BytesPerSector);
-    SectorAlignedLength = ALIGN_UP_BY(Length, BytesPerSector);
+    SectorAlignedLength = ALIGN_UP_BY((Offset - SectorAlignedOffset) + Length,
+                                      BytesPerSector);
 
     if (SectorAlignedOffset == Offset
         && SectorAlignedLength == Length)
@@ -309,10 +286,6 @@ NtfsWriteVolume(_In_    ULONGLONG Offset,
 
     else
     {
-        // Write an extra sector if needed.
-        if (SectorAlignedOffset != Offset)
-            SectorAlignedLength += BytesPerSector;
-
         // Create the write buffer
         WriteBuffer = new(NonPagedPool) UCHAR[SectorAlignedLength];
 

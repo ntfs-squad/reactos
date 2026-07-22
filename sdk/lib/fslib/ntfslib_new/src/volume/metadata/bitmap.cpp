@@ -9,12 +9,10 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
-// Macros for GetFreeClusters
-const UINT8 Zeros[16] = { 4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0 };
-#define GetZerosFromNibble(x) Zeros[(UINT8)x]
-#define GetZerosFromByte(x) GetZerosFromNibble(x & 0xF) + GetZerosFromNibble(x >> 4)
-
-#define IsBitSet(Byte, Bit) !!((Byte >> Bit) & 1)
+/* Read $Bitmap in fixed-size chunks so we never need one huge allocation
+ * for the whole volume bitmap (32MB for a 1TB volume at 4K clusters).
+ */
+#define BITMAP_CHUNK_SIZE 0x10000 // 64KB, always a multiple of sizeof(ULONG)
 
 NTSTATUS
 Volume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
@@ -22,8 +20,10 @@ Volume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     NTSTATUS Status;
     PFileRecord BitmapFile;
     PAttribute BitmapData;
-    ULONG BytesToRead;
     PUCHAR BitmapBuffer;
+    RTL_BITMAP Bitmap;
+    ULONGLONG BitmapOffset;
+    ULONG ClustersRemaining, ClustersInChunk, BytesToRead;
 
     // Note: $Bitmap is *always* non-resident on Windows.
 
@@ -37,27 +37,40 @@ Volume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     if (!NT_SUCCESS(Status))
         return Status;
 
-    // Get the size of $Bitmap
-    BytesToRead = GetAttributeDataSize(BitmapData);
+    // Initialize bitmap chunk buffer
+    BitmapBuffer = new(NonPagedPool) UCHAR[BITMAP_CHUNK_SIZE];
 
-    // Initialize bitmap buffer
-    BitmapBuffer = new(NonPagedPool) UCHAR[BytesToRead];
-
-    // Copy attribute data into this buffer.
-    BitmapFile->CopyData(BitmapData,
-                         BitmapBuffer,
-                         &BytesToRead);
-
-    BytesToRead = GetAttributeDataSize(BitmapData) - BytesToRead;
     FreeClusters->QuadPart = 0;
+    BitmapOffset = 0;
+    ClustersRemaining = ClustersInVolume;
 
-    for (int i = 0; i < BytesToRead; i++)
-        FreeClusters->QuadPart += GetZerosFromByte(BitmapBuffer[i]);
+    /* Count the clear (free) bits chunk by chunk. Only ClustersInVolume
+     * bits are valid; the padding bits at the end of $Bitmap are not.
+     */
+    while (ClustersRemaining != 0)
+    {
+        ClustersInChunk = min(ClustersRemaining, BITMAP_CHUNK_SIZE * 8);
+        BytesToRead = ALIGN_UP_BY((ClustersInChunk + 7) / 8, sizeof(ULONG));
+
+        Status = BitmapFile->CopyData(BitmapData,
+                                      BitmapBuffer,
+                                      &BytesToRead,
+                                      BitmapOffset);
+        if (!NT_SUCCESS(Status))
+            goto Done;
+
+        RtlInitializeBitMap(&Bitmap, (PULONG)BitmapBuffer, ClustersInChunk);
+        FreeClusters->QuadPart += RtlNumberOfClearBits(&Bitmap);
+
+        BitmapOffset += ClustersInChunk / 8;
+        ClustersRemaining -= ClustersInChunk;
+    }
 
     Status = STATUS_SUCCESS;
 
+Done:
     // We're done! Time to cleanup.
-    delete BitmapBuffer;
+    delete[] BitmapBuffer;
     delete BitmapFile;
     return Status;
 }

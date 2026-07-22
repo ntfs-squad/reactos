@@ -67,16 +67,12 @@ Volume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
                                             (PUCHAR)VolumeLabel,
                                             &Length);
 
-    if (!NT_SUCCESS(Status))
-        goto Done;
+    if (NT_SUCCESS(Status))
+    {
+        // Write the volume file to disk.
+        Status = MFT->WriteFileRecordToMFT(VolumeFile);
+    }
 
-    // Write the volume file to disk.
-    Status = MFT->WriteFileRecordToMFT(VolumeFile);
-
-    if (!NT_SUCCESS(Status))
-        goto Done;
-
-Done:
     delete VolumeFile;
     return Status;
 }

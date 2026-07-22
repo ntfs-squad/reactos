@@ -9,10 +9,10 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
-NTSTATUS
+static NTSTATUS
 DestroyBTreeNode(PBTreeNode Node);
 
-NTSTATUS
+static NTSTATUS
 DestroyBTreeKey(PBTreeKey Key)
 {
     if (Key->Entry)
@@ -25,10 +25,10 @@ DestroyBTreeKey(PBTreeKey Key)
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
+static NTSTATUS
 DestroyBTreeNode(PBTreeNode Node)
 {
-    PBTreeKey NextKey;
+    PBTreeKey NextKey = NULL;
     PBTreeKey CurrentKey = Node->FirstKey;
 
     while (CurrentKey)
@@ -45,13 +45,9 @@ DestroyBTreeNode(PBTreeNode Node)
 
 BTree::~BTree()
 {
+    // DestroyBTreeNode() also handles a root without keys.
     if (RootNode)
-    {
-        if (RootNode->FirstKey)
-            DestroyBTreeNode(RootNode);
-        else
-            delete RootNode;
-    }
+        DestroyBTreeNode(RootNode);
 }
 
 NTSTATUS

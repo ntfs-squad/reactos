@@ -9,12 +9,13 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
+/* Reads the $UpCase table into the Volume cache. The table is immutable,
+ * so this happens once; every later UpcaseWideString() call reuses it.
+ */
 NTSTATUS
-Volume::UpcaseWideString(_Inout_ PWSTR WideString,
-                         _In_    ULONG Length)
+Volume::LoadUpcaseTable()
 {
     NTSTATUS Status;
-    PWSTR UpCaseBuffer;
     PFileRecord UpCaseFile;
     PAttribute UpCaseData;
     ULONG UpCaseDataLength;
@@ -30,20 +31,44 @@ Volume::UpcaseWideString(_Inout_ PWSTR WideString,
 
     // Get $DATA attribute contents from $UpCase
     UpCaseDataLength = GetAttributeDataSize(UpCaseData);
-    UpCaseBuffer = new(NonPagedPool) WCHAR[UpCaseDataLength / sizeof(WCHAR)];
+    UpcaseTable = new(NonPagedPool) WCHAR[UpCaseDataLength / sizeof(WCHAR)];
     Status = UpCaseFile->CopyData(UpCaseData,
-                                  (PUCHAR)UpCaseBuffer,
+                                  (PUCHAR)UpcaseTable,
                                   &UpCaseDataLength);
 
-    if (!NT_SUCCESS(Status))
-        goto Done;
+    if (NT_SUCCESS(Status))
+    {
+        UpcaseTableLength = GetAttributeDataSize(UpCaseData) / sizeof(WCHAR);
+    }
+    else
+    {
+        delete[] UpcaseTable;
+        UpcaseTable = NULL;
+    }
+
+    delete UpCaseFile;
+    return Status;
+}
+
+NTSTATUS
+Volume::UpcaseWideString(_Inout_ PWSTR WideString,
+                         _In_    ULONG Length)
+{
+    NTSTATUS Status;
+
+    if (!UpcaseTable)
+    {
+        Status = LoadUpcaseTable();
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
 
     // Update each character according to its entry in the $UpCase table
-    for (int i = 0; i < Length; i++)
-        WideString[i] = UpCaseBuffer[WideString[i]];
+    for (ULONG i = 0; i < Length; i++)
+    {
+        if (WideString[i] < UpcaseTableLength)
+            WideString[i] = UpcaseTable[WideString[i]];
+    }
 
-Done:
-    delete UpCaseFile;
-    delete UpCaseBuffer;
-    return Status;
+    return STATUS_SUCCESS;
 }

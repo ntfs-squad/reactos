@@ -36,6 +36,16 @@ FileRecord::CopyData(_In_    PAttribute Attr,
                      _Inout_ PULONG Length,
                      _In_    ULONGLONG Offset)
 {
+    return CopyData(Attr, NULL, Buffer, Length, Offset);
+}
+
+NTSTATUS
+FileRecord::CopyData(_In_     PAttribute Attr,
+                     _In_opt_ PDataRun PrecomputedRuns,
+                     _In_     PUCHAR Buffer,
+                     _Inout_  PULONG Length,
+                     _In_     ULONGLONG Offset)
+{
     NTSTATUS Status;
     ULONG BytesToRead, BytesRead, BytesInRun;
     PDataRun Head, CurrentDR;
@@ -82,8 +92,8 @@ FileRecord::CopyData(_In_    PAttribute Attr,
         // Determine number of bytes we need to copy.
         BytesToRead = min((Attr->NonResident.DataSize - Offset), (*Length));
 
-        // Set up data runs
-        Head = FindNonResidentData(Attr);
+        // Set up data runs, reusing the caller's decoded list if provided.
+        Head = PrecomputedRuns ? PrecomputedRuns : FindNonResidentData(Attr);
         CurrentDR = Head;
         BytesRead = 0;
 
@@ -120,16 +130,16 @@ FileRecord::CopyData(_In_    PAttribute Attr,
                     break;
 
                 // Clear offset
-                if (Offset)
-                    Offset = 0;
+                Offset = 0;
             }
 
             // Set up next data run
             CurrentDR = CurrentDR->NextRun;
         }
 
-        // Free data run
-        FreeDataRun(Head);
+        // Free the data run list unless it belongs to the caller.
+        if (!PrecomputedRuns)
+            FreeDataRun(Head);
 
         // Check to make sure we read what was requested
         if (BytesRead != BytesToRead)

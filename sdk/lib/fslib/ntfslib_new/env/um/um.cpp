@@ -5,47 +5,17 @@
  * COPYRIGHT:   Copyright 2026 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
+#define WIN32_NO_STATUS
 #include <windows.h>
-#include <subauth.h>
+#include <ndk/umtypes.h> // NTSTATUS, STATUS_*, UNICODE_STRING
 #include <ntfs_um.h>
 #include <debug.h>
 
-// Hack: we shouldn't be defining these status codes.
-#ifndef STATUS_SUCCESS
-#define STATUS_SUCCESS                   1
-#endif
-#define STATUS_NOT_IMPLEMENTED           ((NTSTATUS)0xC0000002L)
-#define STATUS_UNSUCCESSFUL              ((NTSTATUS)0xC0000001L)
-#ifndef STATUS_INVALID_PARAMETER
-#define STATUS_INVALID_PARAMETER         ((NTSTATUS)0xC000000DL)
-#endif
-#define STATUS_INVALID_DEVICE_REQUEST    ((NTSTATUS)0xC0000010L)
-
-// Hack: We shouldn't be using these pools in UM at all.
-typedef enum _POOL_TYPE
-{
-    NonPagedPool,
-    PagedPool,
-    NonPagedPoolMustSucceed,
-    DontUseThisType,
-    NonPagedPoolCacheAligned,
-    PagedPoolCacheAligned,
-    NonPagedPoolCacheAlignedMustS,
-    MaxPoolType,
-
-    NonPagedPoolBase = 0,
-    NonPagedPoolBaseMustSucceed = NonPagedPoolBase + 2,
-    NonPagedPoolBaseCacheAligned = NonPagedPoolBase + 4,
-    NonPagedPoolBaseCacheAlignedMustS = NonPagedPoolBase + 6,
-
-    NonPagedPoolSession = 32,
-    PagedPoolSession,
-    NonPagedPoolMustSucceedSession,
-    DontUseThisTypeSession,
-    NonPagedPoolCacheAlignedSession,
-    PagedPoolCacheAlignedSession,
-    NonPagedPoolCacheAlignedMustSSession
-} POOL_TYPE;
+/* The core passes kernel POOL_TYPE values into the allocation contract;
+ * the heap-backed usermode allocator ignores them, so the underlying
+ * integer type is all we need here.
+ */
+typedef int POOL_TYPE;
 
 typedef BOOLEAN (NTAPI *PRtlIsNameInExpression)(
     _In_     PUNICODE_STRING Expression,
@@ -118,14 +88,6 @@ void
 NtfsFreePool(void* pObject)
 {
     HeapFree(GetProcessHeap(), 0, pObject);
-}
-
-void
-NtfsFillMemory(_In_ PVOID Buffer,
-               _In_ size_t Size,
-               _In_ UCHAR Value)
-{
-    FillMemory(Buffer, Size, Value);
 }
 
 NTSTATUS

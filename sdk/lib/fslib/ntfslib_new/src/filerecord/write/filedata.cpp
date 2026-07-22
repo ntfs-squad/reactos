@@ -102,7 +102,7 @@ FileRecord::UpdateNonResidentData(_In_ PAttribute TargetAttribute,
 {
     NTSTATUS Status;
     ULONGLONG BytesInRun;
-    ULONG BytesWritten;
+    ULONG BytesWritten, Chunk;
     PDataRun CurrentRun, Head;
 
     // TODO:
@@ -142,8 +142,9 @@ FileRecord::UpdateNonResidentData(_In_ PAttribute TargetAttribute,
         else
         {
             // Get data
+            Chunk = min(*Length, (BytesInRun - Offset));
             Status = DiskVolume->WriteVolume(GetOffset(CurrentRun->LCN) + Offset,
-                                             min(*Length, (BytesInRun - Offset)),
+                                             Chunk,
                                              Buffer);
             if (!NT_SUCCESS(Status))
             {
@@ -153,15 +154,14 @@ FileRecord::UpdateNonResidentData(_In_ PAttribute TargetAttribute,
             }
 
             // Adjust bytes written
-            BytesWritten += min(*Length, (BytesInRun - Offset));
+            BytesWritten += Chunk;
 
             // Are we done writing?
             if (BytesWritten == *Length)
                 break;
 
             // Clear offset
-            if (Offset)
-                Offset = 0;
+            Offset = 0;
         }
 
         // Set up next data run

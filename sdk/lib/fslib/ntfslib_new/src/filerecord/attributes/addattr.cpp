@@ -10,19 +10,13 @@
 #include "ntfslib_new_internal.h"
 
 #define UpdatedAttributeSize(OldAttribute, NewDataLength) \
-ROUND_UP(OldAttribute->Resident.DataOffset + NewDataLength, 8)
+ALIGN_UP_BY(OldAttribute->Resident.DataOffset + NewDataLength, 8)
 
 #define NewRecordSize(OldAttribute, NewDataLength) \
 Header->ActualSize - OldAttribute->Length + UpdatedAttributeSize(OldAttribute, NewDataLength)
 
 #define MustPromoteToNonResident(TargetAttribute, NewDataLength) \
 (NewRecordSize(TargetAttribute, NewDataLength) > (Header->AllocatedSize))
-
-#define CanDemoteAttribute(OldAttribute, NewDataLength) \
-!MustPromoteAttribute(OldAttribute, NewDataLength)
-
-#define NewAttributeEndPtr(OldAttribute, NewDataLength) \
-(PUCHAR)OldAttribute + UpdatedAttributeSize(OldAttribute, NewDataLength)
 
 // NOTE: ATTRIBUTES ARE ALIGNED TO 8-BYTE BOUNDARIES!!!
 
@@ -76,27 +70,15 @@ FileRecord::UpdateResidentData(_In_ PAttribute TargetAttribute,
         // Update record and attribute sizes
         Header->ActualSize += delta;
         TargetAttribute->Length = newAttrSizeAligned;
-        TargetAttribute->Resident.DataLength = (ULONG)newDataEnd;
+    }
 
-        // Zero-fill any gap between old end and the write offset
-        if (Offset > oldDataLen)
-        {
-            RtlZeroMemory(DataStart + oldDataLen, (SIZE_T)(Offset - oldDataLen));
-        }
-    }
-    else
-    {
-        // Pure overwrite within existing size; only data length may increase (without alignment growth)
-        if (newDataEnd > oldDataLen)
-        {
-            // Zero-fill any gap between old end and the write offset
-            if (Offset > oldDataLen)
-            {
-                RtlZeroMemory(DataStart + oldDataLen, (SIZE_T)(Offset - oldDataLen));
-            }
-            TargetAttribute->Resident.DataLength = (ULONG)newDataEnd;
-        }
-    }
+    // Zero-fill any gap between old end and the write offset
+    if (Offset > oldDataLen)
+        RtlZeroMemory(DataStart + oldDataLen, (SIZE_T)(Offset - oldDataLen));
+
+    // The data length only increases when we write past the old end.
+    if (newDataEnd > oldDataLen)
+        TargetAttribute->Resident.DataLength = (ULONG)newDataEnd;
 
     // Copy the buffer contents at the requested offset
     RtlCopyMemory(DataStart + Offset, Buffer, *Length);

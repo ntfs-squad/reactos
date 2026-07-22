@@ -19,10 +19,10 @@
 #define CompareLength(FileName, CurrentKey) \
 min(PathElementLength(FileName->Buffer), GetFileName(CurrentKey)->NameLength)
 
-LONG
+static LONG
 WideStringCompare(PWCHAR FirstString,
                   PWCHAR SecondString,
-                  UINT Length)
+                  ULONG Length)
 {
     UNICODE_STRING String1, String2;
 
@@ -86,6 +86,11 @@ Directory::FindNextFile(_In_  PWCHAR FileName,
     RtlInitEmptyUnicodeString(&FileNameString, FileName, (USHORT)(wcslen(FileName) * sizeof(WCHAR)));
     FileNameString.Length = (USHORT)((PathElementLength(FileName)) * sizeof(WCHAR));
 
+    /* Upcase the search name once for the case-insensitive matching done
+     * in DoesFileNameMatch() (see the note there).
+     */
+    RtlUpcaseUnicodeString(&FileNameString, &FileNameString, FALSE);
+
     // For now, start scan at beginning.
     FoundKey = FindKeyInNode(&FileNameString, RootNode->FirstKey);
 
@@ -93,6 +98,6 @@ Directory::FindNextFile(_In_  PWCHAR FileName,
         return STATUS_NOT_FOUND;
 
     CurrentKey = FoundKey;
-    *FileRecordNumber = GetFRNFromFileRef(FoundKey->Entry->Data.Directory.IndexedFile);
+    *FileRecordNumber = GetFRNFromFileRef(FileRef(FoundKey));
     return STATUS_SUCCESS;
 }

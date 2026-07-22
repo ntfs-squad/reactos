@@ -1,11 +1,20 @@
+#ifndef _NTFSLIB_NEW_INTERNAL_H_
+#define _NTFSLIB_NEW_INTERNAL_H_
 
 //Hack: Bad! Km only!
 #include <ntifs.h>
+
+/* Provides DPRINT1 for every library source (no-op in release builds).
+ * Must stay unconditional: NTFS_DEBUG is never defined for the library
+ * target itself, only by driver builds.
+ */
+#include <debug.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/* Environment contract: implemented by the linked env glue (km/um/fl). */
 void*
 NtfsAllocatePoolWithTag(_In_ POOL_TYPE PoolType,
                         _In_ size_t Size,
@@ -14,16 +23,14 @@ NtfsAllocatePoolWithTag(_In_ POOL_TYPE PoolType,
 void
 NtfsFreePool(_In_ void* pObject);
 
-void
-NtfsFillMemory(_In_ PVOID Buffer,
-               _In_ size_t Size,
-               _In_ UCHAR Value);
-
 BOOLEAN
 NtfsIsNameInExpression(_In_     PUNICODE_STRING Expression,
                        _In_     PUNICODE_STRING Name,
                        _In_     BOOLEAN IgnoreCase,
                        _In_opt_ PWCHAR UpcaseTable);
+
+/* Library option set through public NtfsSetShowMetadataFiles(). */
+extern BOOLEAN NtfsShowMetadataFiles;
 
 #ifdef __cplusplus
 }
@@ -34,18 +41,48 @@ void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
-extern "C" {
-    // Hack: This is a driver-specific setting. Our lib should not care.
-    extern BOOLEAN gShowMetadataFiles;
-}
 #endif
+
+// =========================
+// In-memory structures
+// =========================
+
+// Forward declarations for DataRun struct because it's a linked list.
+struct DataRun;
+typedef struct DataRun *PDataRun;
+
+struct DataRun
+{
+    PDataRun  NextRun;
+    ULONGLONG LCN;
+    ULONGLONG Length; // In clusters
+};
+
+struct _BTreeNode;
+struct _BTreeKey;
+
+typedef struct _BTreeNode BTreeNode, *PBTreeNode;
+typedef struct _BTreeKey BTreeKey, *PBTreeKey;
+
+struct _BTreeNode
+{
+    ULONGLONG  VCN;
+    PBTreeKey  FirstKey;
+};
+
+struct _BTreeKey
+{
+    PBTreeKey   ParentNodeKey; // Used to get entries linearly.
+    PBTreeNode  ChildNode;
+    PBTreeKey   NextKey;
+    PIndexEntry Entry;
+    ULONG       Flags;
+};
 
 /* Private macros */
 #define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
 
 #define FileRef(Key) ((Key)->Entry->Data.Directory.IndexedFile)
-
-#define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
 
 #define IsFileRecordInMFTMirr(FileRecordNumber) \
 ((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) > (FileRecordSize << 2)) ? \
@@ -53,18 +90,18 @@ extern "C" {
 : FileRecordNumber < 4
 
 #define LONGLONG_SIGN_EXTEND(Number, Bytes) \
-(Number << ((sizeof(LONGLONG) - Bytes) * 8)) >> ((sizeof(LONGLONG) - Bytes) * 8)
+(((Number) << ((sizeof(LONGLONG) - (Bytes)) * 8)) >> ((sizeof(LONGLONG) - (Bytes)) * 8))
 
 #define BytesPerIndexRecord(DiskVolume) \
 (BytesPerCluster(DiskVolume) * DiskVolume->ClustersPerIndexRecord)
 
 // Used for LoadDirectory()
 #define MayHaveShortKey(SearchKey) \
-!(SearchKey->Flags & DIR_KEY_8DOT3) \
-&& !(SearchKey->Entry->Flags & INDEX_ENTRY_END)
+(!((SearchKey)->Flags & DIR_KEY_8DOT3) \
+&& !((SearchKey)->Entry->Flags & INDEX_ENTRY_END))
 
 #define IsRootFile(Path) \
-Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
+((Path)[0] == L'\0' || ((Path)[0] == L'\\' && (Path)[1] == L'\0'))
 
 #define MFTDiskOffset (MFTLCN * BytesPerCluster(DiskVolume))
 #define MFTMirrDiskOffset (MFTMirrLCN * BytesPerCluster(DiskVolume))
@@ -76,11 +113,9 @@ Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 #define GetFileName(Key) \
 ((PFileNameEx)((Key)->Entry->IndexStream))
 
-#define GetVCN(NodeKey) \
-(PULONGLONG)(NodeKey->Entry + NodeKey->Entry->EntryLength - sizeof(ULONGLONG))
-
-// Hack for now so I know what maps to what
-#define GetIndexEntryVCN(IndexEntry) *GetVCN(IndexEntry)
+// The VCN of an entry's subnode is stored in the last 8 bytes of the entry.
+#define GetSubnodeVCN(Entry) \
+((PULONGLONG)((ULONG_PTR)(Entry) + (Entry)->EntryLength - sizeof(ULONGLONG)))
 
 // Calculates start of Index Buffer relative to the index allocation, given the node's VCN
 #define GetAllocationOffsetFromVCN(VCN) \
@@ -92,27 +127,32 @@ Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 
 #define IsIndexNode(Key) !!((Key)->Entry->Flags & INDEX_ENTRY_NODE)
 
-#define IsEndOfNode(Key) IsLastEntry(Key) && !IsIndexNode(Key)
+#define IsEndOfNode(Key) (IsLastEntry(Key) && !IsIndexNode(Key))
 
-#define GetNextKey(Key) \
-IsIndexNode(Key) ? (Key)->ChildNode->FirstKey : IsEndOfNode(Key) ? \
-(Key)->ParentNodeKey ? (Key)->ParentNodeKey->NextKey : NULL : (Key)->NextKey
+#ifdef __cplusplus
+static inline PBTreeKey GetNextKey(PBTreeKey Key)
+{
+    if (IsIndexNode(Key))
+        return Key->ChildNode->FirstKey;
 
-#define IsLowercaseCharacterW(wchar) wchar >= L'a' && wchar <= L'z'
+    if (IsEndOfNode(Key))
+        return Key->ParentNodeKey ? Key->ParentNodeKey->NextKey : NULL;
+
+    return Key->NextKey;
+}
+#endif
+
+#define IsLowercaseCharacterW(wchar) ((wchar) >= L'a' && (wchar) <= L'z')
 
 #define IsDotOrDotDotDirW(Buffer, Length) \
-Buffer[0] == L'.' \
-? Length == sizeof(WCHAR) || (Buffer[1] == L'.' && Length == 2 * sizeof(WCHAR)) \
-: FALSE
+((Buffer)[0] == L'.' \
+? (Length) == sizeof(WCHAR) || ((Buffer)[1] == L'.' && (Length) == 2 * sizeof(WCHAR)) \
+: FALSE)
 
 #define DIR_KEY_8DOT3 1
 
 #define GetWStrLength(x) ((x) * sizeof(WCHAR))
 #define MAX_SHORTNAME_LENGTH 12
-// #define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
-#define ULONG_ROUND_UP(x) ROUND_UP((x), (sizeof(ULONG)))
-
-#define GetSubnodeVCN(Entry) (PULONGLONG)((ULONG_PTR)Entry + Entry->EntryLength - 8)
 
 // Macro to get data pointer from a resident attribute pointer.
 #define GetResidentDataPointer(Attrib) (char*)(((ULONG_PTR)Attrib) + \
@@ -125,9 +165,8 @@ Buffer[0] == L'.' \
     x = tmp;\
 }
 
-// Macros to get values from a file reference
-#define GetFRNFromFileRef(x) (x & 0xFFFFFFFFFFFF)
-#define GetSQNFromFileRef(x) ((x << 48) >> 48) & 0xFFFF
+// Macro to get the file record number from a file reference
+#define GetFRNFromFileRef(x) ((x) & 0xFFFFFFFFFFFF)
 
 #define GetNamePointer(x) (((char*)x) + (x->NameOffset))
 
@@ -155,26 +194,16 @@ NtfsWriteVolume(_In_    ULONGLONG Offset,
 // =========================
 // NTFS Memory Tags
 // =========================
-// HACK: These should probably only be in *km target.
+/* The core passes these into the allocation contract; each environment
+ * decides whether to honor them (km pools do, the um heap ignores them).
+ */
 
-#ifndef TAG_NTFS
 #define TAG_NTFS 'NTFS'
-#endif
-#ifndef TAG_MFT
 #define TAG_MFT '$MFT'
-#endif
-#ifndef TAG_FILE_RECORD
 #define TAG_FILE_RECORD 'FREC'
-#endif
-#ifndef TAG_DATA_RUN
 #define TAG_DATA_RUN 'DTRN'
-#endif
-#ifndef TAG_LOG_FILE_SERVICE
 #define TAG_LOG_FILE_SERVICE 'LgFS'
-#endif
-#ifndef TAG_BTREE
 #define TAG_BTREE 'BTRE'
-#endif
 
 // =========================
 // NTFS C++ Classes
@@ -192,13 +221,6 @@ public:
     UINT64 SerialNumber;
     USHORT NtfsMajorVersion;
     USHORT NtfsMinorVersion;
-    ULONG Flags;
-    ULONG OpenHandleCount;
-    PDEVICE_OBJECT StorageDevice;
-    PFILE_OBJECT StreamFileObject;
-    PVPB VolParamBlock;
-    PFILE_OBJECT PubFileObject;
-    PDEVICE_OBJECT PartDeviceObj;
     class MasterFileTable* MFT;
     class LogFileService* LFS;
     BOOLEAN IsReadOnly = FALSE;
@@ -304,14 +326,17 @@ public:
     Initialize(_In_ PUCHAR BootSectorData);
 
     NTSTATUS
-    GetADSPreference(_In_  PFILE_OBJECT FileObj,
+    GetADSPreference(_In_  PUNICODE_STRING FileName,
                      _Out_ AttributeType* RequestedType,
                      _Out_ PWSTR* RequestedStream);
 
-    // ./sanity.cpp
-    // These functions will likely be removed before the driver is released.
-    void RunSanityChecks();
-    void SanityCheckBlockIO();
+private:
+    /* $UpCase table, read from disk on first use by UpcaseWideString(). */
+    PWSTR UpcaseTable = NULL;
+    ULONG UpcaseTableLength = 0; // In WCHARs
+
+    NTSTATUS
+    LoadUpcaseTable();
 
 } *PVolume;
 
@@ -347,6 +372,15 @@ public:
                       _In_ PUCHAR Buffer,
                       _Inout_ PULONG Length,
                       _In_ ULONGLONG Offset = 0);
+    /* Same as above, but reuses an already-decoded data run list for
+     * non-resident attributes instead of re-decoding it on every call.
+     * The caller keeps ownership of the run list.
+     */
+    NTSTATUS CopyData(_In_ PAttribute Attr,
+                      _In_opt_ PDataRun PrecomputedRuns,
+                      _In_ PUCHAR Buffer,
+                      _Inout_ PULONG Length,
+                      _In_ ULONGLONG Offset);
 
     // ./write.cpp
     NTSTATUS
@@ -380,25 +414,21 @@ private:
                           _In_ ULONGLONG Offset = 0);
 } *PFileRecord;
 
-typedef class BTree
+class BTree
 {
 public:
     NTSTATUS ResetCurrentKey();
-    // Hack:
-    // TODO: Make private when we abandon oldbtreefuncs
-    PBTreeNode RootNode;
 protected:
     ~BTree();
+    PBTreeNode RootNode;
     PBTreeKey CurrentKey;
-} *PBTree;
+};
 
 typedef class Directory : BTree
 {
 public:
     // ./directory.cpp
     Directory(_In_ PVolume DiskVolume);
-    Directory(_In_ PVolume DiskVolume,
-              _In_ PFileRecord File);
     NTSTATUS
     LoadDirectory(_In_ PFileRecord File);
 
@@ -435,6 +465,7 @@ private:
     NTSTATUS
     CreateNode(_In_    PFileRecord File,
                _In_    PAttribute  IndexAllocationAttribute,
+               _In_    PDataRun    IndexAllocationRuns,
                _Inout_ PBTreeKey   ParentNodeKey);
     NTSTATUS
     CreateRootNode(_In_  PFileRecord File,
@@ -468,13 +499,14 @@ private:
 typedef class MasterFileTable
 {
 public:
-    UINT FileRecordSize;
+    ULONG FileRecordSize;
 
     // ./ mft.cpp
     MasterFileTable(_In_ PVolume TargetVolume,
                     _In_ UINT64 MFTLCN,
                     _In_ UINT64 MFTMirrLCN,
                     _In_ INT8   ClustersPerFileRecord);
+    ~MasterFileTable();
 
     NTSTATUS
     WriteFileRecordToMFT(_In_ PFileRecord File);
@@ -507,9 +539,17 @@ private:
     PVolume DiskVolume;
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;
-    INT    MftZoneReservation;
     PFileRecord MFTFile = NULL;
     PFileRecord MFTMirrFile = NULL;
+
+    /* $DATA attribute and decoded run list of the cached $MFT/$MFTMirr
+     * records, so every GetFileRecord() doesn't re-decode the runs.
+     * Safe to cache while cluster (re)allocation is unimplemented.
+     */
+    PAttribute MFTDataAttr = NULL;
+    PAttribute MFTMirrDataAttr = NULL;
+    PDataRun MFTDataRuns = NULL;
+    PDataRun MFTMirrDataRuns = NULL;
 } *PMasterFileTable;
 #endif // __cplusplus
 
@@ -660,7 +700,7 @@ private:
      UINT32 AttributeNamesLength;       // Offset 0x34, Size 4
      UINT32 DirtyPageTableLength;       // Offset 0x38, Size 4
      UINT32 TransactionTableLength;     // Offset 0x3C, Size 4
- } PRestartArea;
+ } *PRestartArea;
  
  // Used for disks formatted on Windows 2000 - Windows Server 2003 (Size 104)
  typedef struct RestartArea2
@@ -848,15 +888,6 @@ typedef struct BitmapRange
 
 #ifdef __cplusplus
 
-typedef class RestartPage
-{
-    PLfsRestartPage Header;
-    PLfsRestartArea Foo;
-
-    // The head for an array of clients for the log file (usually just NTFS itself)
-    PLfsClientRecord ClientArrayHead;
-} *PRestartPage;
-
 typedef class LogFileService
 {
 public:
@@ -866,9 +897,11 @@ public:
     LogFileService(_In_ PVolume TargetVolume);
     ~LogFileService();
     NTSTATUS InitializeLFS();
-    NTSTATUS LogTransaction();
-    NTSTATUS CommitTransaction();
     NTSTATUS ShutdownLFS();
+
+    /* Roadmap: LogTransaction()/CommitTransaction() for journaling and a
+     * periodic WriteCheckpointRecord() will be added with the LFS write path.
+     */
 private:
     PVolume DiskVolume;
     PFileRecord LogFile;
@@ -879,9 +912,6 @@ private:
 
     // Call when creating LFS Object
     NTSTATUS PerformFileSystemRecovery();
-
-    // Call every 5 seconds
-    NTSTATUS WriteCheckpointRecord();
 
     BOOLEAN IsSupportedClientVersion()
     {
@@ -903,217 +933,4 @@ private:
 
 #endif // __cplusplus
 
-// TODO: Maybe we should remove this if NTFS_DEBUG isn't defined?
-#include <debug.h>
-#ifdef NTFS_DEBUG
-
-/* Debug print functions. REMOVE WHEN DONE. */
-
-static inline void PrintNTFSBootSector(PBootSector PartBootSector)
-{
-    DbgPrint("OEM ID            %s\n", PartBootSector->OEM_ID);
-    DbgPrint("Bytes per sector  %ld\n", PartBootSector->BytesPerSector);
-    DbgPrint("Sectors/cluster   %ld\n", PartBootSector->SectorsPerCluster);
-    DbgPrint("Sectors per track %ld\n", PartBootSector->SectorsPerTrack);
-    DbgPrint("Number of heads   %ld\n", PartBootSector->NumberOfHeads);
-    DbgPrint("Sectors in volume %ld\n", PartBootSector->SectorsInVolume);
-    DbgPrint("LCN for $MFT      %ld\n", PartBootSector->MFTLCN);
-    DbgPrint("LCN for $MFT_MIRR %ld\n", PartBootSector->MFTMirrLCN);
-    DbgPrint("Clusters/MFT Rec  %d\n", PartBootSector->ClustersPerFileRecord);
-    DbgPrint("Clusters/IndexRec %d\n", PartBootSector->ClustersPerIndexRecord);
-    DbgPrint("Serial number     0x%X\n", PartBootSector->SerialNumber);
-};
-
-#if 0
-// Most of these broke with the driver migration.
-#define PrintFlag(Item, Flag, FlagName) if(Item & Flag) \
-DbgPrint("    %s\n", FlagName); \
-
-static inline void PrintUpCaseTable(PUCHAR UpCaseData,
-                                    ULONG Length)
-{
-    DbgPrint("Offset | Value\n");
-    for (int i = 0; i < Length; i += 2)
-    {
-        DbgPrint("0x%2X   | %C\n", i, ((WCHAR)(UpCaseData[i])));
-    }
-}
-
-static inline void PrintAttrDefTable(PNtfsFileRecord AttrDef)
-{
-    PAttrDefEntry TableEntry;
-    ULONG AttrDefEntryIndex, AttrDefDataSize, MaxIndex;
-    PUCHAR Buffer;
-    PNtfsAttribute DataAttr;
-
-    DataAttr = AttrDef->GetAttribute(TypeData, NULL);
-    AttrDefDataSize = DataAttr->NonResident.DataSize;
-    Buffer = new(NonPagedPool) UCHAR[DataAttr->NonResident.DataSize];
-    AttrDef->CopyData(DataAttr,
-                      Buffer,
-                      &AttrDefDataSize,
-                      0);
-    AttrDefDataSize = DataAttr->NonResident.DataSize - AttrDefDataSize;
-    AttrDefEntryIndex = 0;
-    MaxIndex = AttrDefDataSize / sizeof(AttrDefEntry);
-    TableEntry = (PAttrDefEntry)Buffer;
-
-    DbgPrint(" Type  | Name                       | Flags | Min  | Max  \n");
-    DbgPrint("==========================================================\n");
-
-    for (int i = 0; i < MaxIndex; i++)
-    {
-        DbgPrint(" 0x%03X | %-26S | 0x%02X  | 0x%02X | 0x%X\n",
-                 TableEntry->AttributeType,
-                 TableEntry->Label,
-                 TableEntry->Flags,
-                 TableEntry->MinimumSize,
-                 TableEntry->MaximumSize);
-
-        // Move onto the next element
-        TableEntry++;
-    }
-    delete Buffer;
-}
-
-static inline void PrintFileRecordHeader(FileRecordHeader* FRH)
-{
-    DbgPrint("MFT Record Number: %ld\n", FRH->MFTRecordNumber);
-}
-
-static inline void PrintAttributeHeader(PAttribute Attr)
-{
-    DbgPrint("Attribute Type:        0x%X\n", Attr->AttributeType);
-    DbgPrint("Length:                %ld\n", Attr->Length);
-    DbgPrint("Nonresident Flag:      %ld\n", Attr->IsNonResident);
-    DbgPrint("Name Length:           %ld\n", Attr->NameLength);
-    DbgPrint("Name Offset:           %ld\n", Attr->NameOffset);
-    DbgPrint("Flags:                 0x%X\n", Attr->Flags);
-    DbgPrint("Attribute ID:          %ld\n", Attr->AttributeID);
-
-    if (!(Attr->IsNonResident))
-    {
-        DbgPrint("Data Length:           %ld\n", Attr->Resident.DataLength);
-        DbgPrint("Data Offset:           0x%X\n", Attr->Resident.DataLength);
-        DbgPrint("Indexed Flag:          %ld\n", Attr->Resident.IndexedFlag);
-    }
-
-    else
-    {
-        DbgPrint("First VCN:             %ld\n", Attr->NonResident.FirstVCN);
-        DbgPrint("Last VCN:              %ld\n", Attr->NonResident.LastVCN);
-        DbgPrint("Data Run Offset:       %ld\n", Attr->NonResident.DataRunsOffset);
-        DbgPrint("Compression Unit Size: %ld\n", Attr->NonResident.CompressionUnitSize);
-        DbgPrint("Allocated Size:        %ld\n", Attr->NonResident.AllocatedSize);
-        DbgPrint("Data Size:             %ld\n", Attr->NonResident.DataSize);
-        DbgPrint("Initialized Data Size: %ld\n", Attr->NonResident.InitalizedDataSize);
-    }
-}
-
-static inline void PrintFilenameAttrHeader(FileNameEx* Attr)
-{
-    UINT64 FRN = GetFRNFromFileRef(Attr->ParentFileReference);
-    UINT16 SQN = GetSQNFromFileRef(Attr->ParentFileReference);
-
-    DbgPrint("Parent Dir FRN:   %ld\n", FRN);
-    DbgPrint("Parent Dir SQN:   %ld\n", SQN);
-    DbgPrint("Creation Time:    %ld\n", Attr->CreationTime);
-    DbgPrint("Last Write Time:  %ld\n", Attr->LastWriteTime);
-    DbgPrint("Change Time:      %ld\n", Attr->ChangeTime);
-    DbgPrint("Last Access Time: %ld\n", Attr->LastAccessTime);
-    DbgPrint("Allocated Size:   %ld\n", Attr->AllocatedSize);
-    DbgPrint("Data Size:        %ld\n", Attr->DataSize);
-    DbgPrint("Flags:            0x%X\n", Attr->Flags);
-    DbgPrint("Filename:        \"%S\"\n", Attr->Name);
-}
-
-static inline void PrintStdInfoEx(StandardInformationEx* StdInfo)
-{
-    DbgPrint("Change Time:      %lu\n", StdInfo->ChangeTime);
-    DbgPrint("Last Access Time: %lu\n", StdInfo->LastAccessTime);
-    DbgPrint("Last Write Time:  %lu\n", StdInfo->LastWriteTime);
-    DbgPrint("Creation Time:    %lu\n", StdInfo->CreationTime);
-}
-
-static inline void PrintIndexRootEx(PIndexRootEx IndexRootData)
-{
-    DbgPrint("Attribute Type:            0x%X\n", IndexRootData->AttributeType);
-    DbgPrint("Collation Rule:            0x%X\n", IndexRootData->CollationRule);
-    DbgPrint("Bytes per Index Record:    %ld\n", IndexRootData->BytesPerIndexRec);
-    DbgPrint("Clusters per Index Record: %ld\n", IndexRootData->ClusPerIndexRec);
-}
-
-static inline void PrintFileBothDirEntry(PFILE_BOTH_DIR_INFORMATION Data)
-{
-    DbgPrint("Short Name:        \"%S\"\n", Data->ShortName);
-    DbgPrint("Short Name Length: %ld\n", Data->ShortNameLength);
-    DbgPrint("File Name:         \"%S\"\n", Data->FileName);
-    DbgPrint("File Name Length:  %ld\n", Data->FileNameLength);
-}
-
-static inline void PrintFileBothDirInfo(PFILE_BOTH_DIR_INFORMATION Info, UINT Depth)
-{
-    PFILE_BOTH_DIR_INFORMATION CurrentStruct = Info;
-
-    for (int i = 0; i < Depth; i++)
-    {
-        if (CurrentStruct)
-        {
-            PrintFileBothDirEntry(CurrentStruct);
-            if (CurrentStruct->NextEntryOffset)
-                CurrentStruct = (PFILE_BOTH_DIR_INFORMATION)((char*)CurrentStruct + CurrentStruct->NextEntryOffset);
-            else
-                CurrentStruct = NULL;
-        }
-    }
-}
-
-static inline void PrintFileCreateOptions(UINT8 Disposition, ULONG CreateOptions)
-{
-    switch (Disposition)
-    {
-        case FILE_SUPERSEDE:
-            DbgPrint("Disposition: FILE_SUPERSEDE\n");
-            break;
-        case FILE_CREATE:
-            DbgPrint("Disposition: FILE_CREATE\n");
-            break;
-        case FILE_OPEN:
-            DbgPrint("Disposition: FILE_OPEN\n");
-            break;
-        case FILE_OPEN_IF:
-            DbgPrint("Disposition: FILE_OPEN_IF\n");
-            break;
-        case FILE_OVERWRITE:
-            DbgPrint("Disposition: FILE_OVERWRITE\n");
-            break;
-        case FILE_OVERWRITE_IF:
-            DbgPrint("Disposition: FILE_OVERWRITE_IF\n");
-            break;
-        default:
-            DbgPrint("Disposition: UNKNOWN\n");
-            break;
-    }
-
-    DbgPrint("Create Options Flags:\n");
-    PrintFlag(CreateOptions, FILE_DIRECTORY_FILE, "FILE_DIRECTORY_FILE");
-    PrintFlag(CreateOptions, FILE_NON_DIRECTORY_FILE, "FILE_NON_DIRECTORY_FILE");
-    PrintFlag(CreateOptions, FILE_WRITE_THROUGH, "FILE_WRITE_THROUGH");
-    PrintFlag(CreateOptions, FILE_SEQUENTIAL_ONLY, "FILE_SEQUENTIAL_ONLY");
-    PrintFlag(CreateOptions, FILE_RANDOM_ACCESS, "FILE_RANDOM_ACCESS");
-    PrintFlag(CreateOptions, FILE_NO_INTERMEDIATE_BUFFERING, "FILE_NO_INTERMEDIATE_BUFFERING");
-    PrintFlag(CreateOptions, FILE_SYNCHRONOUS_IO_ALERT, "FILE_SYNCHRONOUS_IO_ALERT");
-    PrintFlag(CreateOptions, FILE_SYNCHRONOUS_IO_NONALERT, "FILE_SYNCHRONOUS_IO_NONALERT");
-    PrintFlag(CreateOptions, FILE_CREATE_TREE_CONNECTION, "FILE_CREATE_TREE_CONNECTION");
-    PrintFlag(CreateOptions, FILE_COMPLETE_IF_OPLOCKED, "FILE_COMPLETE_IF_OPLOCKED");
-    PrintFlag(CreateOptions, FILE_NO_EA_KNOWLEDGE, "FILE_NO_EA_KNOWLEDGE");
-    PrintFlag(CreateOptions, FILE_OPEN_REPARSE_POINT, "FILE_OPEN_REPARSE_POINT");
-    PrintFlag(CreateOptions, FILE_DELETE_ON_CLOSE, "FILE_DELETE_ON_CLOSE");
-    PrintFlag(CreateOptions, FILE_OPEN_BY_FILE_ID, "FILE_OPEN_BY_FILE_ID");
-    PrintFlag(CreateOptions, FILE_OPEN_FOR_BACKUP_INTENT, "FILE_OPEN_FOR_BACKUP_INTENT");
-    // PrintFlag(CreateOptions, FILE_OPEN_REQUIRING_OPLOCK, "FILE_OPEN_REQUIRING_OPLOCK");
-    PrintFlag(CreateOptions, FILE_RESERVE_OPFILTER, "FILE_RESERVE_OPFILTER");
-}
-#endif // 0 (hack comment out)
-
-#endif // NTFS_DEBUG
+#endif /* _NTFSLIB_NEW_INTERNAL_H_ */

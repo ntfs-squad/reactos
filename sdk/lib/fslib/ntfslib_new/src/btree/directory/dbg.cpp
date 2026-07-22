@@ -12,7 +12,7 @@
 static
 void
 DumpBTreeNode(PBTreeNode Node,
-              UINT Depth);
+              ULONG Depth);
 static
 void
 DumpBTreeKey(PBTreeKey Key,
@@ -49,7 +49,7 @@ DumpBTreeKey(PBTreeKey Key,
 static
 void
 DumpBTreeNode(PBTreeNode Node,
-              UINT Depth)
+              ULONG Depth)
 {
     PBTreeKey CurrentKey;
     CurrentKey = Node->FirstKey;

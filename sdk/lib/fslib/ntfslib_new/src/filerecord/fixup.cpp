@@ -16,12 +16,7 @@
 (PUSHORT)((ULONG_PTR)Header + Header->Header.UpdateSequenceOffset + sizeof(USHORT))
 
 #define OffsetToFirstUSN(Volume) \
-(DiskVolume->BytesPerSector - sizeof(USHORT))
-
-#define IncrementUpdateSequenceNumber(Header) \
-((*GetUpdateSequenceNumber(Header)) == 0xFFFF) \
-? *GetUpdateSequenceNumber(Header) = 0x1 \
-: (*GetUpdateSequenceNumber(Header))++
+((Volume)->BytesPerSector - sizeof(USHORT))
 
 /* NOTE: For more information, see: https://flatcap.github.io/linux-ntfs/ntfs/concepts/fixup.html
  *
@@ -37,21 +32,14 @@ FileRecord::CommitFixup()
     PUSHORT UpdateSequenceArray;
     PUSHORT DataPtr;
 
-    // Increment update sequence number by one.
-    // IncrementUpdateSequenceNumber(Header);
-
     // Get update sequence number
     UpdateSequenceNumber = *GetUpdateSequenceNumber(Header);
     UpdateSequenceArray = GetUpdateSequenceArray(Header);
 
-    /* HACK: We don't update the USN right now because
-     * doing so would require a working log file service (lfs).
+    /* HACK: We don't increment the USN here yet because doing so
+     * would require a working log file service (lfs).
      */
-#if 0
-    IncrementUpdateSequenceNumber(Header);
-#else
     DPRINT1("Skipping USN update!\n");
-#endif
 
     DataPtr = (PUSHORT)(Data + OffsetToFirstUSN(DiskVolume));
     USAPos = 0;
@@ -94,7 +82,7 @@ FileRecord::ApplyFixup()
     UpdateSequenceNumber = *GetUpdateSequenceNumber(Header);
     UpdateSequenceArray = GetUpdateSequenceArray(Header);
 
-    DataPtr = (PUSHORT)(Data + OffsetToFirstUSN(Volume));
+    DataPtr = (PUSHORT)(Data + OffsetToFirstUSN(DiskVolume));
     UpdateSequenceArrayPos = 0;
 
     while (DataPtr < (PUSHORT)((ULONG_PTR)Header + Header->AllocatedSize))
