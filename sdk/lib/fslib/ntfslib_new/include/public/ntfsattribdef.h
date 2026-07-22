@@ -1,4 +1,6 @@
 
+#ifndef _NTFSATTRIBDEF_H_
+#define _NTFSATTRIBDEF_H_
 
 // Attribute end marker
 #define ATTR_END           0xFFFFFFFF
@@ -296,3 +298,5 @@ typedef struct
     UINT8  NameLength;                     // Offset 0x05, Size 1
     UINT16 ValueLength;                    // Offset 0x06, Size 2
 } EAEx, *PEAEx;
+
+#endif /* _NTFSATTRIBDEF_H_ */

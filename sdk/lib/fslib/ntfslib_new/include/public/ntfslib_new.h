@@ -1,4 +1,7 @@
 
+#ifndef _NTFSLIB_NEW_H_
+#define _NTFSLIB_NEW_H_
+
 #ifndef _WINNT_
 #include <ntdef.h>
 #endif
@@ -359,3 +362,5 @@ NtfsVolumeSetVolumeLabel(
 #ifdef __cplusplus
 // TODO: Add Pimpl classes for Volume, MasterFileTable, LogFileService, Directory, FileRecord.
 #endif
+
+#endif /* _NTFSLIB_NEW_H_ */

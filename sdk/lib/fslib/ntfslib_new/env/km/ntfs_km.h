@@ -1,6 +1,10 @@
 
 #define NTFS_KERNEL_MODE
 
+/* For the AttributeType enum; C++ forbids forward-declaring an enum
+ * without a fixed underlying type. */
+#include "../../include/public/ntfslib_new.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,8 +29,6 @@ typedef NtfsMasterFileTable* PNtfsMasterFileTable;
 
 typedef struct NtfsVolume NtfsVolume;
 typedef NtfsVolume* PNtfsVolume;
-
-typedef enum AttributeType AttributeType;
 
 /* HACK: This is only temporary as I refactor this out of the public API. */
 NTSTATUS

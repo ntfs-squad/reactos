@@ -177,12 +177,14 @@
 
 /* GLOBAL DATA ***************************************************************/
 
-struct
+typedef struct _NTFS_FORMAT_DATA
 {
     HANDLE                  DiskHandle;
     GET_LENGTH_INFORMATION* LengthInformation;
     PDISK_GEOMETRY          DiskGeometry;
-} NtfsFormatData;
+} NTFS_FORMAT_DATA;
+
+extern NTFS_FORMAT_DATA NtfsFormatData;
 
 
 /* BOOT SECTOR STRUCTURES ****************************************************/
