@@ -96,7 +96,7 @@ FsRecNtfsFsControl(IN PDEVICE_OBJECT DeviceObject,
 
             /* Load the file system */
             Status = FsRecLoadFileSystem(DeviceObject,
-                                         L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Ntfs");
+                                         L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Ntfs3g");
             break;
 
         default:
