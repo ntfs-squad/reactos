@@ -1324,23 +1324,28 @@ NTSTATUS
 FileRecord::CreateInitialAttributeList()
 {
     PAttribute Candidate = NULL;
+    PAttribute Candidates[2] = {};
+    PAttribute EaCandidate = NULL;
+    PAttribute EaInformationCandidate = NULL;
     PAttribute FallbackCandidate = NULL;
     PAttribute ListAttribute = NULL;
-    PAttribute MovedAttribute = NULL;
+    PAttribute MovedAttributes[2] = {};
     PFileRecord Extension = NULL;
     PINITIAL_ATTRIBUTE_LIST_ENTRY Entries = NULL;
     PUCHAR BaseRecordBackup = NULL;
-    PUCHAR CandidateData = NULL;
+    PUCHAR CandidateData[2] = {};
     PUCHAR ListData = NULL;
-    PWSTR CandidateName = NULL;
+    PWSTR CandidateNames[2] = {};
     ULONGLONG BaseFileReference;
     ULONG AttributeCount = 0;
-    ULONG CandidateDataLength = 0;
-    ULONG CandidateNameLength = 0;
+    ULONG CandidateCount = 0;
+    ULONG CandidateDataLengths[2] = {};
+    ULONG CandidateNameLengths[2] = {};
     ULONG CandidateRecordLength = 0;
     ULONG EntryCount;
     ULONG EntryIndex;
     ULONG ListLength = 0;
+    ULONG MovedCount = 0;
     ULONG Offset;
     ULONG WrittenLength;
     BOOLEAN BaseWriteAttempted = FALSE;
@@ -1375,10 +1380,10 @@ FileRecord::CreateInitialAttributeList()
      * Moving one existing resident named stream is sufficient to replace its
      * in-record bytes with the much smaller nonresident $ATTRIBUTE_LIST
      * header. Prefer the largest stream so the list can promote without a
-     * second structural move. A legacy per-file security descriptor is also
-     * safe to relocate because it is read-only in the current mutation API;
-     * keep all other attribute classes in the base record until their write
-     * paths are extension-aware.
+     * second structural move. The native EA attributes form one inseparable
+     * pair, but their mutation path is extension-aware and can now relocate
+     * both together. A legacy per-file security descriptor is also safe to
+     * relocate because it is read-only in the current mutation API.
      */
     Offset = Header->AttributeOffset;
     while (Offset < Header->ActualSize)
@@ -1430,6 +1435,32 @@ FileRecord::CreateInitialAttributeList()
         {
             FallbackCandidate = Attribute;
         }
+        else if (!Attribute->IsNonResident &&
+                 Attribute->AttributeType ==
+                    TypeEAInformation &&
+                 Attribute->NameLength == 0 &&
+                 Attribute->Flags == 0)
+        {
+            if (EaInformationCandidate)
+            {
+                Status = STATUS_EA_CORRUPT_ERROR;
+                goto Done;
+            }
+            EaInformationCandidate = Attribute;
+        }
+        else if (!Attribute->IsNonResident &&
+                 Attribute->AttributeType ==
+                    TypeEA &&
+                 Attribute->NameLength == 0 &&
+                 Attribute->Flags == 0)
+        {
+            if (EaCandidate)
+            {
+                Status = STATUS_EA_CORRUPT_ERROR;
+                goto Done;
+            }
+            EaCandidate = Attribute;
+        }
         Offset += Attribute->Length;
     }
     if (!EndMarkerFound)
@@ -1437,9 +1468,28 @@ FileRecord::CreateInitialAttributeList()
         Status = STATUS_FILE_CORRUPT_ERROR;
         goto Done;
     }
-    if (!Candidate)
-        Candidate = FallbackCandidate;
-    if (!Candidate &&
+    if (Candidate)
+    {
+        Candidates[CandidateCount++] = Candidate;
+    }
+    else if (EaInformationCandidate &&
+             EaCandidate &&
+             (!FallbackCandidate ||
+              EaInformationCandidate->Length +
+                  EaCandidate->Length >=
+                  FallbackCandidate->Length))
+    {
+        Candidates[CandidateCount++] =
+            EaInformationCandidate;
+        Candidates[CandidateCount++] =
+            EaCandidate;
+    }
+    else if (FallbackCandidate)
+    {
+        Candidates[CandidateCount++] =
+            FallbackCandidate;
+    }
+    if (CandidateCount == 0 &&
         (Header->ActualSize >
              Header->AllocatedSize ||
          Header->AllocatedSize -
@@ -1449,45 +1499,58 @@ FileRecord::CreateInitialAttributeList()
         goto Done;
     }
 
-    if (Candidate)
+    if (CandidateCount != 0)
     {
-        CandidateNameLength =
-            Candidate->NameLength;
-        CandidateDataLength =
-            Candidate->Resident.DataLength;
-        CandidateName =
-            new(PagedPool, TAG_NTFS)
-                WCHAR[CandidateNameLength + 1];
-        if (!CandidateName)
+        for (ULONG Index = 0;
+             Index < CandidateCount;
+             Index++)
         {
-            Status = STATUS_INSUFFICIENT_RESOURCES;
-            goto Done;
-        }
-        RtlCopyMemory(
-            CandidateName,
-            reinterpret_cast<PUCHAR>(Candidate) +
-                Candidate->NameOffset,
-            CandidateNameLength * sizeof(WCHAR));
-        CandidateName[CandidateNameLength] = 0;
-
-        if (CandidateDataLength != 0)
-        {
-            CandidateData =
+            CandidateNameLengths[Index] =
+                Candidates[Index]->NameLength;
+            CandidateDataLengths[Index] =
+                Candidates[Index]->
+                    Resident.DataLength;
+            CandidateNames[Index] =
                 new(PagedPool, TAG_NTFS)
-                    UCHAR[CandidateDataLength];
-            if (!CandidateData)
+                    WCHAR[
+                        CandidateNameLengths[Index] +
+                        1];
+            if (!CandidateNames[Index])
             {
                 Status =
                     STATUS_INSUFFICIENT_RESOURCES;
                 goto Done;
             }
             RtlCopyMemory(
-                CandidateData,
+                CandidateNames[Index],
                 reinterpret_cast<PUCHAR>(
-                    Candidate) +
-                    Candidate->
+                    Candidates[Index]) +
+                    Candidates[Index]->NameOffset,
+                CandidateNameLengths[Index] *
+                    sizeof(WCHAR));
+            CandidateNames[Index][
+                CandidateNameLengths[Index]] = 0;
+
+            if (CandidateDataLengths[Index] == 0)
+                continue;
+            CandidateData[Index] =
+                new(PagedPool, TAG_NTFS)
+                    UCHAR[
+                        CandidateDataLengths[
+                            Index]];
+            if (!CandidateData[Index])
+            {
+                Status =
+                    STATUS_INSUFFICIENT_RESOURCES;
+                goto Done;
+            }
+            RtlCopyMemory(
+                CandidateData[Index],
+                reinterpret_cast<PUCHAR>(
+                    Candidates[Index]) +
+                    Candidates[Index]->
                         Resident.DataOffset,
-                CandidateDataLength);
+                CandidateDataLengths[Index]);
         }
 
         BaseFileReference =
@@ -1505,28 +1568,47 @@ FileRecord::CreateInitialAttributeList()
             SetAutomaticTimestampMask(0);
         if (!NT_SUCCESS(Status))
             goto Done;
-        Status = Extension->
-            InsertResidentAttribute(
-                (AttributeType)
-                    Candidate->AttributeType,
-                CandidateName,
-                &MovedAttribute);
-        if (!NT_SUCCESS(Status))
-            goto Done;
-        Status = Extension->ReplaceResidentData(
-            MovedAttribute,
-            CandidateData,
-            CandidateDataLength);
-        if (!NT_SUCCESS(Status))
-            goto Done;
+
+        for (ULONG Index = 0;
+             Index < CandidateCount;
+             Index++)
+        {
+            Status = Extension->
+                InsertResidentAttribute(
+                    (AttributeType)
+                        Candidates[Index]->
+                            AttributeType,
+                    CandidateNames[Index],
+                    &MovedAttributes[Index]);
+            if (!NT_SUCCESS(Status))
+                goto Done;
+            Status = Extension->
+                ReplaceResidentData(
+                    MovedAttributes[Index],
+                    CandidateData[Index],
+                    CandidateDataLengths[Index]);
+            if (!NT_SUCCESS(Status))
+                goto Done;
+            MovedCount++;
+        }
         Status = DiskVolume->MFT->
             WriteFileRecordToMFT(Extension);
         if (!NT_SUCCESS(Status))
             goto Done;
 
-        Status = RemoveAttributeRecord(Candidate);
-        if (!NT_SUCCESS(Status))
-            goto RestoreBase;
+        /*
+         * Remove later records first so pointers to earlier members of an EA
+         * pair remain valid while the record tail shifts.
+         */
+        for (ULONG Index = CandidateCount;
+             Index != 0;
+             Index--)
+        {
+            Status = RemoveAttributeRecord(
+                Candidates[Index - 1]);
+            if (!NT_SUCCESS(Status))
+                goto RestoreBase;
+        }
     }
     Status = InsertResidentAttribute(
         TypeAttributeList,
@@ -1585,7 +1667,7 @@ FileRecord::CreateInitialAttributeList()
 
     EntryCount =
         AttributeCount +
-        (MovedAttribute ? 1 : 0);
+        MovedCount;
     Entries =
         new(PagedPool, TAG_NTFS)
             INITIAL_ATTRIBUTE_LIST_ENTRY[
@@ -1647,24 +1729,32 @@ FileRecord::CreateInitialAttributeList()
         Offset += Attribute->Length;
     }
 
-    if (MovedAttribute)
+    for (ULONG Index = 0;
+         Index < MovedCount;
+         Index++)
     {
         PINITIAL_ATTRIBUTE_LIST_ENTRY Entry =
             &Entries[EntryIndex++];
         ULONG NameBytes =
-            MovedAttribute->NameLength *
+            MovedAttributes[Index]->NameLength *
             sizeof(WCHAR);
 
-        Entry->Attribute = MovedAttribute;
+        Entry->Attribute =
+            MovedAttributes[Index];
         Entry->Owner = Extension;
         Entry->NameLength =
-            MovedAttribute->NameLength;
+            MovedAttributes[Index]->NameLength;
         Entry->Name =
             reinterpret_cast<PWSTR>(
                 reinterpret_cast<PUCHAR>(
-                    MovedAttribute) +
-                MovedAttribute->NameOffset);
-        Entry->FirstVcn = 0;
+                    MovedAttributes[Index]) +
+                MovedAttributes[Index]->NameOffset);
+        Entry->FirstVcn =
+            MovedAttributes[Index]->
+                IsNonResident
+            ? MovedAttributes[Index]->
+                NonResident.FirstVCN
+            : 0;
         if (NameBytes > MAXULONG - 0x1a)
         {
             Status = STATUS_FILE_TOO_LARGE;
@@ -1849,8 +1939,13 @@ Done:
     delete Extension;
     delete[] Entries;
     delete[] ListData;
-    delete[] CandidateData;
-    delete[] CandidateName;
+    for (ULONG Index = 0;
+         Index < RTL_NUMBER_OF(CandidateData);
+         Index++)
+    {
+        delete[] CandidateData[Index];
+        delete[] CandidateNames[Index];
+    }
     delete[] BaseRecordBackup;
     return Status;
 }
