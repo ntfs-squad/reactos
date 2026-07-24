@@ -493,18 +493,28 @@ MasterFileTable::GetFileAttributeFromFileRecordNumber(_In_  AttributeType Type,
 
 NTSTATUS
 MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
-                                        _Out_ PFileRecord* File)
+                                        _Out_ PFileRecord* File,
+                                        _In_ BOOLEAN ReturnReparse,
+                                        _In_ BOOLEAN OpenFinalReparsePoint,
+                                        _Out_opt_ PULONG RemainingNameLength)
 {
     NTSTATUS Status;
-    PWCHAR NextSeparator, QueryElementPtr;
+    PWCHAR NextElement;
+    PWCHAR NextSeparator;
+    PWCHAR QueryElementPtr;
     Directory CurrentDirectory(DiskVolume);
     PFileRecord CurrentFile;
     ULONGLONG CurrentFileReference;
     ULONGLONG CurrentFRN;
+    BOOLEAN HasRemainingName;
 
     *File = NULL;
+    if (RemainingNameLength)
+        *RemainingNameLength = 0;
 
-    if (!Query)
+    if (!Query ||
+        (ReturnReparse &&
+         !RemainingNameLength))
     {
         DPRINT1("GetFileRecordFromQuery() requires a non-NULL query.\n");
         return STATUS_INVALID_PARAMETER;
@@ -570,14 +580,46 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
             return STATUS_FILE_CORRUPT_ERROR;
         }
 
-        NextSeparator = NtfsWcsChr(QueryElementPtr, L'\\');
+        NextSeparator =
+            NtfsWcsChr(QueryElementPtr, L'\\');
+        NextElement = NextSeparator;
+        if (NextElement)
+        {
+            while (*NextElement == L'\\')
+                NextElement++;
+        }
+        HasRemainingName =
+            NextElement && *NextElement != L'\0';
+
+        if (ReturnReparse &&
+            CurrentFile->GetAttribute(
+                TypeReparsePoint,
+                NULL) &&
+            (HasRemainingName ||
+             !OpenFinalReparsePoint))
+        {
+            SIZE_T RemainingCharacters =
+                NextSeparator
+                ? NtfsWcsLen(NextSeparator)
+                : 0;
+
+            if (RemainingCharacters >
+                MAXULONG / sizeof(WCHAR))
+            {
+                delete CurrentFile;
+                return STATUS_NAME_TOO_LONG;
+            }
+            *RemainingNameLength =
+                (ULONG)(RemainingCharacters *
+                        sizeof(WCHAR));
+            *File = CurrentFile;
+            return STATUS_REPARSE;
+        }
+
         if (NextSeparator)
         {
-            while (*NextSeparator == L'\\')
-                NextSeparator++;
-
             /* Ignore trailing and repeated path separators. */
-            if (*NextSeparator == L'\0')
+            if (!HasRemainingName)
                 break;
 
             if (!(CurrentFile->Header->Flags & FR_IS_DIRECTORY))
@@ -586,7 +628,7 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
                 return STATUS_NOT_FOUND;
             }
 
-            QueryElementPtr = NextSeparator;
+            QueryElementPtr = NextElement;
         }
 
         else

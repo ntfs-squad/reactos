@@ -1184,7 +1184,10 @@ public:
 
     NTSTATUS
     GetFileRecordFromQuery(_In_  PWCHAR Query,
-                           _Out_ PFileRecord* File);
+                           _Out_ PFileRecord* File,
+                           _In_ BOOLEAN ReturnReparse = FALSE,
+                           _In_ BOOLEAN OpenFinalReparsePoint = TRUE,
+                           _Out_opt_ PULONG RemainingNameLength = NULL);
 
     NTSTATUS
     ReadFileRecord(

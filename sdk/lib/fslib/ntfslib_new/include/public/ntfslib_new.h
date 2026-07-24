@@ -606,6 +606,21 @@ NtfsMasterFileTableGetFileRecordFromQuery(
     _Out_ PNtfsFileRecord* File);
 
 /*
+ * Resolves a counted UTF-16 path while stopping on an intermediate reparse
+ * point, or on the final component unless OpenFinalReparsePoint is set.
+ * QueryLength is measured in UTF-16 code units. STATUS_REPARSE returns the
+ * owning file record and the byte length of the unparsed path suffix.
+ */
+NTSTATUS
+NtfsMasterFileTableGetFileRecordFromQueryEx(
+    _In_ PNtfsMasterFileTable Mft,
+    _In_reads_(QueryLength) PWCHAR Query,
+    _In_ ULONG QueryLength,
+    _In_ BOOLEAN OpenFinalReparsePoint,
+    _Out_ PULONG RemainingNameLength,
+    _Out_ PNtfsFileRecord* File);
+
+/*
  * Implements FSCTL_GET_NTFS_FILE_RECORD enumeration semantics. The high
  * 16-bit sequence component of RequestedFileReference is ignored and the
  * first in-use ordinal at or below the requested ordinal is returned.
