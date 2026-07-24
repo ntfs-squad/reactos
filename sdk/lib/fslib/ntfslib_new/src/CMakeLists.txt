@@ -20,7 +20,11 @@ target_sources(ntfslib_new PRIVATE
     filerecord/read/security.cpp
     filerecord/read/streams.cpp
     filerecord/read/wof.cpp
+    filerecord/write/basic.cpp
+    filerecord/write/ea.cpp
     filerecord/write/filedata.cpp
+    filerecord/write/filename.cpp
+    filerecord/write/reparse.cpp
     filerecord/filerecord.cpp
     filerecord/fixup.cpp
     lfs/lfs.cpp
