@@ -362,6 +362,7 @@ FileRecord::GetExtentRecord(_In_ ULONGLONG FileReference)
 FileRecord*
 FileRecord::GetAttributeOwner(_In_ PAttribute Attribute)
 {
+    const ULONG AttributeHeaderSize = 0x10;
     PFileRecordExtentCacheEntry Entry;
     ULONG_PTR AttributeAddress;
     ULONG_PTR RecordAddress;
@@ -371,11 +372,13 @@ FileRecord::GetAttributeOwner(_In_ PAttribute Attribute)
 
     AttributeAddress = reinterpret_cast<ULONG_PTR>(Attribute);
     RecordAddress = reinterpret_cast<ULONG_PTR>(Data);
-    if (Data &&
-        RecordBufferSize >= sizeof(*Attribute) &&
+    if (Data && Header &&
+        Header->ActualSize <= RecordBufferSize &&
+        Header->ActualSize >= AttributeHeaderSize &&
         AttributeAddress >= RecordAddress &&
         AttributeAddress - RecordAddress <=
-            RecordBufferSize - sizeof(*Attribute))
+            Header->ActualSize -
+                AttributeHeaderSize)
     {
         return this;
     }
@@ -385,7 +388,11 @@ FileRecord::GetAttributeOwner(_In_ PAttribute Attribute)
         FileRecord* Record = Entry->Record;
 
         if (!Record || !Record->Data ||
-            Record->RecordBufferSize < sizeof(*Attribute))
+            !Record->Header ||
+            Record->Header->ActualSize >
+                Record->RecordBufferSize ||
+            Record->Header->ActualSize <
+                AttributeHeaderSize)
         {
             continue;
         }
@@ -394,7 +401,8 @@ FileRecord::GetAttributeOwner(_In_ PAttribute Attribute)
             reinterpret_cast<ULONG_PTR>(Record->Data);
         if (AttributeAddress >= RecordAddress &&
             AttributeAddress - RecordAddress <=
-                Record->RecordBufferSize - sizeof(*Attribute))
+                Record->Header->ActualSize -
+                    AttributeHeaderSize)
         {
             return Record;
         }
