@@ -16,6 +16,69 @@
 
 /* FUNCTIONS ****************************************************************/
 
+static
+NTSTATUS
+NtfsReturnCreateReparse(
+    _Inout_ PIRP Irp,
+    _In_ PNtfsFileRecord File,
+    _In_ ULONG RemainingNameLength)
+{
+    PReparsePointEx ReparseData;
+    ULONG BufferLength = 0;
+    NTSTATUS Status;
+
+    Irp->IoStatus.Information = 0;
+    if (!File ||
+        RemainingNameLength > MAXUSHORT)
+    {
+        return STATUS_NAME_TOO_LONG;
+    }
+
+    Status = NtfsFileRecordReadReparsePoint(
+        File,
+        NULL,
+        &BufferLength);
+    if (Status != STATUS_BUFFER_TOO_SMALL)
+        return Status;
+    if (BufferLength < sizeof(*ReparseData) ||
+        BufferLength >
+            NTFS_MAXIMUM_REPARSE_DATA_BUFFER_SIZE)
+    {
+        return STATUS_IO_REPARSE_DATA_INVALID;
+    }
+
+    ReparseData =
+        (PReparsePointEx)ExAllocatePoolWithTag(
+            NonPagedPool,
+            BufferLength,
+            TAG_NTFS);
+    if (!ReparseData)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    Status = NtfsFileRecordReadReparsePoint(
+        File,
+        (PUCHAR)ReparseData,
+        &BufferLength);
+    if (!NT_SUCCESS(Status))
+    {
+        ExFreePoolWithTag(ReparseData, TAG_NTFS);
+        return Status;
+    }
+
+    /*
+     * The common header is layout-compatible with REPARSE_DATA_BUFFER.
+     * The I/O manager consumes Reserved as the byte count of the unparsed
+     * suffix and owns AuxiliaryBuffer after STATUS_REPARSE is returned.
+     */
+    ReparseData->Padding =
+        (USHORT)RemainingNameLength;
+    Irp->Tail.Overlay.AuxiliaryBuffer =
+        (PCHAR)ReparseData;
+    Irp->IoStatus.Information =
+        ReparseData->ReparseType;
+    return STATUS_REPARSE;
+}
+
 _Function_class_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS
@@ -33,10 +96,11 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     NTSTATUS Status;
     PFILE_OBJECT FileObject;
     BOOLEAN PerformAccessChecks;
-    PNtfsFileRecord CurrentFile;
+    PNtfsFileRecord CurrentFile = NULL;
     UINT8 Disposition;
     PNtfsVolume DiskVolume;
     PNtfsMasterFileTable Mft;
+    ULONG RemainingNameLength = 0;
     USHORT FileNameLength;
     BOOLEAN ExternalBackingDeleted = FALSE;
 
@@ -64,9 +128,39 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     // TODO: Check if we have rights to access file.
 
     // Try to find the requested file record.
-    Status = NtfsMasterFileTableGetFileRecordFromQuery(Mft,
-                                                       FileObject->FileName.Buffer,
-                                                       &CurrentFile);
+    if ((FileObject->FileName.Length &
+         (sizeof(WCHAR) - 1)) != 0)
+    {
+        Irp->IoStatus.Information = 0;
+        Irp->IoStatus.Status =
+            STATUS_OBJECT_NAME_INVALID;
+        IoCompleteRequest(Irp,
+                          IO_DISK_INCREMENT);
+        return STATUS_OBJECT_NAME_INVALID;
+    }
+    Status =
+        NtfsMasterFileTableGetFileRecordFromQueryEx(
+            Mft,
+            FileObject->FileName.Buffer,
+            FileObject->FileName.Length /
+                sizeof(WCHAR),
+            !!(IrpSp->Parameters.Create.Options &
+               FILE_OPEN_REPARSE_POINT),
+            &RemainingNameLength,
+            &CurrentFile);
+
+    if (Status == STATUS_REPARSE)
+    {
+        Status = NtfsReturnCreateReparse(
+            Irp,
+            CurrentFile,
+            RemainingNameLength);
+        NtfsFileRecordDestroy(CurrentFile);
+        Irp->IoStatus.Status = Status;
+        IoCompleteRequest(Irp,
+                          IO_DISK_INCREMENT);
+        return Status;
+    }
 
     /* What we do here depends on the CreateDisposition value.
      * See https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntcreatefile
