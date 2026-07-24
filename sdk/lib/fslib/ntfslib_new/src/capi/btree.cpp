@@ -19,6 +19,13 @@ NtfsDirectoryCreate(
     return reinterpret_cast<PNtfsDirectory>(new(NonPagedPool) Directory(reinterpret_cast<PVolume>(DiskVolume)));
 }
 
+void
+NtfsDirectoryDestroy(
+    _In_opt_ PNtfsDirectory Dir)
+{
+    delete reinterpret_cast<PDirectory>(Dir);
+}
+
 NTSTATUS
 NtfsDirectoryGetFileBothDirInfo(
     _In_    PNtfsDirectory Dir,

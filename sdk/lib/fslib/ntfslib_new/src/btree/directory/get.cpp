@@ -97,7 +97,7 @@ Directory::IsEligibleForFileDir(PBTreeKey Key,
 
     // Is this a super hidden metadata file?
     if (GetFRNFromFileRef(FileRef(Key)) <= NTFS_LAST_RESERVED_FILE_RECORD
-        && !NtfsShowMetadataFiles)
+        && !DiskVolume->ShowMetadataFiles)
         return FALSE;
 
     // Is this a duplicated short name?
@@ -132,11 +132,14 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
     if (RestartScan)
         ResetCurrentKey();
 
-    /* Upcase the filter once for the case-insensitive matching done in
-     * DoesFileNameMatch() (see the note there).
-     */
     if (FileNameFilter)
-        RtlUpcaseUnicodeString(FileNameFilter, FileNameFilter, FALSE);
+    {
+        Status = DiskVolume->UpcaseWideString(
+            FileNameFilter->Buffer,
+            FileNameFilter->Length / sizeof(WCHAR));
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
 
     TotalBufferLength = *BufferLength;
 
@@ -186,11 +189,11 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
 
         if (!CurrentKey)
         {
-            // TODO: Is there a better way?
             if (TotalBufferLength == *BufferLength)
             {
-                /* We've traversed the entire directory and the
-                 * buffer is empty. There are no files to return.
+                /* Traversal reached the end without emitting an eligible
+                 * entry. This is the definitive empty-result test because
+                 * filtered and metadata entries may all have been skipped.
                  */
                 return STATUS_NO_MORE_FILES;
             }

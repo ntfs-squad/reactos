@@ -9,40 +9,39 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
-NTSTATUS
-Directory::VerifyUpdateSequenceArray(PNTFSRecordHeader Record)
+typedef struct _SHORT_NAME_PAIR
 {
-    USHORT *USA;
-    USHORT USANumber;
-    USHORT USACount;
-    USHORT *Block;
-    ULONG  BytesPerSector;
+    ULONGLONG FileReference;
+    PBTreeKey LongNameKey;
+    PBTreeKey ShortNameKey;
+    BOOLEAN Occupied;
+} SHORT_NAME_PAIR, *PSHORT_NAME_PAIR;
 
-    BytesPerSector = DiskVolume->BytesPerSector;
-    USA = (USHORT*)((PCHAR)Record + Record->UpdateSequenceOffset);
-    USANumber = *(USA++);
-    USACount = Record->SizeOfUpdateSequence - 1; // Exclude the USA Number.
-    Block = (USHORT*)((PCHAR)Record + BytesPerSector - 2);
+static ULONG
+HashFileReference(_In_ ULONGLONG FileReference)
+{
+    return (ULONG)(FileReference ^ (FileReference >> 32)) * 2654435761UL;
+}
 
-    while (USACount)
-    {
-        if (*Block != USANumber)
-        {
-            DPRINT1("Mismatch with USA: %u read, %u expected\n" , *Block, USANumber);
-            return STATUS_UNSUCCESSFUL;
-        }
-        *Block = *(USA++);
-        Block = (USHORT*)((PCHAR)Block + BytesPerSector);
-        USACount--;
-    }
+static BOOLEAN
+IsIndexEntryValid(_In_ PIndexEntry Entry,
+                  _In_ ULONG Remaining)
+{
+    ULONG HeaderSize = FIELD_OFFSET(IndexEntry, IndexStream);
 
-    return STATUS_SUCCESS;
+    return Remaining >= HeaderSize &&
+           Entry->EntryLength >= HeaderSize &&
+           Entry->EntryLength <= Remaining &&
+           Entry->StreamLength <= Entry->EntryLength - HeaderSize &&
+           (!(Entry->Flags & INDEX_ENTRY_NODE) ||
+            Entry->EntryLength >= HeaderSize + sizeof(ULONGLONG));
 }
 
 NTSTATUS
 Directory::CreateNode(_In_    PFileRecord File,
                       _In_    PAttribute  IndexAllocationAttribute,
                       _In_    PDataRun    IndexAllocationRuns,
+                      _In_    PAttribute  BitmapAttribute,
                       _Inout_ PBTreeKey   ParentNodeKey)
 {
     NTSTATUS Status;
@@ -52,21 +51,60 @@ Directory::CreateNode(_In_    PFileRecord File,
     PIndexEntry CurrentEntry;
     PULONGLONG VCN;
     ULONG IndexBufferSize;
+    ULONG BitmapByte, BitmapLength;
+    ULONG IndexRecordSize;
     ULONG_PTR EndOfIndexBuffer;
+    UCHAR BitmapValue, BitmapMask;
+    BOOLEAN FoundEndEntry;
 
     // Get VCN from the end of the node entry
     VCN = GetSubnodeVCN(ParentNodeKey->Entry);
     IndexBufferSize = BytesPerIndexRecord(DiskVolume);
+    IndexRecordSize = IndexBufferSize;
+
+    /* A child reference is valid only when its index buffer is allocated in
+     * the named index's $BITMAP.
+     */
+    if (!BitmapAttribute)
+        return STATUS_FILE_CORRUPT_ERROR;
+
+    BitmapByte = (ULONG)(GetAllocationOffsetFromVCN(*VCN) /
+                         IndexBufferSize) >> 3;
+    BitmapMask = 1 << ((GetAllocationOffsetFromVCN(*VCN) /
+                        IndexBufferSize) & 7);
+    BitmapLength = sizeof(BitmapValue);
+    Status = File->CopyData(BitmapAttribute,
+                            &BitmapValue,
+                            &BitmapLength,
+                            BitmapByte);
+    if (!NT_SUCCESS(Status) || BitmapLength != 0)
+        return NT_SUCCESS(Status) ? STATUS_END_OF_FILE : Status;
+
+    if (!(BitmapValue & BitmapMask))
+        return STATUS_FILE_CORRUPT_ERROR;
 
     // Create the new node and first key.
     NewNode = new(PagedPool, TAG_BTREE) BTreeNode();
+    if (!NewNode)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
     CurrentKey = new(PagedPool, TAG_BTREE) BTreeKey();
+    if (!CurrentKey)
+    {
+        delete NewNode;
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
     NewNode->FirstKey = CurrentKey;
+    ParentNodeKey->ChildNode = NewNode;
     NodeBuffer = (PIndexBuffer)NtfsAllocatePoolWithTag(PagedPool,
                                                        IndexBufferSize,
                                                        TAG_NTFS);
+    if (!NodeBuffer)
+    {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
-    // TODO: Confirm index bitmap has this node marked as in-use
     Status = File->CopyData(IndexAllocationAttribute,
                             IndexAllocationRuns,
                             (PUCHAR)NodeBuffer,
@@ -76,29 +114,51 @@ Directory::CreateNode(_In_    PFileRecord File,
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to create node! Unable to copy data!\n");
-        __debugbreak();
-        return STATUS_NOT_FOUND;
+        NtfsFreePool(NodeBuffer);
+        return Status;
     }
 
-    // Shamelessly ripped from old driver.
-    Status = VerifyUpdateSequenceArray(&NodeBuffer->RecordHeader);
-
-    ASSERT(NT_SUCCESS(Status));
-    ASSERT(RtlCompareMemory(NodeBuffer->RecordHeader.TypeID, "INDX", 4) == 4);
-    ASSERT(NodeBuffer->VCN == *VCN);
-    ASSERT(IndexBufferSize == 0);
+    Status = NtfsApplyFixup(&NodeBuffer->RecordHeader,
+                            IndexRecordSize,
+                            DiskVolume->BytesPerSector);
+    if (!NT_SUCCESS(Status) ||
+        RtlCompareMemory(NodeBuffer->RecordHeader.TypeID, "INDX", 4) != 4 ||
+        NodeBuffer->VCN != *VCN ||
+        IndexBufferSize != 0 ||
+        NodeBuffer->IndexHeader.IndexOffset >
+            NodeBuffer->IndexHeader.TotalIndexSize ||
+        (ULONG)FIELD_OFFSET(IndexBuffer, IndexHeader) +
+            NodeBuffer->IndexHeader.TotalIndexSize > IndexRecordSize)
+    {
+        NtfsFreePool(NodeBuffer);
+        return STATUS_FILE_CORRUPT_ERROR;
+    }
 
     // Walk through the index and create keys for all the entries
     CurrentEntry = (PIndexEntry)((ULONG_PTR)(&NodeBuffer->IndexHeader)
                                  + NodeBuffer->IndexHeader.IndexOffset);
     EndOfIndexBuffer = (ULONG_PTR)(&NodeBuffer->IndexHeader) + NodeBuffer->IndexHeader.TotalIndexSize;
+    FoundEndEntry = FALSE;
 
     while ((ULONG_PTR)CurrentEntry < EndOfIndexBuffer)
     {
+        if (!IsIndexEntryValid(
+                CurrentEntry,
+                (ULONG)(EndOfIndexBuffer - (ULONG_PTR)CurrentEntry)))
+        {
+            NtfsFreePool(NodeBuffer);
+            return STATUS_FILE_CORRUPT_ERROR;
+        }
+
         // Allocate memory for the current entry
         CurrentKey->Entry = (PIndexEntry)NtfsAllocatePoolWithTag(PagedPool,
                                                                  CurrentEntry->EntryLength,
                                                                  TAG_NTFS);
+        if (!CurrentKey->Entry)
+        {
+            NtfsFreePool(NodeBuffer);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
         // Add the parent node
         CurrentKey->ParentNodeKey = ParentNodeKey;
 
@@ -112,13 +172,14 @@ Directory::CreateNode(_In_    PFileRecord File,
             Status = CreateNode(File,
                                 IndexAllocationAttribute,
                                 IndexAllocationRuns,
+                                BitmapAttribute,
                                 CurrentKey);
 
             if (!NT_SUCCESS(Status))
             {
                 DPRINT1("Failed to create subnode!\n");
-                __debugbreak();
-                // return STATUS_NOT_FOUND;
+                NtfsFreePool(NodeBuffer);
+                return Status;
             }
         }
 
@@ -126,6 +187,12 @@ Directory::CreateNode(_In_    PFileRecord File,
         {
             // Create the next key
             NextKey = new(PagedPool, TAG_BTREE) BTreeKey();
+            if (!NextKey)
+            {
+                NtfsFreePool(NodeBuffer);
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
             CurrentKey->NextKey = NextKey;
 
             // Advance to next entry
@@ -136,14 +203,16 @@ Directory::CreateNode(_In_    PFileRecord File,
         else
         {
             CurrentKey->NextKey = NULL;
+            FoundEndEntry = TRUE;
             break;
         }
     }
 
-    delete NodeBuffer;
-    NewNode->VCN = *VCN;
-    ParentNodeKey->ChildNode = NewNode;
+    NtfsFreePool(NodeBuffer);
+    if (!FoundEndEntry)
+        return STATUS_FILE_CORRUPT_ERROR;
 
+    NewNode->VCN = *VCN;
     return STATUS_SUCCESS;
 }
 
@@ -152,31 +221,50 @@ Directory::CreateRootNode(_In_  PFileRecord File,
                           _Out_ PBTreeNode *NewRootNode)
 {
     NTSTATUS Status;
-    PAttribute IndexRootAttribute, IndexAllocationAttribute;
+    PAttribute IndexRootAttribute, IndexAllocationAttribute, BitmapAttribute;
     PIndexRootEx IndexRootData;
     PBTreeNode RootNode;
     PBTreeKey CurrentKey, NextKey;
     PIndexEntry CurrentEntry;
     PDataRun IndexAllocationRuns = NULL;
     ULONG_PTR EndOfIndexRootData;
+    BOOLEAN FoundEndEntry;
+
+    *NewRootNode = NULL;
 
     // Get $INDEX_ROOT attribute.
     IndexRootAttribute = File->GetAttribute(TypeIndexRoot, NULL);
 
-    // If it's a directory, it should have an index root.
-    ASSERT(IndexRootAttribute);
+    // If it's a directory, it must have an index root.
+    if (!IndexRootAttribute || IndexRootAttribute->IsNonResident)
+        return STATUS_FILE_CORRUPT_ERROR;
+
+    if (IndexRootAttribute->Resident.DataLength <
+        FIELD_OFFSET(IndexRootEx, Header) + sizeof(IndexNodeHeader))
+    {
+        return STATUS_FILE_CORRUPT_ERROR;
+    }
 
     /* Set up pointers.
      * Note: IndexAllocationAttribute may be null. That is okay!
      */
     IndexRootData = (PIndexRootEx)GetResidentDataPointer(IndexRootAttribute);
-    IndexAllocationAttribute = File->GetAttribute(TypeIndexAllocation, L"$I30");
+    IndexAllocationAttribute = File->GetAttribute(
+        TypeIndexAllocation,
+        const_cast<PWSTR>(L"$I30"));
+    BitmapAttribute = File->GetAttribute(
+        TypeBitmap,
+        const_cast<PWSTR>(L"$I30"));
     EndOfIndexRootData = ((ULONG_PTR)IndexRootData) +
                          (FIELD_OFFSET(IndexRootEx, Header)) +
                          (IndexRootData->Header.TotalIndexSize);
 
     // Make sure we won't try reading past the attribute-end
-    if ((FIELD_OFFSET(IndexRootEx, Header) + IndexRootData->Header.TotalIndexSize) > IndexRootAttribute->Resident.DataLength)
+    if (((ULONG)FIELD_OFFSET(IndexRootEx, Header) +
+         IndexRootData->Header.TotalIndexSize) >
+        IndexRootAttribute->Resident.DataLength ||
+        IndexRootData->Header.IndexOffset >
+            IndexRootData->Header.TotalIndexSize)
     {
         DPRINT1("Filesystem corruption detected!\n");
         __debugbreak();
@@ -191,21 +279,45 @@ Directory::CreateRootNode(_In_  PFileRecord File,
 
     // Initialize variables
     RootNode = new(PagedPool, TAG_BTREE) BTreeNode();
+    if (!RootNode)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Failed;
+    }
+
     CurrentKey = new(PagedPool, TAG_BTREE) BTreeKey();
+    if (!CurrentKey)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Failed;
+    }
+
     RootNode->FirstKey = CurrentKey;
 
     CurrentEntry = (PIndexEntry)(((ULONG_PTR)IndexRootData) +
                                  (FIELD_OFFSET(IndexRootEx, Header)) +
                                  (IndexRootData->Header.IndexOffset));
+    FoundEndEntry = FALSE;
 
     while ((ULONG_PTR)CurrentEntry < EndOfIndexRootData)
     {
-        ASSERT(CurrentEntry->EntryLength);
+        if (!IsIndexEntryValid(
+                CurrentEntry,
+                (ULONG)(EndOfIndexRootData - (ULONG_PTR)CurrentEntry)))
+        {
+            Status = STATUS_FILE_CORRUPT_ERROR;
+            goto Failed;
+        }
 
         // Create current entry
         CurrentKey->Entry = (PIndexEntry)NtfsAllocatePoolWithTag(NonPagedPool,
                                                                  CurrentEntry->EntryLength,
                                                                  TAG_NTFS);
+        if (!CurrentKey->Entry)
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Failed;
+        }
 
         // Copy the current entry to its key
         RtlCopyMemory(CurrentKey->Entry,
@@ -214,12 +326,19 @@ Directory::CreateRootNode(_In_  PFileRecord File,
 
         if (CurrentEntry->Flags & INDEX_ENTRY_NODE)
         {
-            ASSERT(IndexAllocationAttribute);
+            if (!IndexAllocationAttribute ||
+                !IndexAllocationAttribute->IsNonResident ||
+                !IndexAllocationRuns)
+            {
+                Status = STATUS_FILE_CORRUPT_ERROR;
+                goto Failed;
+            }
 
             // Create child node
             Status = CreateNode(File,
                                 IndexAllocationAttribute,
                                 IndexAllocationRuns,
+                                BitmapAttribute,
                                 CurrentKey);
 
             if (!NT_SUCCESS(Status))
@@ -234,6 +353,11 @@ Directory::CreateRootNode(_In_  PFileRecord File,
         {
             // Create next key
             NextKey = new(PagedPool, TAG_BTREE) BTreeKey();
+            if (!NextKey)
+            {
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+                goto Failed;
+            }
             CurrentKey->NextKey = NextKey;
 
             // Advance to the next entry
@@ -245,8 +369,15 @@ Directory::CreateRootNode(_In_  PFileRecord File,
         else
         {
             // We've copied the last entry.
+            FoundEndEntry = TRUE;
             break;
         }
+    }
+
+    if (!FoundEndEntry)
+    {
+        Status = STATUS_FILE_CORRUPT_ERROR;
+        goto Failed;
     }
 
     FreeDataRun(IndexAllocationRuns);
@@ -254,7 +385,7 @@ Directory::CreateRootNode(_In_  PFileRecord File,
     return STATUS_SUCCESS;
 Failed:
     FreeDataRun(IndexAllocationRuns);
-    delete RootNode;
+    NtfsDestroyBTreeNode(RootNode);
     return Status;
 }
 
@@ -262,48 +393,91 @@ NTSTATUS
 Directory::LoadDirectory(_In_ PFileRecord File)
 {
     NTSTATUS Status;
-    PBTreeKey SearchKey, ShortNameKey;
-    // PAttribute BitmapAttribute;
-
+    PBTreeKey SearchKey;
+    PSHORT_NAME_PAIR PairTable;
+    ULONG EntryCount, PairIndex, PairTableSize;
+    ULONGLONG FileReference;
     // This only works on files that are directories.
     ASSERT(File->Header->Flags & FR_IS_DIRECTORY);
-
-    /* First, we need to get the index allocation bitmap attribute
-     * to determine what index entries are marked as in use.
-     */
-    // TODO: Implement.
-    // BitmapAttribute = File->GetAttribute(TypeBitmap, L"$I30");
-    // if (!BitmapAttribute)
-    // {
-    //     DPRINT1("Failed to find $BITMAP attribute!\n");
-    //     return STATUS_NOT_FOUND;
-    // }
 
     // Get the root node for the directory
     Status = CreateRootNode(File, &RootNode);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to create root node!\n");
-        return STATUS_NOT_FOUND;
+        return Status;
     }
 
     CurrentKey = RootNode->FirstKey;
-    SearchKey = CurrentKey;
+    EntryCount = 0;
 
-    // Mark short name keys accordingly.
-    // TODO: If short name generation is disabled for this volume, we can skip this.
-    while(SearchKey)
+    /* The namespace byte is the on-disk authority for DOS aliases. Count and
+     * mark entries in one pass; no filename-shape heuristics are needed.
+     */
+    for (SearchKey = CurrentKey;
+         SearchKey;
+         SearchKey = GetNextKey(SearchKey))
     {
-        if (MayHaveShortKey(SearchKey))
+        if (!(SearchKey->Entry->Flags & INDEX_ENTRY_END))
         {
-            ShortNameKey = GetShortNameKey(SearchKey, FALSE);
-            if (ShortNameKey)
-                ShortNameKey->Flags |= DIR_KEY_8DOT3;
+            EntryCount++;
+            if (GetFileName(SearchKey)->NameType == NAME_TYPE_DOS)
+                SearchKey->Flags |= DIR_KEY_8DOT3;
         }
-
-        SearchKey = GetNextKey(SearchKey);
     }
 
+    /* Build an FRN-keyed table so each Win32 entry retains its DOS alias.
+     * Enumeration can then obtain the alias in O(1).
+     */
+    PairTableSize = 8;
+    while (EntryCount <= MAXULONG / 2 &&
+           PairTableSize < EntryCount * 2 &&
+           PairTableSize <= MAXULONG / 2)
+    {
+        PairTableSize *= 2;
+    }
+
+    PairTable = new(PagedPool, TAG_BTREE) SHORT_NAME_PAIR[PairTableSize];
+    if (!PairTable)
+    {
+        DPRINT1("Unable to cache directory short-name pairs.\n");
+        return STATUS_SUCCESS;
+    }
+
+    RtlZeroMemory(PairTable, PairTableSize * sizeof(*PairTable));
+    for (SearchKey = CurrentKey;
+         SearchKey;
+         SearchKey = GetNextKey(SearchKey))
+    {
+        if (SearchKey->Entry->Flags & INDEX_ENTRY_END)
+            continue;
+
+        FileReference = FileRef(SearchKey);
+        PairIndex = HashFileReference(FileReference) & (PairTableSize - 1);
+        while (PairTable[PairIndex].Occupied &&
+               PairTable[PairIndex].FileReference != FileReference)
+        {
+            PairIndex = (PairIndex + 1) & (PairTableSize - 1);
+        }
+
+        PairTable[PairIndex].Occupied = TRUE;
+        PairTable[PairIndex].FileReference = FileReference;
+        if (GetFileName(SearchKey)->NameType == NAME_TYPE_DOS)
+            PairTable[PairIndex].ShortNameKey = SearchKey;
+        else if (GetFileName(SearchKey)->NameType == NAME_TYPE_WIN32)
+            PairTable[PairIndex].LongNameKey = SearchKey;
+    }
+
+    for (PairIndex = 0; PairIndex < PairTableSize; PairIndex++)
+    {
+        if (PairTable[PairIndex].LongNameKey)
+        {
+            PairTable[PairIndex].LongNameKey->ShortNameKey =
+                PairTable[PairIndex].ShortNameKey;
+        }
+    }
+
+    delete[] PairTable;
     return Status;
 }
 
@@ -322,87 +496,26 @@ Directory::DoesFileNameMatch(PUNICODE_STRING NameFilter,
     }
 
     FileNameData = GetFileName(Key);
-    RtlInitEmptyUnicodeString(&FileNameString,
-                              FileNameData->Name,
-                              ((FileNameData->NameLength) * sizeof(WCHAR)));
-    FileNameString.Length = FileNameString.MaximumLength;
+    FileNameString = NtfsMakeCountedUnicodeString(
+        FileNameData->Name,
+        FileNameData->NameLength * sizeof(WCHAR));
 
-    /* Note: for case-insensitive matching, NameFilter must already be all
-     * uppercase — the search/enumeration entry points upcase it once
-     * instead of us re-upcasing it for every key tested.
-     *
-     * Rtl NLS upcasing is used for the filter; matching against the
-     * volume's own $UpCase table (Volume::UpcaseWideString) would need
-     * NtfsIsNameInExpression to take that table in every environment.
-     *
-     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-_fsrtl_advanced_fcb_header-fsrtlisnameinexpression
+    /* The search entry points uppercase the expression once with this
+     * volume's $UpCase table. Use the same table for the candidate name.
      */
     return NtfsIsNameInExpression(NameFilter,
                                   &FileNameString,
                                   IgnoreCase,
-                                  NULL);
+                                  DiskVolume->GetUpcaseTable());
 }
 
 PBTreeKey
-Directory::GetShortNameKey(_In_ PBTreeKey Key,
-                           _In_ BOOLEAN SkipNonShortNames)
+Directory::GetShortNameKey(_In_ PBTreeKey Key)
 {
-    /* Search file tree for the next entry with the same file record
-     * number (FRN).
-     *
-     * NOTE: I have seen short file name entries 3+ keys after
-     * the long file name entry, but never before the long name entry
-     * (see: system32). Most of the time, it's the next key.
-     *
-     * If you do observe a short file name entry before the long file
-     * name entry, please update the search algorithm.
-     */
-
-    PBTreeKey FoundKey;
-    PFileNameEx FileNameData;
-    ULONGLONG TargetFRN;
-
-    // If this is a dummy key, there is no short name
-    if (Key->Entry->Flags & INDEX_ENTRY_END)
-    {
-#ifdef NTFS_DEBUG
-        DPRINT1("Tried to find short name for a dummy key!\n");
-        DPRINT1("FIXME: Rework whatever algorithm to prevent this.\n");
-#endif
-        return NULL;
-    }
-
-    // If the key is already a legal short name, there isn't another short name
-    FileNameData = GetFileName(Key);
-    if (IsLegal8Dot3ShortName(FileNameData->Name, FileNameData->NameLength))
+    if (!Key || Key->Entry->Flags & INDEX_ENTRY_END)
         return NULL;
 
-    TargetFRN = GetFRNFromFileRef(FileRef(Key));
-    FoundKey = GetNextKey(Key);
-
-    /* This algorithm does not go back to search from the beginning of the tree.
-     * If you observe a short name bug, this is probably it.
-     */
-    while (FoundKey)
-    {
-        if (!SkipNonShortNames ||
-            FoundKey->Flags & DIR_KEY_8DOT3)
-        {
-            FileNameData = GetFileName(FoundKey);
-            if (GetFRNFromFileRef(FileRef(FoundKey)) == TargetFRN
-                && IsLegal8Dot3ShortName(FileNameData->Name, FileNameData->NameLength))
-            {
-                return FoundKey;
-            }
-        }
-        FoundKey = GetNextKey(FoundKey);
-    }
-
-    /* If we don't find the short name, no short file name was generated.
-     * This is not necessarily an error.
-     */
-
-    return NULL;
+    return Key->ShortNameKey;
 }
 
 Directory::Directory(_In_ PVolume DiskVolume)

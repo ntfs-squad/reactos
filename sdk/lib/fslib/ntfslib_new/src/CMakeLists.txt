@@ -4,7 +4,6 @@ target_sources(ntfslib_new PRIVATE
     btree/directory/editdir.cpp
     btree/directory/find.cpp
     btree/directory/get.cpp
-    btree/directory/util.cpp
     btree/btree.cpp
     capi/btree.cpp
     capi/filerecord.cpp

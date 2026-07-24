@@ -9,29 +9,28 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
-#define PathElementLength(FileName) \
-(wcschr(FileName, L'\\')) \
-? (wcschr(FileName, L'\\') - FileName) \
-: (wcschr(FileName, L':')) \
-? (wcschr(FileName, L':') - FileName) \
-: (wcslen(FileName))
+static ULONG
+PathElementLength(_In_ PCWSTR FileName)
+{
+    PCWSTR Separator = NtfsWcsChr(FileName, L'\\');
 
-#define CompareLength(FileName, CurrentKey) \
-min(PathElementLength(FileName->Buffer), GetFileName(CurrentKey)->NameLength)
+    if (!Separator)
+        Separator = NtfsWcsChr(FileName, L':');
+
+    return Separator ? (ULONG)(Separator - FileName) : NtfsWcsLen(FileName);
+}
 
 static LONG
-WideStringCompare(PWCHAR FirstString,
-                  PWCHAR SecondString,
-                  ULONG Length)
+CompareFileName(_In_ PUNICODE_STRING FileName,
+                _In_ PFileNameEx IndexedName)
 {
-    UNICODE_STRING String1, String2;
+    UNICODE_STRING IndexedNameString;
 
-    RtlInitEmptyUnicodeString(&String1, FirstString, Length);
-    RtlInitEmptyUnicodeString(&String2, SecondString, Length);
-    String1.Length = Length;
-    String2.Length = Length;
+    IndexedNameString = NtfsMakeCountedUnicodeString(
+        IndexedName->Name,
+        IndexedName->NameLength * sizeof(WCHAR));
 
-    return RtlCompareUnicodeString(&String1, &String2, TRUE);
+    return RtlCompareUnicodeString(FileName, &IndexedNameString, TRUE);
 }
 
 PBTreeKey
@@ -39,6 +38,7 @@ Directory::FindKeyInNode(PUNICODE_STRING FileName,
                          PBTreeKey Key)
 {
     PBTreeKey CurrentKey;
+    LONG CompareResult;
 
     // Start the search with the first key
     CurrentKey = Key;
@@ -51,16 +51,22 @@ Directory::FindKeyInNode(PUNICODE_STRING FileName,
             return CurrentKey;
         }
 
-        // We can skip this node if we're greater than the filename of the node
+        CompareResult = CurrentKey->Entry->Flags & INDEX_ENTRY_END
+                        ? -1
+                        : CompareFileName(FileName, GetFileName(CurrentKey));
+
+        /* Index entries are sorted. Descend through the first entry not less
+         * than the target; if it has no child, the target cannot occur later.
+         */
         if (CurrentKey->Entry->Flags & INDEX_ENTRY_NODE &&
-            (WideStringCompare(FileName->Buffer,
-                               GetFileName(CurrentKey)->Name,
-                               CompareLength(FileName, CurrentKey)) <= 0 ||
-            CurrentKey->Entry->Flags & INDEX_ENTRY_END))
+            (CompareResult <= 0 ||
+             CurrentKey->Entry->Flags & INDEX_ENTRY_END))
         {
-            // If it's not in this node, it's not in here.
             return FindKeyInNode(FileName, CurrentKey->ChildNode->FirstKey);
         }
+
+        if (CompareResult < 0)
+            return NULL;
 
         if (CurrentKey->Entry->Flags & INDEX_ENTRY_END)
         {
@@ -80,16 +86,24 @@ NTSTATUS
 Directory::FindNextFile(_In_  PWCHAR FileName,
                         _Out_ PULONGLONG FileRecordNumber)
 {
+    NTSTATUS Status;
+    ULONG ElementLength;
     UNICODE_STRING FileNameString;
     PBTreeKey FoundKey;
 
-    RtlInitEmptyUnicodeString(&FileNameString, FileName, (USHORT)(wcslen(FileName) * sizeof(WCHAR)));
-    FileNameString.Length = (USHORT)((PathElementLength(FileName)) * sizeof(WCHAR));
+    ElementLength = PathElementLength(FileName);
+    if (ElementLength > MAXUSHORT / sizeof(WCHAR))
+        return STATUS_NAME_TOO_LONG;
 
-    /* Upcase the search name once for the case-insensitive matching done
-     * in DoesFileNameMatch() (see the note there).
-     */
-    RtlUpcaseUnicodeString(&FileNameString, &FileNameString, FALSE);
+    FileNameString = NtfsMakeCountedUnicodeString(
+        FileName,
+        (USHORT)(ElementLength * sizeof(WCHAR)));
+
+    Status = DiskVolume->UpcaseWideString(
+        FileNameString.Buffer,
+        FileNameString.Length / sizeof(WCHAR));
+    if (!NT_SUCCESS(Status))
+        return Status;
 
     // For now, start scan at beginning.
     FoundKey = FindKeyInNode(&FileNameString, RootNode->FirstKey);
