@@ -22,32 +22,58 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Handles read requests.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-read
      */
-    UNREFERENCED_PARAMETER(VolumeDeviceObject);
-
     PIO_STACK_LOCATION IrpSp;
+    PFILE_OBJECT FileObject;
+    PVolumeContextBlock VolCB;
+    PNtfsVolume DiskVolume;
     NTSTATUS Status;
+    NTSTATUS TimestampStatus;
     PUCHAR Buffer;
     LARGE_INTEGER ReadOffset;
+    ULONG OriginalLength;
     ULONG RequestedLength;
+    ULONG BytesRead;
     PFileContextBlock FileCB;
     PStandardInformationEx StdInfo;
+    BOOLEAN ResourceAcquired = FALSE;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    FileObject = IrpSp->FileObject;
+    VolCB = VolumeDeviceObject &&
+            VolumeDeviceObject->DeviceExtension
+        ? (PVolumeContextBlock)
+            VolumeDeviceObject->DeviceExtension
+        : NULL;
+    DiskVolume = VolCB ? VolCB->DiskVolume : NULL;
     Buffer = (PUCHAR)(GetBuffer(Irp));
     ReadOffset = IrpSp->Parameters.Read.ByteOffset;
     RequestedLength = IrpSp->Parameters.Read.Length;
-    FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
+    OriginalLength = RequestedLength;
+    FileCB = FileObject
+        ? (PFileContextBlock)FileObject->FsContext
+        : NULL;
 
-    if (!FileCB)
+    if (!FileCB || !FileCB->FileRec || !DiskVolume)
     {
-        DPRINT1("INVESTIGATE ME: NtfsFsdRead() called with NULL FileCB!\n");
-        Irp->IoStatus.Information = 0;
-        Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-        return STATUS_INVALID_PARAMETER;
+        DPRINT1("NtfsFsdRead(): invalid file or volume context!\n");
+        Status = STATUS_INVALID_PARAMETER;
+        goto Complete;
+    }
+    if (RequestedLength != 0 && !Buffer)
+    {
+        Status = STATUS_INVALID_USER_BUFFER;
+        goto Complete;
+    }
+    if (ReadOffset.QuadPart < 0)
+    {
+        Status = STATUS_INVALID_PARAMETER;
+        goto Complete;
     }
 
-    ASSERT(FileCB->FileRec);
+    ExAcquireResourceSharedLite(
+        &FileCB->MainResource,
+        TRUE);
+    ResourceAcquired = TRUE;
 
     // Ensure the file has a valid resident StandardInformation attribute
     Status = NtfsFileRecordGetAttributeData(FileCB->FileRec,
@@ -58,13 +84,9 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("NtfsFsdRead(): Missing or corrupt $STANDARD_INFORMATION attribute!\n");
-        Irp->IoStatus.Information = 0;
-        Irp->IoStatus.Status = Status;
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-        return Status;
+        goto Complete;
     }
 
-    ASSERT(!(StdInfo->FilePermissions & FILE_PERM_COMPRESSED));
     ASSERT(!(StdInfo->FilePermissions & FILE_PERM_ENCRYPTED));
 
     // TODO: Investigate minor function before reading
@@ -86,18 +108,47 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     {
         // If we aren't reading anything, don't read anything.
         Status = STATUS_SUCCESS;
-        
     }
+
+    ExReleaseResourceLite(&FileCB->MainResource);
+    ResourceAcquired = FALSE;
 
     if (NT_SUCCESS(Status))
     {
-        if (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO)
+        BytesRead = OriginalLength - RequestedLength;
+        if (BytesRead != 0 &&
+            FileCB->RequestedType == TypeData &&
+            !NtfsVolumeIsReadOnly(DiskVolume))
         {
-            IrpSp->FileObject->CurrentByteOffset.QuadPart =
-                ReadOffset.QuadPart + IrpSp->Parameters.Read.Length - RequestedLength;
+            /*
+             * Last-access is metadata, so serialize its MFT update after the
+             * shared data read. A timestamp failure must not discard bytes
+             * already delivered successfully to the caller.
+             */
+            ExAcquireResourceExclusiveLite(
+                &FileCB->MainResource,
+                TRUE);
+            TimestampStatus =
+                NtfsFileRecordUpdateAutomaticTimestamps(
+                    FileCB->FileRec,
+                    NTFS_BASIC_INFO_LAST_ACCESS_TIME);
+            ExReleaseResourceLite(
+                &FileCB->MainResource);
+            if (!NT_SUCCESS(TimestampStatus))
+            {
+                DPRINT1(
+                    "NtfsFsdRead(): failed to update last-access time: 0x%08lx\n",
+                    TimestampStatus);
+            }
         }
 
-        Irp->IoStatus.Information = IrpSp->Parameters.Read.Length - RequestedLength;
+        if (FileObject->Flags & FO_SYNCHRONOUS_IO)
+        {
+            FileObject->CurrentByteOffset.QuadPart =
+                ReadOffset.QuadPart + BytesRead;
+        }
+
+        Irp->IoStatus.Information = BytesRead;
     }
 
     else
@@ -105,6 +156,12 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         Irp->IoStatus.Information = 0;
     }
 
+Complete:
+    if (ResourceAcquired)
+        ExReleaseResourceLite(
+            &FileCB->MainResource);
+    if (!NT_SUCCESS(Status))
+        Irp->IoStatus.Information = 0;
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return Status;

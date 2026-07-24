@@ -258,6 +258,12 @@ NtfsFsdWrite (_In_    PDEVICE_OBJECT VolumeDeviceObject,
 
 // io/fileinfo.cpp
 
+struct _FCB;
+
+VOID
+NtfsRefreshFileSizes(_In_ struct _FCB* FileCB,
+                     _In_opt_ PFILE_OBJECT FileObject);
+
 _Function_class_(IRP_MJ_QUERY_INFORMATION)
 _Function_class_(DRIVER_DISPATCH)
 NTSTATUS
@@ -292,6 +298,14 @@ NTSTATUS
 NTAPI
 NtfsFsdSetEa(_In_   PDEVICE_OBJECT VolumeDeviceObject,
             _Inout_ PIRP Irp);
+
+// io/security.c
+_Function_class_(IRP_MJ_QUERY_SECURITY)
+_Function_class_(DRIVER_DISPATCH)
+NTSTATUS
+NTAPI
+NtfsFsdQuerySecurity(_In_ PDEVICE_OBJECT VolumeDeviceObject,
+                     _Inout_ PIRP Irp);
 
 // io/vol.cpp
 _Function_class_(IRP_MJ_QUERY_VOLUME_INFORMATION)

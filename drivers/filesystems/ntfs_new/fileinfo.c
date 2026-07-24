@@ -15,8 +15,7 @@
                          _Inout_ PULONG Length)
  {
     NTSTATUS Status;
-    PNtfsFileRecord File;
-    PStandardInformationEx StdInfo;
+    NtfsFileBasicInformation Information;
  
     if (!FileCB)
         return STATUS_INVALID_PARAMETER;
@@ -24,22 +23,22 @@
     if (*Length < sizeof(FILE_BASIC_INFORMATION))
         return STATUS_BUFFER_TOO_SMALL;
  
-    File = FileCB->FileRec;
- 
-    // From $STANDARD_INFORMATION
-    Status = NtfsFileRecordGetAttributeData(File,
-                                            TypeStandardInformation,
-                                            NULL,
-                                            (PUCHAR*)&StdInfo);
-
+    Status = NtfsFileRecordGetBasicInformation(
+        FileCB->FileRec,
+        &Information);
     if (!NT_SUCCESS(Status))
         return Status;
      
-    Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
-    Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
-    Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
-    Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
-    Buffer->FileAttributes = StdInfo->FilePermissions;
+    Buffer->CreationTime.QuadPart =
+        Information.CreationTime;
+    Buffer->LastAccessTime.QuadPart =
+        Information.LastAccessTime;
+    Buffer->LastWriteTime.QuadPart =
+        Information.LastWriteTime;
+    Buffer->ChangeTime.QuadPart =
+        Information.ChangeTime;
+    Buffer->FileAttributes =
+        Information.FileAttributes;
  
     *Length -= sizeof(FILE_BASIC_INFORMATION);
  
@@ -64,15 +63,20 @@
  
      File = FileCB->FileRec;
  
-     // Information from $DATA
-     DataAttribute = NtfsFileRecordGetAttribute(File,TypeData, NULL);
+     // Information from the stream represented by this file object.
+     DataAttribute = NtfsFileRecordGetAttribute(
+         File,
+         FileCB->RequestedType,
+         FileCB->RequestedStream);
  
      if (DataAttribute)
      {
          if (DataAttribute->IsNonResident)
          {
              Buffer->EndOfFile.QuadPart = DataAttribute->NonResident.DataSize;
-             Buffer->AllocationSize.QuadPart = DataAttribute->NonResident.AllocatedSize;
+             Buffer->AllocationSize.QuadPart =
+                 NtfsAttributeGetPhysicalAllocationSize(
+                     DataAttribute);
          }
  
          else
@@ -138,9 +142,9 @@
      }
  }
  
- static
- NTSTATUS
- GetFileInternalInformation(_In_ PFileContextBlock FileCB,
+static
+NTSTATUS
+GetFileInternalInformation(_In_ PFileContextBlock FileCB,
                             _Out_ PFILE_INTERNAL_INFORMATION Buffer,
                             _Inout_ PULONG Length)
  {
@@ -159,7 +163,43 @@
  
      return STATUS_SUCCESS;
  }
- 
+
+static
+NTSTATUS
+GetFileEaInformation(_In_ PFileContextBlock FileCB,
+                     _Out_ PFILE_EA_INFORMATION Buffer,
+                     _Inout_ PULONG Length)
+{
+    EAInformationEx EaInformation;
+    ULONG EaLength = 0;
+    NTSTATUS Status;
+
+    if (!FileCB || !FileCB->FileRec)
+        return STATUS_INVALID_PARAMETER;
+    if (*Length < sizeof(*Buffer))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    Status = NtfsFileRecordReadExtendedAttributes(FileCB->FileRec,
+                                                   NULL,
+                                                   &EaLength,
+                                                   &EaInformation);
+    if (Status == STATUS_NO_EAS_ON_FILE)
+    {
+        Buffer->EaSize = 0;
+    }
+    else if (Status == STATUS_BUFFER_TOO_SMALL)
+    {
+        Buffer->EaSize = EaInformation.UnpackedEASize;
+    }
+    else
+    {
+        return Status;
+    }
+
+    *Length -= sizeof(*Buffer);
+    return STATUS_SUCCESS;
+}
+
 static
 NTSTATUS
 GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
@@ -167,8 +207,8 @@ GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
                               _Inout_ PULONG Length)
 {
     NTSTATUS Status;
+    NtfsFileBasicInformation Information;
     PAttribute DataAttribute;
-    PStandardInformationEx StdInfo;
     PNtfsFileRecord File;
 
     ASSERT(Buffer);
@@ -176,15 +216,20 @@ GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
 
     File = FileCB->FileRec;
 
-    // Information from $DATA
-    DataAttribute = NtfsFileRecordGetAttribute(File, TypeData, NULL);
+    // Information from the stream represented by this file object.
+    DataAttribute = NtfsFileRecordGetAttribute(
+        File,
+        FileCB->RequestedType,
+        FileCB->RequestedStream);
 
     if (DataAttribute)
     {
         if (DataAttribute->IsNonResident)
         {
             Buffer->EndOfFile.QuadPart = DataAttribute->NonResident.DataSize;
-            Buffer->AllocationSize.QuadPart = DataAttribute->NonResident.AllocatedSize;
+            Buffer->AllocationSize.QuadPart =
+                NtfsAttributeGetPhysicalAllocationSize(
+                    DataAttribute);
         }
 
         else
@@ -202,24 +247,193 @@ GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
 
     File = FileCB->FileRec;
 
-    // From $STANDARD_INFORMATION
-    Status = NtfsFileRecordGetAttributeData(File,
-                                            TypeStandardInformation,
-                                            NULL,
-                                            (PUCHAR*)&StdInfo);
-
+    Status = NtfsFileRecordGetBasicInformation(
+        File,
+        &Information);
     if (!NT_SUCCESS(Status))
         return Status;
 
-    Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
-    Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
-    Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
-    Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
-    Buffer->FileAttributes = StdInfo->FilePermissions;
+    Buffer->CreationTime.QuadPart =
+        Information.CreationTime;
+    Buffer->LastAccessTime.QuadPart =
+        Information.LastAccessTime;
+    Buffer->LastWriteTime.QuadPart =
+        Information.LastWriteTime;
+    Buffer->ChangeTime.QuadPart =
+        Information.ChangeTime;
+    Buffer->FileAttributes =
+        Information.FileAttributes;
 
-    *Length -= (sizeof(PFILE_NETWORK_OPEN_INFORMATION));
+    *Length -= sizeof(FILE_NETWORK_OPEN_INFORMATION);
 
     return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+GetFileStreamInformation(
+    _In_ PFileContextBlock FileCB,
+    _Out_ PFILE_STREAM_INFORMATION Buffer,
+    _Inout_ PULONG Length)
+{
+    static const WCHAR DataSuffix[] = L":$DATA";
+    PNtfsDataStreamInformation Streams = NULL;
+    PFILE_STREAM_INFORMATION Current;
+    PFILE_STREAM_INFORMATION Last = NULL;
+    ULONG Available;
+    ULONG Capacity = 4;
+    ULONG Count;
+    ULONG BytesWritten = 0;
+    ULONG LastOffset = 0;
+    ULONG LastSize = 0;
+    ULONG HeaderSize;
+    ULONG Index;
+    NTSTATUS Status;
+
+    if (!FileCB || !FileCB->FileRec ||
+        !Length)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    Available = *Length;
+    if (Available < sizeof(FILE_STREAM_INFORMATION))
+        return STATUS_INFO_LENGTH_MISMATCH;
+    if (!Buffer)
+        return STATUS_INVALID_USER_BUFFER;
+
+    for (;;)
+    {
+        if (Capacity >
+            MAXULONG / sizeof(*Streams))
+        {
+            Status = STATUS_FILE_TOO_LARGE;
+            goto Done;
+        }
+        Streams = (PNtfsDataStreamInformation)
+            ExAllocatePoolWithTag(
+                PagedPool,
+                Capacity * sizeof(*Streams),
+                TAG_NTFS);
+        if (!Streams)
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Done;
+        }
+
+        Count = Capacity;
+        Status = NtfsFileRecordQueryDataStreams(
+            FileCB->FileRec,
+            Streams,
+            &Count);
+        if (Status != STATUS_BUFFER_TOO_SMALL &&
+            Status != STATUS_BUFFER_OVERFLOW)
+        {
+            break;
+        }
+
+        ExFreePoolWithTag(Streams, TAG_NTFS);
+        Streams = NULL;
+        if (Capacity > MAXULONG / 2)
+        {
+            Status = STATUS_FILE_TOO_LARGE;
+            goto Done;
+        }
+        Capacity *= 2;
+    }
+    if (!NT_SUCCESS(Status))
+        goto Done;
+
+    HeaderSize = FIELD_OFFSET(
+        FILE_STREAM_INFORMATION,
+        StreamName);
+    for (Index = 0; Index < Count; Index++)
+    {
+        ULONG NameBytes;
+        ULONG ThisSize;
+        ULONG EntrySize;
+
+        if (Streams[Index].DataSize >
+                MAXLONGLONG ||
+            Streams[Index].AllocationSize >
+                MAXLONGLONG)
+        {
+            Status = STATUS_FILE_TOO_LARGE;
+            goto Done;
+        }
+
+        NameBytes =
+            (Streams[Index].NameLength + 7) *
+            sizeof(WCHAR);
+        ThisSize = HeaderSize + NameBytes;
+        EntrySize = Index + 1 == Count
+            ? ThisSize
+            : ALIGN_UP_BY(ThisSize,
+                          sizeof(ULONGLONG));
+        if (BytesWritten > Available ||
+            ThisSize >
+                Available - BytesWritten)
+        {
+            if (Last)
+            {
+                Last->NextEntryOffset = 0;
+                BytesWritten =
+                    LastOffset + LastSize;
+            }
+            Status = STATUS_BUFFER_OVERFLOW;
+            goto Done;
+        }
+
+        Current = (PFILE_STREAM_INFORMATION)
+            ((PUCHAR)Buffer + BytesWritten);
+        RtlZeroMemory(Current, EntrySize);
+        Current->NextEntryOffset =
+            Index + 1 == Count ? 0 : EntrySize;
+        Current->StreamNameLength = NameBytes;
+        Current->StreamSize.QuadPart =
+            (LONGLONG)Streams[Index].DataSize;
+        Current->StreamAllocationSize.QuadPart =
+            (LONGLONG)
+                Streams[Index].AllocationSize;
+        Current->StreamName[0] = L':';
+        if (Streams[Index].NameLength != 0)
+        {
+            RtlCopyMemory(
+                Current->StreamName + 1,
+                Streams[Index].Name,
+                Streams[Index].NameLength *
+                    sizeof(WCHAR));
+        }
+        RtlCopyMemory(
+            Current->StreamName + 1 +
+                Streams[Index].NameLength,
+            DataSuffix,
+            (RTL_NUMBER_OF(DataSuffix) - 1) *
+                sizeof(WCHAR));
+
+        Last = Current;
+        LastOffset = BytesWritten;
+        LastSize = ThisSize;
+        BytesWritten += ThisSize;
+        if (Index + 1 != Count)
+        {
+            if (EntrySize >
+                Available - LastOffset)
+            {
+                Current->NextEntryOffset = 0;
+                Status = STATUS_BUFFER_OVERFLOW;
+                goto Done;
+            }
+            BytesWritten =
+                LastOffset + EntrySize;
+        }
+    }
+    Status = STATUS_SUCCESS;
+
+Done:
+    if (Streams)
+        ExFreePoolWithTag(Streams, TAG_NTFS);
+    *Length = Available - BytesWritten;
+    return Status;
 }
 
 static
@@ -281,6 +495,56 @@ GetFileBothDirectoryInformation(_In_    PFileContextBlock FileCB,
                                            FileNameFilter,
                                            Buffer,
                                            Length);
+ }
+
+VOID
+NtfsRefreshFileSizes(_In_ PFileContextBlock FileCB,
+                     _In_opt_ PFILE_OBJECT FileObject)
+{
+    PAttribute DataAttribute;
+
+    if (!FileCB || !FileCB->FileRec)
+        return;
+
+    DataAttribute = NtfsFileRecordGetAttribute(
+        FileCB->FileRec,
+        FileCB->RequestedType,
+        FileCB->RequestedStream);
+    if (DataAttribute)
+    {
+        if (DataAttribute->IsNonResident)
+        {
+            FileCB->CommonFCBHeader.AllocationSize.QuadPart =
+                NtfsAttributeGetPhysicalAllocationSize(
+                    DataAttribute);
+            FileCB->CommonFCBHeader.FileSize.QuadPart =
+                DataAttribute->NonResident.DataSize;
+            FileCB->CommonFCBHeader.ValidDataLength.QuadPart =
+                DataAttribute->NonResident.InitalizedDataSize;
+        }
+        else
+        {
+            FileCB->CommonFCBHeader.AllocationSize.QuadPart = 0;
+            FileCB->CommonFCBHeader.FileSize.QuadPart =
+                DataAttribute->Resident.DataLength;
+            FileCB->CommonFCBHeader.ValidDataLength.QuadPart =
+                DataAttribute->Resident.DataLength;
+        }
+    }
+    else
+    {
+        FileCB->CommonFCBHeader.AllocationSize.QuadPart = 0;
+        FileCB->CommonFCBHeader.FileSize.QuadPart = 0;
+        FileCB->CommonFCBHeader.ValidDataLength.QuadPart = 0;
+    }
+
+    if (FileObject && CcIsFileCached(FileObject))
+    {
+        CcSetFileSizes(
+            FileObject,
+            (PCC_FILE_SIZES)&
+                FileCB->CommonFCBHeader.AllocationSize);
+    }
 }
 
 /* GLOBALS *****************************************************************/
@@ -350,6 +614,11 @@ NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                                                 (PFILE_INTERNAL_INFORMATION)SystemBuffer,
                                                 &BufferLength);
             break;
+        case FileEaInformation:
+            Status = GetFileEaInformation(FileCB,
+                                          (PFILE_EA_INFORMATION)SystemBuffer,
+                                          &BufferLength);
+            break;
         case FileNameInformation:
             Status = GetFileNameInformation(FileCB,
                                             (PFILE_NAME_INFORMATION)SystemBuffer,
@@ -360,6 +629,12 @@ NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
                                                    (PFILE_NETWORK_OPEN_INFORMATION)SystemBuffer,
                                                    &BufferLength);
             break;
+        case FileStreamInformation:
+            Status = GetFileStreamInformation(
+                FileCB,
+                (PFILE_STREAM_INFORMATION)SystemBuffer,
+                &BufferLength);
+            break;
         default:
             DPRINT1("Unhandled file information request %d!\n", FileInfoRequest);
             Status = STATUS_INVALID_DEVICE_REQUEST;
@@ -367,10 +642,13 @@ NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
     }
 
 Done:
-    if (NT_SUCCESS(Status))
+    Irp->IoStatus.Status = Status;
+    if (NT_SUCCESS(Status) ||
+        Status == STATUS_BUFFER_OVERFLOW)
     {
-        Irp->IoStatus.Status = STATUS_SUCCESS;
-        Irp->IoStatus.Information = IoStack->Parameters.QueryFile.Length - BufferLength;
+        Irp->IoStatus.Information =
+            IoStack->Parameters.QueryFile.Length -
+            BufferLength;
 
 #ifdef __REACTOS__
         // HACK!!! Driver should not have to edit UserIosb.
@@ -394,14 +672,250 @@ NTAPI
 NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                       _Inout_ PIRP Irp)
 {
-    /* Overview:
-     * Check if a requested file is open.
-     * If it is, set information in the file as requested.
-     *
-     * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-set-information
-     */
-    DPRINT1("NtfsFsdSetInformation Called!\n");
-    return 0;
+    PIO_STACK_LOCATION IrpSp;
+    PFILE_OBJECT FileObject;
+    PFileContextBlock FileCB;
+    PVolumeContextBlock VolCB;
+    PVOID SystemBuffer;
+    LARGE_INTEGER RequestedSize;
+    NtfsFileBasicInformation BasicInformation;
+    PFILE_BASIC_INFORMATION RequestedBasic;
+    ULONG NewTimestampMask;
+    ULONG OldTimestampMask;
+    ULONG BufferLength;
+    NTSTATUS Status;
+    BOOLEAN AllocationRequest = FALSE;
+    BOOLEAN ResourceAcquired = FALSE;
+
+    IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    FileObject = IrpSp->FileObject;
+    FileCB = FileObject
+        ? (PFileContextBlock)FileObject->FsContext
+        : NULL;
+    VolCB = VolumeDeviceObject
+        ? (PVolumeContextBlock)
+            VolumeDeviceObject->DeviceExtension
+        : NULL;
+    SystemBuffer = GetBuffer(Irp);
+    BufferLength =
+        IrpSp->Parameters.SetFile.Length;
+
+    if (!FileObject || !FileCB || !FileCB->FileRec ||
+        !VolCB || !VolCB->DiskVolume)
+    {
+        Status = STATUS_INVALID_PARAMETER;
+        goto Complete;
+    }
+    if (NtfsVolumeIsReadOnly(VolCB->DiskVolume))
+    {
+        Status = STATUS_MEDIA_WRITE_PROTECTED;
+        goto Complete;
+    }
+    if (!SystemBuffer)
+    {
+        Status = STATUS_INVALID_USER_BUFFER;
+        goto Complete;
+    }
+
+    ExAcquireResourceExclusiveLite(
+        &FileCB->MainResource,
+        TRUE);
+    ResourceAcquired = TRUE;
+
+    switch (IrpSp->Parameters.SetFile.
+                FileInformationClass)
+    {
+        case FileBasicInformation:
+            if (BufferLength <
+                sizeof(FILE_BASIC_INFORMATION))
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                goto Complete;
+            }
+            if (!(FileCB->DesiredAccess &
+                  FILE_WRITE_ATTRIBUTES))
+            {
+                Status = STATUS_ACCESS_DENIED;
+                goto Complete;
+            }
+
+            RequestedBasic =
+                (PFILE_BASIC_INFORMATION)SystemBuffer;
+            RtlZeroMemory(&BasicInformation,
+                          sizeof(BasicInformation));
+            OldTimestampMask =
+                FileCB->AutomaticTimestampMask;
+            NewTimestampMask = OldTimestampMask;
+
+#define SET_BASIC_TIME(Member, Mask, AutomaticMask) \
+    do { \
+        if (RequestedBasic->Member.QuadPart > 0) \
+        { \
+            BasicInformation.Fields |= (Mask); \
+            BasicInformation.Member = \
+                (ULONGLONG)RequestedBasic->Member.QuadPart; \
+            NewTimestampMask &= ~(AutomaticMask); \
+        } \
+        else if (RequestedBasic->Member.QuadPart == -1) \
+        { \
+            NewTimestampMask &= ~(AutomaticMask); \
+        } \
+        else if (RequestedBasic->Member.QuadPart == -2) \
+        { \
+            NewTimestampMask |= (AutomaticMask); \
+        } \
+        else if (RequestedBasic->Member.QuadPart != 0) \
+        { \
+            Status = STATUS_INVALID_PARAMETER; \
+            goto Complete; \
+        } \
+    } while (0)
+
+            SET_BASIC_TIME(
+                CreationTime,
+                NTFS_BASIC_INFO_CREATION_TIME,
+                0);
+            SET_BASIC_TIME(
+                LastAccessTime,
+                NTFS_BASIC_INFO_LAST_ACCESS_TIME,
+                NTFS_BASIC_INFO_LAST_ACCESS_TIME);
+            SET_BASIC_TIME(
+                LastWriteTime,
+                NTFS_BASIC_INFO_LAST_WRITE_TIME,
+                NTFS_BASIC_INFO_LAST_WRITE_TIME);
+            SET_BASIC_TIME(
+                ChangeTime,
+                NTFS_BASIC_INFO_CHANGE_TIME,
+                NTFS_BASIC_INFO_CHANGE_TIME);
+#undef SET_BASIC_TIME
+
+            if (RequestedBasic->FileAttributes != 0)
+            {
+                BasicInformation.Fields |=
+                    NTFS_BASIC_INFO_FILE_ATTRIBUTES;
+                BasicInformation.FileAttributes =
+                    RequestedBasic->FileAttributes;
+            }
+
+            Status =
+                NtfsFileRecordSetAutomaticTimestampMask(
+                    FileCB->FileRec,
+                    NewTimestampMask);
+            if (!NT_SUCCESS(Status))
+                goto Complete;
+
+            Status =
+                NtfsFileRecordSetBasicInformation(
+                    FileCB->FileRec,
+                    &BasicInformation);
+            if (NT_SUCCESS(Status))
+            {
+                FileCB->AutomaticTimestampMask =
+                    NewTimestampMask;
+            }
+            else
+            {
+                (void)
+                    NtfsFileRecordSetAutomaticTimestampMask(
+                        FileCB->FileRec,
+                        OldTimestampMask);
+            }
+            if (NT_SUCCESS(Status) &&
+                BasicInformation.Fields != 0)
+            {
+                FileObject->Flags |= FO_FILE_MODIFIED;
+            }
+            goto Complete;
+
+        case FileEndOfFileInformation:
+            if (BufferLength <
+                sizeof(FILE_END_OF_FILE_INFORMATION))
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                goto Complete;
+            }
+            if (IrpSp->Parameters.SetFile.AdvanceOnly)
+            {
+                Status = STATUS_NOT_IMPLEMENTED;
+                goto Complete;
+            }
+            RequestedSize =
+                ((PFILE_END_OF_FILE_INFORMATION)
+                    SystemBuffer)->EndOfFile;
+            break;
+
+        case FileAllocationInformation:
+            if (BufferLength <
+                sizeof(FILE_ALLOCATION_INFORMATION))
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                goto Complete;
+            }
+            RequestedSize =
+                ((PFILE_ALLOCATION_INFORMATION)
+                    SystemBuffer)->AllocationSize;
+            AllocationRequest = TRUE;
+            break;
+
+        default:
+            Status = STATUS_NOT_IMPLEMENTED;
+            goto Complete;
+    }
+
+    if (!(FileCB->DesiredAccess & FILE_WRITE_DATA))
+    {
+        Status = STATUS_ACCESS_DENIED;
+        goto Complete;
+    }
+    if (NtfsFileRecordGetHeader(FileCB->FileRec)->
+            Flags & FR_IS_DIRECTORY)
+    {
+        Status = STATUS_INVALID_DEVICE_REQUEST;
+        goto Complete;
+    }
+    if (RequestedSize.QuadPart < 0)
+    {
+        Status = STATUS_INVALID_PARAMETER;
+        goto Complete;
+    }
+    if (RequestedSize.QuadPart <
+            FileCB->CommonFCBHeader.FileSize.QuadPart &&
+        !MmCanFileBeTruncated(
+            FileObject->SectionObjectPointer,
+            &RequestedSize))
+    {
+        Status = STATUS_USER_MAPPED_FILE;
+        goto Complete;
+    }
+
+    Status = AllocationRequest
+        ? NtfsFileRecordSetFileAllocationSize(
+            FileCB->FileRec,
+            FileCB->RequestedType,
+            FileCB->RequestedStream,
+            (ULONGLONG)RequestedSize.QuadPart)
+        : NtfsFileRecordSetFileDataSize(
+            FileCB->FileRec,
+            FileCB->RequestedType,
+            FileCB->RequestedStream,
+            (ULONGLONG)RequestedSize.QuadPart);
+    if (NT_SUCCESS(Status))
+    {
+        NtfsRefreshFileSizes(FileCB,
+                             FileObject);
+        FileObject->Flags |=
+            FO_FILE_MODIFIED |
+            FO_FILE_SIZE_CHANGED;
+    }
+
+Complete:
+    if (ResourceAcquired)
+        ExReleaseResourceLite(
+            &FileCB->MainResource);
+    Irp->IoStatus.Status = Status;
+    Irp->IoStatus.Information = 0;
+    IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+    return Status;
 }
 
 _Function_class_(IRP_MJ_DIRECTORY_CONTROL)

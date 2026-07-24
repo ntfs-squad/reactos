@@ -41,6 +41,7 @@ typedef struct _FCB
     PNtfsFileRecord FileRec;
     ULONG CreateOptions;
     ACCESS_MASK DesiredAccess;
+    ULONG AutomaticTimestampMask;
 
     // Used for file name information;
     UNICODE_STRING FileName;
@@ -51,6 +52,9 @@ typedef struct _FCB
 
     // Used for query directory requests
     PNtfsDirectory FileDir;
+
+    // One-based index used to resume IRP_MJ_QUERY_EA enumeration.
+    ULONG EaIndex;
 
     // Consider moving, multiple files can point to the same stream in NTFS.
     PStreamContextBlock StreamCB;

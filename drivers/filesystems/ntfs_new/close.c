@@ -56,10 +56,13 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             FsRtlUninitializeFileLock(&FileCB->FileLock);
 
             if (FileCB->FileDir)
-                ExFreePool(FileCB->FileDir);
+                NtfsDirectoryDestroy(FileCB->FileDir);
 
             if (FileCB->FileRec)
-                ExFreePool(FileCB->FileRec);
+                NtfsFileRecordDestroy(FileCB->FileRec);
+
+            if (FileCB->RequestedStream)
+                ExFreePool(FileCB->RequestedStream);
 
             if (FileCB->StreamCB)
                 ExFreePool(FileCB->StreamCB);

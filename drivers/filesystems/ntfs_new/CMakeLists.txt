@@ -10,6 +10,7 @@ list(APPEND SOURCE
      pnp.c
      read.c
      registry.c
+     security.c
      vol.c
      write.c
 )

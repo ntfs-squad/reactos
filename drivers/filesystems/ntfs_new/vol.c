@@ -117,7 +117,9 @@ fallback:
      */
     Buffer->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES
                                    | FILE_UNICODE_ON_DISK
-                                   | FILE_NAMED_STREAMS;
+                                   | FILE_NAMED_STREAMS
+                                   | FILE_SUPPORTS_REPARSE_POINTS
+                                   | FILE_SUPPORTS_EXTENDED_ATTRIBUTES;
 
     if (NtfsVolumeIsReadOnly(DiskVolume))
         Buffer->FileSystemAttributes |= FILE_READ_ONLY_VOLUME;

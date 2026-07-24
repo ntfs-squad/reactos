@@ -32,76 +32,73 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PFILE_OBJECT FileObj;
     PNtfsVolume DiskVolume;
     PNtfsFileRecord FileRec;
-    PNtfsMasterFileTable Mft;
     AttributeType RequestedType;
     PWSTR RequestedStream;
+    BOOLEAN ResourceAcquired = FALSE;
 
     IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    Buffer = (PUCHAR)(GetBuffer(Irp));
-    ByteOffset = IrpSp->Parameters.Write.ByteOffset;
-    Length = IrpSp->Parameters.Write.Length;
-    FileObj = IrpSp->FileObject;
-    FileCB = (PFileContextBlock)FileObj->FsContext;
-    DiskVolume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->DiskVolume;
-    Mft = NtfsVolumeGetMft(DiskVolume);
-
     DPRINT1("NtfsFsdWrite() called!\n");
+
+    FileObj = IrpSp->FileObject;
+    if (!FileObj ||
+        !VolumeDeviceObject->DeviceExtension ||
+        !FileObj->FsContext)
+    {
+        Status = STATUS_INVALID_PARAMETER;
+        goto Complete;
+    }
+
+    FileCB = (PFileContextBlock)FileObj->FsContext;
+    FileRec = FileCB->FileRec;
+    if (!FileRec)
+    {
+        Status = STATUS_INVALID_PARAMETER;
+        goto Complete;
+    }
+
+    DiskVolume =
+        ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->
+            DiskVolume;
+    if (!DiskVolume)
+    {
+        Status = STATUS_INVALID_DEVICE_STATE;
+        goto Complete;
+    }
 
     if (NtfsVolumeIsReadOnly(DiskVolume))
     {
-        // Disk is read-only. Don't try to write anything.
-        Irp->IoStatus.Information = 0;
-        Status = STATUS_INVALID_DEVICE_REQUEST;
-        Irp->IoStatus.Status = Status;
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-        return Status;
+        Status = STATUS_MEDIA_WRITE_PROTECTED;
+        goto Complete;
     }
 
-    // Sometimes the file context block is still available, and sometimes it's not.
-    if (FileCB)
+    if (!(FileCB->DesiredAccess &
+          (FILE_WRITE_DATA | FILE_APPEND_DATA)))
     {
-        FileRec = FileCB->FileRec;
-        RequestedType = FileCB->RequestedType;
-        RequestedStream = FileCB->RequestedStream;
-
-        // Set the offset to end of file if FILE_APPEND_DATA is set
-        if (FileCB->DesiredAccess == FILE_APPEND_DATA)
-        {
-            ByteOffset.HighPart = -1;
-            ByteOffset.LowPart = FILE_WRITE_TO_END_OF_FILE;
-        }
+        Status = STATUS_ACCESS_DENIED;
+        goto Complete;
     }
 
-    else
+    Buffer = (PUCHAR)GetBuffer(Irp);
+    Length = IrpSp->Parameters.Write.Length;
+    if (Length != 0 && !Buffer)
     {
-        Status = NtfsMasterFileTableGetFileRecordFromQuery(Mft,
-                                                           FileObj->FileName.Buffer,
-                                                           &FileRec);
-
-        if (!NT_SUCCESS(Status))
-        {
-            DPRINT1("Unable to find file record!\n");
-            Irp->IoStatus.Information = 0;
-            Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-            return STATUS_INVALID_PARAMETER;
-        }
-
-        Status = NtfsVolumeGetADSPreference(DiskVolume,
-                                            &FileObj->FileName,
-                                            &RequestedType,
-                                            &RequestedStream);
-
-        if (!NT_SUCCESS(Status))
-        {
-            DPRINT1("Unable to find ADS preferences!\n");
-            ExFreePool(FileRec);
-            Irp->IoStatus.Information = 0;
-            Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-            return STATUS_INVALID_PARAMETER;
-        }
+        Status = STATUS_INVALID_USER_BUFFER;
+        goto Complete;
     }
+
+    ByteOffset = IrpSp->Parameters.Write.ByteOffset;
+    RequestedType = FileCB->RequestedType;
+    RequestedStream = FileCB->RequestedStream;
+
+    // Set the offset to end of file if FILE_APPEND_DATA is set.
+    if (FileCB->DesiredAccess & FILE_APPEND_DATA)
+    {
+        ByteOffset.HighPart = -1;
+        ByteOffset.LowPart = FILE_WRITE_TO_END_OF_FILE;
+    }
+
+    ExAcquireResourceExclusiveLite(&FileCB->MainResource, TRUE);
+    ResourceAcquired = TRUE;
 
     Status = NtfsFileRecordWriteFileData(FileRec,
                                          RequestedType,
@@ -112,6 +109,12 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     if (NT_SUCCESS(Status))
     {
+        NtfsRefreshFileSizes(FileCB,
+                             FileObj);
+        FileObj->Flags |=
+            FO_FILE_MODIFIED |
+            FO_FILE_SIZE_CHANGED;
+
         if (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO)
         {
             // Advance file pointer
@@ -125,6 +128,15 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         Irp->IoStatus.Information = 0;
     }
 
+    ExReleaseResourceLite(&FileCB->MainResource);
+    ResourceAcquired = FALSE;
+
+Complete:
+    if (ResourceAcquired)
+        ExReleaseResourceLite(&FileCB->MainResource);
+
+    if (!NT_SUCCESS(Status))
+        Irp->IoStatus.Information = 0;
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return Status;

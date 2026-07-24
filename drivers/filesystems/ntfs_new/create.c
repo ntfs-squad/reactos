@@ -38,6 +38,7 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     PNtfsVolume DiskVolume;
     PNtfsMasterFileTable Mft;
     USHORT FileNameLength;
+    BOOLEAN ExternalBackingDeleted = FALSE;
 
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
     {
@@ -174,6 +175,56 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     FileCB->FileRec = CurrentFile;
     FileCB->CreateOptions = IrpSp->Parameters.Create.Options;
     FileCB->DesiredAccess = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
+    FileCB->AutomaticTimestampMask =
+        NtfsFileRecordGetAutomaticTimestampMask(
+            CurrentFile);
+
+    /*
+     * WOF FILE-provider files become ordinary files as soon as their unnamed
+     * data stream is opened for content writes.  Do this before cache sizes
+     * are initialized so Cache Manager observes the materialized allocation.
+     */
+    if (FileCB->RequestedType == TypeData &&
+        !FileCB->RequestedStream &&
+        (FileCB->DesiredAccess &
+         (FILE_WRITE_DATA | FILE_APPEND_DATA)))
+    {
+        Status = NtfsVolumeIsReadOnly(DiskVolume)
+            ? STATUS_MEDIA_WRITE_PROTECTED
+            : NtfsFileRecordDeleteExternalBacking(
+                CurrentFile);
+        if (Status ==
+            STATUS_OBJECT_NOT_EXTERNALLY_BACKED)
+        {
+            Status = STATUS_SUCCESS;
+        }
+        else if (NT_SUCCESS(Status))
+        {
+            ExternalBackingDeleted = TRUE;
+        }
+
+        if (!NT_SUCCESS(Status))
+        {
+            if (FileCB->RequestedStream)
+                ExFreePool(FileCB->RequestedStream);
+            if (FileCB->FileName.Buffer)
+                ExFreePool(FileCB->FileName.Buffer);
+            NtfsFileRecordDestroy(CurrentFile);
+            ExDeleteResourceLite(
+                &FileCB->MainResource);
+            ExDeleteResourceLite(
+                &FileCB->PagingIoResource);
+            FsRtlUninitializeFileLock(
+                &FileCB->FileLock);
+            ExFreePool(FileCB);
+            Irp->IoStatus.Information = 0;
+            Irp->IoStatus.Status = Status;
+            IoCompleteRequest(
+                Irp,
+                IO_DISK_INCREMENT);
+            return Status;
+        }
+    }
 
     /* Assume that this is the first file stream request.
      * For more details see:
@@ -209,12 +260,17 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         // Use the CommonFCBHeader fields as the canonical CC_FILE_SIZES storage
         PCC_FILE_SIZES FileSizes = (PCC_FILE_SIZES)&FileCB->CommonFCBHeader.AllocationSize;
         // Initialize the common header sizes from attributes
-        PAttribute DataAttr = NtfsFileRecordGetAttribute(CurrentFile, TypeData, NULL);
+        PAttribute DataAttr = NtfsFileRecordGetAttribute(
+            CurrentFile,
+            FileCB->RequestedType,
+            FileCB->RequestedStream);
         if (DataAttr)
         {
             if (DataAttr->IsNonResident)
             {
-                FileCB->CommonFCBHeader.AllocationSize.QuadPart = DataAttr->NonResident.AllocatedSize;
+                FileCB->CommonFCBHeader.AllocationSize.QuadPart =
+                    NtfsAttributeGetPhysicalAllocationSize(
+                        DataAttr);
                 FileCB->CommonFCBHeader.FileSize.QuadPart       = DataAttr->NonResident.DataSize;
                 FileCB->CommonFCBHeader.ValidDataLength.QuadPart= DataAttr->NonResident.InitalizedDataSize;
             }
@@ -258,6 +314,12 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     // Set FsContext to the file context block and open file.
     FileObject->FsContext = FileCB;
+    if (ExternalBackingDeleted)
+    {
+        FileObject->Flags |=
+            FO_FILE_MODIFIED |
+            FO_FILE_SIZE_CHANGED;
+    }
     Irp->IoStatus.Information = FILE_OPENED;
     Irp->IoStatus.Status = STATUS_SUCCESS;
     IoCompleteRequest(Irp, IO_DISK_INCREMENT);

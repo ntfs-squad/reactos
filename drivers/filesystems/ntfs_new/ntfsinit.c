@@ -64,6 +64,7 @@ DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
     DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION]          = NtfsFsdSetInformation;
     DriverObject->MajorFunction[IRP_MJ_QUERY_EA]                 = NtfsFsdQueryEa;
     DriverObject->MajorFunction[IRP_MJ_SET_EA]                   = NtfsFsdSetEa;
+    DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY]           = NtfsFsdQuerySecurity;
     DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS]            = NtfsFsdFlushBuffers;
     DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = NtfsFsdQueryVolumeInformation;
     DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION]   = NtfsFsdSetVolumeInformation;
