@@ -9,7 +9,7 @@
 
 #define NTFS_INDEX_HEADER_LARGE 1
 
-static const WCHAR NtfsI30Name[] = L"$I30";
+extern const WCHAR NtfsI30Name[] = L"$I30";
 
 static BOOLEAN
 FileNameKeysMatch(_In_ PIndexEntry Entry,

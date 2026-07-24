@@ -1735,6 +1735,50 @@ FileRecord::DeleteExternalBacking()
     return Status;
 }
 
+/*
+ * Creates the base record's initial $ATTRIBUTE_LIST so a nonresident
+ * stream's mapping pairs can spill into extension records, then re-resolves
+ * the caller's attribute pointer and owner (both move once the list is
+ * published). Created reports whether a list was actually created; a base
+ * record with no movable attribute reports success with Created FALSE so
+ * the caller keeps its original mapping-growth failure.
+ */
+NTSTATUS
+FileRecord::EnsureAttributeListForMappingGrowth(
+    _In_ AttributeType AttrType,
+    _In_opt_ PWSTR StreamName,
+    _Inout_ PAttribute* TargetAttribute,
+    _Inout_ FileRecord** AttributeOwner,
+    _Out_ PBOOLEAN Created)
+{
+    NTSTATUS Status;
+
+    *Created = FALSE;
+    if (*AttributeOwner != this ||
+        Header->BaseFileRecord != 0 ||
+        Header->MFTRecordNumber <=
+            NTFS_LAST_RESERVED_FILE_RECORD ||
+        GetAttribute(TypeAttributeList, NULL))
+    {
+        return STATUS_SUCCESS;
+    }
+
+    Status = CreateInitialAttributeList();
+    if (Status == STATUS_BUFFER_TOO_SMALL)
+        return STATUS_SUCCESS;
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    *TargetAttribute = GetAttribute(AttrType, StreamName);
+    if (!*TargetAttribute)
+        return STATUS_NOT_FOUND;
+    *AttributeOwner = GetAttributeOwner(*TargetAttribute);
+    if (!*AttributeOwner)
+        return STATUS_FILE_CORRUPT_ERROR;
+    *Created = TRUE;
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS
 FileRecord::WriteFileData(_In_     AttributeType AttrType,
                           _In_opt_ PWSTR StreamName,
@@ -1998,12 +2042,64 @@ RestoreResident:
         if (EndOffset >
             TargetAttribute->NonResident.AllocatedSize)
         {
+            /*
+             * Mapping-pair growth can outgrow the base record. Once an
+             * $ATTRIBUTE_LIST exists the update path relocates crowded
+             * segments into extension records, but the list itself needs
+             * about 0x50 free bytes here, so it is created proactively
+             * while the record still has headroom. A reactive retry backs
+             * up a first failure inside the remaining window.
+             */
+            BOOLEAN ListCreated;
+
+            if (AttributeOwner == this &&
+                Header->AllocatedSize >=
+                    Header->ActualSize &&
+                Header->AllocatedSize -
+                    Header->ActualSize < 0x100)
+            {
+                Status =
+                    EnsureAttributeListForMappingGrowth(
+                        AttrType,
+                        StreamName,
+                        &TargetAttribute,
+                        &AttributeOwner,
+                        &ListCreated);
+                if (!NT_SUCCESS(Status))
+                    return Status;
+            }
+
             Status = AttributeOwner->
                 ExtendNonResidentData(
                 TargetAttribute,
                 Buffer,
                 RequestedLength,
                 (ULONGLONG)Offset->QuadPart);
+            if (Status == STATUS_BUFFER_TOO_SMALL)
+            {
+                Status =
+                    EnsureAttributeListForMappingGrowth(
+                        AttrType,
+                        StreamName,
+                        &TargetAttribute,
+                        &AttributeOwner,
+                        &ListCreated);
+                if (NT_SUCCESS(Status) && ListCreated)
+                {
+                    Status = AttributeOwner->
+                        ExtendNonResidentData(
+                        TargetAttribute,
+                        Buffer,
+                        RequestedLength,
+                        (ULONGLONG)
+                            Offset->QuadPart);
+                }
+                else if (NT_SUCCESS(Status))
+                {
+                    Status =
+                        STATUS_BUFFER_TOO_SMALL;
+                }
+            }
             if (NT_SUCCESS(Status))
             {
                 *Length = RequestedLength;
@@ -3604,6 +3700,8 @@ FileRecord::PromoteResidentData(
             TypeReparsePoint &&
          TargetAttribute->AttributeType !=
             TypeBitmap &&
+         TargetAttribute->AttributeType !=
+            TypeIndexAllocation &&
          TargetAttribute->AttributeType !=
             TypeAttributeList) ||
         TargetAttribute->Flags != 0)

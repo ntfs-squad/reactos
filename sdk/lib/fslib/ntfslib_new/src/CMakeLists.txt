@@ -21,6 +21,7 @@ target_sources(ntfslib_new PRIVATE
     filerecord/read/streams.cpp
     filerecord/read/wof.cpp
     filerecord/write/basic.cpp
+    filerecord/write/create.cpp
     filerecord/write/ea.cpp
     filerecord/write/filedata.cpp
     filerecord/write/filename.cpp
@@ -29,7 +30,9 @@ target_sources(ntfslib_new PRIVATE
     filerecord/fixup.cpp
     lfs/lfs.cpp
     mft/get.cpp
+    mft/create.cpp
     mft/mft.cpp
+    mft/namespace.cpp
     NtfsIsNameInExpression.cpp
     volume/metadata/attrdef.cpp
     volume/metadata/bitmap.cpp

@@ -233,6 +233,87 @@ FileRecord::UpdateAutomaticTimestamps(
 }
 
 NTSTATUS
+FileRecord::TouchDirectory()
+{
+    PAttribute Attribute;
+    PStandardInformationEx Standard;
+    PUCHAR RecordBackup;
+    ULONGLONG CurrentTime;
+    NTSTATUS Status;
+
+    if (!DiskVolume || !Header ||
+        !(Header->Flags & FR_IS_DIRECTORY))
+    {
+        return STATUS_NOT_A_DIRECTORY;
+    }
+    if (DiskVolume->IsReadOnly)
+        return STATUS_ACCESS_DENIED;
+
+    Status = GetStandardInformationForUpdate(
+        &Attribute,
+        &Standard);
+    if (!NT_SUCCESS(Status))
+        return Status;
+    UNREFERENCED_PARAMETER(Attribute);
+
+    Status = NtfsQuerySystemTime(&CurrentTime);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    RecordBackup =
+        new(PagedPool, TAG_FILE_RECORD)
+            UCHAR[RecordBufferSize];
+    if (!RecordBackup)
+        return STATUS_INSUFFICIENT_RESOURCES;
+    RtlCopyMemory(RecordBackup,
+                  Data,
+                  RecordBufferSize);
+
+    Standard->LastWriteTime = CurrentTime;
+    Standard->ChangeTime = CurrentTime;
+    Status = DiskVolume->MFT->
+        WriteFileRecordToMFT(this);
+    if (!NT_SUCCESS(Status))
+    {
+        RtlCopyMemory(Data,
+                      RecordBackup,
+                      RecordBufferSize);
+        Header =
+            reinterpret_cast<PFileRecordHeader>(Data);
+        ClearDataRunCache();
+    }
+
+    delete[] RecordBackup;
+    return Status;
+}
+
+/*
+ * Stamps $STANDARD_INFORMATION's change time in memory. The caller commits
+ * the record; this only refreshes the timestamp inside a larger mutation.
+ */
+NTSTATUS
+FileRecord::StampChangeTime()
+{
+    PAttribute StandardAttribute;
+    PStandardInformationEx Standard;
+    ULONGLONG CurrentTime;
+    NTSTATUS Status;
+
+    Status = GetStandardInformationForUpdate(
+        &StandardAttribute,
+        &Standard);
+    if (!NT_SUCCESS(Status))
+        return Status;
+    UNREFERENCED_PARAMETER(StandardAttribute);
+
+    Status = NtfsQuerySystemTime(&CurrentTime);
+    if (!NT_SUCCESS(Status))
+        return Status;
+    Standard->ChangeTime = CurrentTime;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
 FileRecord::SetBasicInformation(
     _In_ const NtfsFileBasicInformation* Information)
 {

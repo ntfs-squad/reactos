@@ -207,6 +207,20 @@ BOOLEAN
 NtfsIsDirectoryIndexEntryValid(_In_ PIndexEntry Entry,
                                _In_ ULONG Remaining);
 
+NTSTATUS
+NtfsValidateComponentName(
+    _In_reads_(NameLength) PWCHAR Name,
+    _In_ ULONG NameLength);
+
+/* The one indexed directory index: the $I30 $FILE_NAME index. */
+extern const WCHAR NtfsI30Name[];
+
+/* DOS attribute bits a caller may set when creating a file. */
+#define NTFS_CREATE_MUTABLE_ATTRIBUTES \
+    (FILE_PERM_READONLY | FILE_PERM_HIDDEN | FILE_PERM_SYSTEM | \
+     FILE_PERM_ARCHIVE | FILE_PERM_NORMAL | FILE_PERM_TEMP | \
+     FILE_PERM_OFFLINE | FILE_PERM_NOT_INDXED)
+
 struct _BTreeNode
 {
     ULONGLONG  VCN;
@@ -380,6 +394,11 @@ typedef struct _DIRECTORY_KEY_BLOCK
 // Macro to get the file record number from a file reference
 #define GetFRNFromFileRef(x) ((x) & 0xFFFFFFFFFFFF)
 #define GetSequenceFromFileRef(x) ((USHORT)((x) >> 48))
+
+// Compose a file reference from a record header (inverse of the two above)
+#define MakeFileReference(Header) \
+    (((ULONGLONG)(Header)->SequenceNumber << 48) | \
+     ((ULONGLONG)(Header)->MFTRecordNumber & 0xFFFFFFFFFFFFULL))
 
 #define GetNamePointer(x) (((char*)x) + (x->NameOffset))
 
@@ -706,6 +725,12 @@ public:
     NTSTATUS
     UpdateAutomaticTimestamps(_In_ UINT32 Fields);
 
+    NTSTATUS
+    TouchDirectory();
+
+    NTSTATUS
+    StampChangeTime();
+
     // ./write.cpp
     NTSTATUS
     WriteFileData(_In_     AttributeType AttrType,
@@ -778,6 +803,9 @@ public:
     ApplyFixup();
 
 private:
+    friend class Directory;
+    friend class MasterFileTable;
+
     PVolume DiskVolume;
     ULONG RecordBufferSize;
     PDataRunCacheEntry DataRunCache = NULL;
@@ -877,6 +905,15 @@ private:
         _Out_opt_ PBOOLEAN Changed);
 
     NTSTATUS
+    InitializeNewFileRecord(
+        _In_ FileRecord* Parent,
+        _In_reads_(NameLength) PWSTR Name,
+        _In_ ULONG NameLength,
+        _In_ BOOLEAN IsDirectory,
+        _In_ ULONG FileAttributes,
+        _Out_ PFileNameEx* CreatedName);
+
+    NTSTATUS
     ReplaceListedExtendedAttributes(
         _In_opt_ PAttribute InformationAttribute,
         _In_opt_ PAttribute EaAttribute,
@@ -907,6 +944,14 @@ private:
 
     NTSTATUS
     CreateInitialAttributeList();
+
+    NTSTATUS
+    EnsureAttributeListForMappingGrowth(
+        _In_ AttributeType AttrType,
+        _In_opt_ PWSTR StreamName,
+        _Inout_ PAttribute* TargetAttribute,
+        _Inout_ FileRecord** AttributeOwner,
+        _Out_ PBOOLEAN Created);
 
     NTSTATUS
     RemoveAttributeRecord(_In_ PAttribute TargetAttribute);
@@ -1104,10 +1149,16 @@ public:
 
     // ./editdir.cpp
     NTSTATUS
-    AddFileToDirectory(_In_ PFileNameEx FileToAdd);
+    AddFileToDirectory(
+        _In_ PFileRecord DirectoryFile,
+        _In_ ULONGLONG FileReference,
+        _In_ PFileNameEx FileToAdd);
 
     NTSTATUS
-    RemoveFileFromDirectory(_In_ PBTreeKey FileToRemove);
+    RemoveFileFromDirectory(
+        _In_ PFileRecord DirectoryFile,
+        _In_ ULONGLONG FileReference,
+        _In_ PUNICODE_STRING Name);
 
     // ./dbg.cpp
     void
@@ -1118,6 +1169,38 @@ private:
     PUCHAR IndexAllocationData = NULL;
     ULONG IndexAllocationLength = 0;
     PDIRECTORY_KEY_BLOCK KeyBlocks = NULL;
+
+    // ./editdir.cpp
+    static NTSTATUS
+    ReplaceIndexRootValue(
+        _In_ PVolume DiskVolume,
+        _In_ PFileRecord DirectoryFile,
+        _In_reads_bytes_(ValueLength) PUCHAR Value,
+        _In_ ULONG ValueLength);
+
+    static NTSTATUS
+    PushDownRoot(
+        _In_ PVolume DiskVolume,
+        _In_ PFileRecord DirectoryFile,
+        _In_ const IndexRootEx* OldRoot,
+        _In_reads_bytes_(ListBytes) PUCHAR List,
+        _In_ ULONG ListBytes,
+        _In_ BOOLEAN ListInternal,
+        _In_ ULONG RecordSize,
+        _In_ ULONGLONG AllocationUnit);
+
+    static NTSTATUS
+    SplitAndPromote(
+        _In_ PVolume DiskVolume,
+        _In_ PFileRecord DirectoryFile,
+        _In_ ULONG RecordSize,
+        _In_ ULONGLONG AllocationUnit,
+        _In_reads_(PathDepth) const ULONGLONG* PathVcns,
+        _In_ ULONG PathDepth,
+        _Inout_updates_bytes_(RecordSize) PUCHAR NodeImage,
+        _In_ ULONG LeafInsertionOffset,
+        _In_ PIndexEntry FirstPending,
+        _In_ ULONG FirstPendingLength);
 
     // ./directory.cpp
     PBTreeKey
@@ -1201,6 +1284,29 @@ public:
         _Out_ PNtfsVolumeInformation Information);
 
     NTSTATUS
+    CreateFile(
+        _Inout_ PWCHAR Query,
+        _In_ BOOLEAN IsDirectory,
+        _In_ ULONG FileAttributes,
+        _Out_ PFileRecord* File);
+
+    // ./namespace.cpp
+    NTSTATUS
+    DeleteFile(
+        _Inout_ PWCHAR Query,
+        _In_ BOOLEAN RemoveDirectory);
+
+    NTSTATUS
+    RenameFile(
+        _Inout_ PWCHAR OldQuery,
+        _Inout_ PWCHAR NewQuery);
+
+    NTSTATUS
+    CreateHardLink(
+        _Inout_ PWCHAR ExistingQuery,
+        _Inout_ PWCHAR NewQuery);
+
+    NTSTATUS
     GetFileAttributeFromFileRecordNumber(_In_  AttributeType Type,
                                          _In_  PWSTR Name,
                                          _In_  ULONG FileRecordNumber,
@@ -1208,6 +1314,88 @@ public:
                                          _Out_ PAttribute* TargetAttribute);
 
 private:
+    // ./namespace.cpp
+    NTSTATUS
+    LookupParentAndChild(
+        _Inout_ PWCHAR Query,
+        _Out_ PFileRecord* Parent,
+        _Out_ PFileRecord* Child,
+        _Out_ PULONGLONG ChildReference,
+        _Out_ PWCHAR* Name,
+        _Out_ PULONG NameLength);
+
+    NTSTATUS
+    SplitAndResolveParent(
+        _Inout_ PWCHAR Query,
+        _In_ BOOLEAN ValidateName,
+        _Out_ PFileRecord* Parent,
+        _Out_ PWCHAR* Name,
+        _Out_ PULONG NameLength);
+
+    NTSTATUS
+    EnumerateFileNames(
+        _In_ PFileRecord File,
+        _Inout_ PULONG Offset,
+        _Out_ PAttribute* Attribute,
+        _Out_ PFileNameEx* FileName);
+
+    NTSTATUS
+    FindFileNamePair(
+        _In_ PFileRecord File,
+        _In_ ULONGLONG ParentReference,
+        _In_ PUNICODE_STRING Name,
+        _Out_ PAttribute* NameAttribute,
+        _Out_ PFileNameEx* NameValue,
+        _Out_ PAttribute* AliasAttribute,
+        _Out_ PFileNameEx* AliasValue);
+
+    NTSTATUS
+    RemoveFileNameFromRecord(
+        _In_ PFileRecord File,
+        _In_ ULONGLONG ParentReference,
+        _In_ PUNICODE_STRING Name);
+
+    NTSTATUS
+    InsertFileNameLink(
+        _In_ PFileRecord File,
+        _In_ const FileNameEx* Source,
+        _In_ ULONGLONG ParentReference,
+        _In_reads_(NameLength) PWCHAR Name,
+        _In_ ULONG NameLength,
+        _Out_ PAttribute* NewAttribute,
+        _Out_ PFileNameEx* NewValue);
+
+    NTSTATUS
+    CollectReleasableRuns(
+        _In_ PFileRecord File,
+        _Out_ PDataRun* Runs);
+
+    NTSTATUS
+    CollectDistinctExtentReferences(
+        _In_ PFileRecord File,
+        _Out_ PULONGLONG ExtentReferences,
+        _In_ ULONG Capacity,
+        _Out_ PULONG ExtentCount);
+
+    NTSTATUS
+    AllocateFileRecord(
+        _In_ ULONGLONG BaseFileReference,
+        _In_ BOOLEAN IsDirectory,
+        _Out_ PFileRecord* File);
+
+    NTSTATUS
+    AllocateBaseFileRecord(
+        _In_ BOOLEAN IsDirectory,
+        _Out_ PFileRecord* File);
+
+    NTSTATUS
+    DeallocateFileRecord(
+        _Inout_ PFileRecord File);
+
+    NTSTATUS
+    DeallocateBaseFileRecord(
+        _Inout_ PFileRecord File);
+
     PVolume DiskVolume;
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;

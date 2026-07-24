@@ -9,6 +9,16 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
+/*
+ * Unnamed attributes are singletons in a record, with one exception:
+ * $FILE_NAME repeats once per hard link and per DOS/WIN32 alias.
+ */
+static BOOLEAN
+NtfsUnnamedAttributeMayRepeat(_In_ AttributeType Type)
+{
+    return Type == TypeFileName;
+}
+
 static ULONG
 UnsignedMappingBytes(_In_ ULONGLONG Value)
 {
@@ -838,8 +848,11 @@ FileRecord::InsertResidentAttribute(
         {
             if (NameLength == 0)
             {
-                if (Attribute->NameLength == 0)
+                if (Attribute->NameLength == 0 &&
+                    !NtfsUnnamedAttributeMayRepeat(Type))
+                {
                     return STATUS_INVALID_PARAMETER;
+                }
                 if (InsertionOffset == MAXULONG)
                     InsertionOffset = Offset;
             }

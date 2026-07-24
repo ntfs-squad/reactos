@@ -9,6 +9,8 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
+/* Intentionally retained as debugger-invoked bringup tooling. */
+
 static
 void
 DumpBTreeNode(PBTreeNode Node,
@@ -25,9 +27,9 @@ DumpBTreeKey(PBTreeKey Key,
     if (!(Key->Entry->Flags & INDEX_ENTRY_END))
     {
         UNICODE_STRING FileName;
-        FileName.Length = GetFileName(Key)->NameLength * sizeof(WCHAR);
-        FileName.MaximumLength = FileName.Length;
-        FileName.Buffer = GetFileName(Key)->Name;
+        FileName = NtfsMakeCountedUnicodeString(
+            GetFileName(Key)->Name,
+            GetFileName(Key)->NameLength * sizeof(WCHAR));
         DbgPrint("|===%wZ (MFT ID: %ld, Flags: 0x%X)\n",
                  &FileName,
                  GetFRNFromFileRef(FileRef(Key)),

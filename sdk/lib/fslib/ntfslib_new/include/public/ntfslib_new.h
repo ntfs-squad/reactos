@@ -635,6 +635,60 @@ NtfsMasterFileTableReadFileRecord(
     _Out_opt_ PUCHAR Buffer,
     _Inout_ PULONG BufferLength);
 
+/*
+ * Creates one regular file or empty directory at a counted UTF-16 path.
+ * The parent must already exist. FileAttributes contains ordinary DOS
+ * attributes; the directory bit is supplied separately through IsDirectory.
+ * On success File receives the new, caller-owned file-record handle.
+ */
+NTSTATUS
+NtfsMasterFileTableCreateFile(
+    _In_ PNtfsMasterFileTable Mft,
+    _In_reads_(QueryLength) PWCHAR Query,
+    _In_ ULONG QueryLength,
+    _In_ BOOLEAN IsDirectory,
+    _In_ ULONG FileAttributes,
+    _Out_ PNtfsFileRecord* File);
+
+/*
+ * Removes one name at a counted UTF-16 path. RemoveDirectory selects
+ * Win32 RemoveDirectory semantics: it deletes only empty directories,
+ * while FALSE deletes only ordinary files. Dropping the last name
+ * releases the record set and every owned cluster.
+ */
+NTSTATUS
+NtfsMasterFileTableDeleteFile(
+    _In_ PNtfsMasterFileTable Mft,
+    _In_reads_(QueryLength) PWCHAR Query,
+    _In_ ULONG QueryLength,
+    _In_ BOOLEAN RemoveDirectory);
+
+/*
+ * Renames or moves one file or directory between counted UTF-16 paths.
+ * The destination parent must exist; the destination name must be free
+ * except for a pure case change of the same file.
+ */
+NTSTATUS
+NtfsMasterFileTableRenameFile(
+    _In_ PNtfsMasterFileTable Mft,
+    _In_reads_(OldQueryLength) PWCHAR OldQuery,
+    _In_ ULONG OldQueryLength,
+    _In_reads_(NewQueryLength) PWCHAR NewQuery,
+    _In_ ULONG NewQueryLength);
+
+/*
+ * Publishes an additional hard link to an existing ordinary file at a
+ * new counted UTF-16 path and raises its link count.
+ */
+NTSTATUS
+NtfsMasterFileTableCreateHardLink(
+    _In_ PNtfsMasterFileTable Mft,
+    _In_reads_(ExistingQueryLength)
+        PWCHAR ExistingQuery,
+    _In_ ULONG ExistingQueryLength,
+    _In_reads_(NewQueryLength) PWCHAR NewQuery,
+    _In_ ULONG NewQueryLength);
+
 /* Probe functions */
 NTSTATUS
 NtfsProbePartition(

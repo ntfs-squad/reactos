@@ -11,6 +11,12 @@
 
 #define MFT_ALLOCATION_BITMAP_CHUNK_SIZE 0x10000
 #define MFT_FIRST_ORDINARY_FILE_RECORD 24
+
+/*
+ * Reserve $MFT data in coarse chunks so its records stay in long runs
+ * instead of interleaving one mapping pair per newly touched cluster.
+ */
+#define MFT_ALLOCATION_GROWTH_CLUSTERS 16
 #define NTFS_MAX_SIGNED_OFFSET \
     ((ULONGLONG)0x7fffffffffffffffULL)
 
@@ -223,18 +229,62 @@ MasterFileTable::QueryVolumeInformation(
 NTSTATUS
 MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
 {
+    PUCHAR CommittedImage = NULL;
+    PUCHAR SourceImage;
     NTSTATUS Status, WriteStatus;
     LARGE_INTEGER FileRecordOffset;
+    BOOLEAN SelfReferential;
 
     // TODO: Add logging here
 
-    // Insert the fixup array into the file record in memory.
-    Status = File->CommitFixup();
+    if (!File || !File->Data || !File->Header ||
+        FileRecordSize == 0)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
 
+    Status = File->CommitFixup();
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Unable to commit fixup! (Status: 0x%X)\n", Status);
         return Status;
+    }
+
+    /*
+     * The write routes through the $MFT/$MFTMirr attribute walkers. When
+     * the record being persisted IS one of those metadata records, the
+     * walk would read its own buffer with update-sequence bytes spliced
+     * over live attribute bytes, so that one case serializes into a private
+     * snapshot and restores the live record before writing. Every ordinary
+     * record shares no buffer with the walker and writes its committed
+     * buffer directly, reverting the fixup afterward.
+     */
+    SelfReferential =
+        (File == MFTFile || File == MFTMirrFile);
+    if (SelfReferential)
+    {
+        CommittedImage =
+            new(PagedPool, TAG_MFT) UCHAR[FileRecordSize];
+        if (!CommittedImage)
+        {
+            (void)File->ApplyFixup();
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+        RtlCopyMemory(CommittedImage,
+                      File->Data,
+                      FileRecordSize);
+        Status = File->ApplyFixup();
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Unable to revert fixup! (Status: 0x%X)\n", Status);
+            delete[] CommittedImage;
+            return Status;
+        }
+        SourceImage = CommittedImage;
+    }
+    else
+    {
+        SourceImage = File->Data;
     }
 
     ULONG FRSize = FileRecordSize;
@@ -246,13 +296,15 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
     // Write file record to $MFT.
     WriteStatus = MFTFile->WriteFileData(TypeData,
                                          NULL,
-                                         File->Data,
+                                         SourceImage,
                                          &FRSize,
                                          &FileRecordOffset);
 
     if (!NT_SUCCESS(WriteStatus))
     {
-        DPRINT1("Unable to write to disk! (Status: 0x%X)\n", WriteStatus);
+        DPRINT1("Unable to write file record %lu! (Status: 0x%X)\n",
+                File->Header->MFTRecordNumber,
+                WriteStatus);
     }
 
     if (NT_SUCCESS(WriteStatus) &&
@@ -263,7 +315,7 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
         // Write file record to $MFTMirr.
         WriteStatus = MFTMirrFile->WriteFileData(TypeData,
                                                  NULL,
-                                                 File->Data,
+                                                 SourceImage,
                                                  &FRSize,
                                                  &FileRecordOffset);
 
@@ -274,17 +326,19 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
         }
     }
 
-    // Undo the fixup array to fix the file record in memory.
-    Status = File->ApplyFixup();
-
-    if (!NT_SUCCESS(Status))
+    if (SelfReferential)
     {
-        DPRINT1("Unable to revert fixup! (Status: 0x%X)\n", Status);
-        return Status;
+        delete[] CommittedImage;
     }
-
-    if (!NT_SUCCESS(WriteStatus))
-        return WriteStatus;
+    else
+    {
+        Status = File->ApplyFixup();
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Unable to revert fixup! (Status: 0x%X)\n", Status);
+            return Status;
+        }
+    }
 
     /*
      * User-visible mutation paths prepare their applicable timestamps in the
@@ -292,7 +346,7 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
      * records and therefore must not invent semantic timestamp updates.
      */
 
-    return Status;
+    return WriteStatus;
 }
 
 NTSTATUS
@@ -331,6 +385,46 @@ MasterFileTable::AllocateExtensionFileRecord(
     _In_ ULONGLONG BaseFileReference,
     _Out_ PFileRecord* File)
 {
+    if (!File)
+        return STATUS_INVALID_PARAMETER;
+    *File = NULL;
+    if (GetSequenceFromFileRef(
+            BaseFileReference) == 0 ||
+        GetFRNFromFileRef(
+            BaseFileReference) <=
+            NTFS_LAST_RESERVED_FILE_RECORD ||
+        GetFRNFromFileRef(
+            BaseFileReference) > MAXULONG)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return AllocateFileRecord(
+        BaseFileReference,
+        FALSE,
+        File);
+}
+
+NTSTATUS
+MasterFileTable::AllocateBaseFileRecord(
+    _In_ BOOLEAN IsDirectory,
+    _Out_ PFileRecord* File)
+{
+    if (!File)
+        return STATUS_INVALID_PARAMETER;
+    *File = NULL;
+    return AllocateFileRecord(
+        0,
+        IsDirectory,
+        File);
+}
+
+NTSTATUS
+MasterFileTable::AllocateFileRecord(
+    _In_ ULONGLONG BaseFileReference,
+    _In_ BOOLEAN IsDirectory,
+    _Out_ PFileRecord* File)
+{
     PAttribute BitmapAttribute;
     PFileRecord NewFile = NULL;
     PUCHAR BitmapBuffer = NULL;
@@ -355,16 +449,20 @@ MasterFileTable::AllocateExtensionFileRecord(
     if (!DiskVolume || DiskVolume->IsReadOnly ||
         !MFTFile || !MFTDataAttr ||
         !MFTDataAttr->IsNonResident ||
-        FileRecordSize == 0 ||
-        GetSequenceFromFileRef(
-            BaseFileReference) == 0 ||
-        GetFRNFromFileRef(
-            BaseFileReference) <=
-            NTFS_LAST_RESERVED_FILE_RECORD ||
-        GetFRNFromFileRef(
-            BaseFileReference) > MAXULONG)
+        FileRecordSize == 0)
     {
         return STATUS_INVALID_DEVICE_STATE;
+    }
+    if (BaseFileReference != 0 &&
+        (GetSequenceFromFileRef(
+             BaseFileReference) == 0 ||
+         GetFRNFromFileRef(
+             BaseFileReference) <=
+             NTFS_LAST_RESERVED_FILE_RECORD ||
+         GetFRNFromFileRef(
+             BaseFileReference) > MAXULONG))
+    {
+        return STATUS_INVALID_PARAMETER;
     }
     if (MFTDataAttr->NonResident.DataSize <
             FileRecordSize ||
@@ -579,6 +677,49 @@ MasterFileTable::AllocateExtensionFileRecord(
         NewFile);
     if (!NT_SUCCESS(Status))
         goto Done;
+    if (IsDirectory)
+        NewFile->Header->Flags |= FR_IS_DIRECTORY;
+
+    /*
+     * Growing $MFT one record at a time interleaves its clusters with
+     * ordinary allocations and floods record 0 with mapping pairs.
+     * Reserve allocation in coarse chunks so the stream stays in long
+     * runs; the record write below then never extends on its own.
+     */
+    {
+        const ULONGLONG GrowthChunk =
+            (ULONGLONG)MFT_ALLOCATION_GROWTH_CLUSTERS *
+            BytesPerCluster(DiskVolume);
+        ULONGLONG RecordEnd =
+            ((ULONGLONG)Candidate + 1) *
+            FileRecordSize;
+        PAttribute CurrentDataAttr =
+            MFTFile->GetAttribute(TypeData,
+                                  NULL);
+
+        if (CurrentDataAttr &&
+            CurrentDataAttr->IsNonResident &&
+            RecordEnd >
+                CurrentDataAttr->
+                    NonResident.AllocatedSize &&
+            RecordEnd <=
+                ~(ULONGLONG)0 - GrowthChunk)
+        {
+            NTSTATUS GrowthStatus =
+                MFTFile->SetFileAllocationSize(
+                    TypeData,
+                    NULL,
+                    ALIGN_UP_BY(RecordEnd,
+                                GrowthChunk));
+            if (!NT_SUCCESS(GrowthStatus))
+            {
+                DPRINT1(
+                    "Chunked $MFT preallocation "
+                    "failed: 0x%lx.\n",
+                    GrowthStatus);
+            }
+        }
+    }
 
     Status = WriteFileRecordToMFT(NewFile);
     if (!NT_SUCCESS(Status))
@@ -640,6 +781,32 @@ NTSTATUS
 MasterFileTable::DeallocateExtensionFileRecord(
     _Inout_ PFileRecord File)
 {
+    if (!File || !File->Header ||
+        File->Header->BaseFileRecord == 0)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return DeallocateFileRecord(File);
+}
+
+NTSTATUS
+MasterFileTable::DeallocateBaseFileRecord(
+    _Inout_ PFileRecord File)
+{
+    if (!File || !File->Header ||
+        File->Header->BaseFileRecord != 0)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    return DeallocateFileRecord(File);
+}
+
+NTSTATUS
+MasterFileTable::DeallocateFileRecord(
+    _Inout_ PFileRecord File)
+{
     PAttribute BitmapAttribute;
     ULONG FileRecordNumber;
     USHORT SequenceNumber;
@@ -650,7 +817,7 @@ MasterFileTable::DeallocateExtensionFileRecord(
 
     if (!DiskVolume || DiskVolume->IsReadOnly ||
         !MFTFile || !File || !File->Header ||
-        File->Header->BaseFileRecord == 0 ||
+        !(File->Header->Flags & FR_IN_USE) ||
         File->Header->MFTRecordNumber <
             MFT_FIRST_ORDINARY_FILE_RECORD)
     {
