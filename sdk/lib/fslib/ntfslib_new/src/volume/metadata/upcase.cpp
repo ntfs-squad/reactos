@@ -30,20 +30,21 @@ Volume::LoadUpcaseTable()
         return Status;
 
     // Get $DATA attribute contents from $UpCase
-    UpCaseDataLength = GetAttributeDataSize(UpCaseData);
-    UpcaseTable = new(NonPagedPool) WCHAR[UpCaseDataLength / sizeof(WCHAR)];
-    Status = UpCaseFile->CopyData(UpCaseData,
-                                  (PUCHAR)UpcaseTable,
-                                  &UpCaseDataLength);
+    Status = UpCaseFile->ReadAttributeAlloc(UpCaseData,
+                                            (PUCHAR*)&UpcaseTable,
+                                            &UpCaseDataLength);
 
-    if (NT_SUCCESS(Status))
+    if (NT_SUCCESS(Status) &&
+        (UpCaseDataLength % sizeof(WCHAR)) == 0)
     {
-        UpcaseTableLength = GetAttributeDataSize(UpCaseData) / sizeof(WCHAR);
+        UpcaseTableLength = UpCaseDataLength / sizeof(WCHAR);
     }
     else
     {
         delete[] UpcaseTable;
         UpcaseTable = NULL;
+        if (NT_SUCCESS(Status))
+            Status = STATUS_FILE_CORRUPT_ERROR;
     }
 
     delete UpCaseFile;

@@ -9,15 +9,6 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
-#define GetUpdateSequenceNumber(Header) \
-(PUSHORT)((ULONG_PTR)Header + Header->Header.UpdateSequenceOffset)
-
-#define GetUpdateSequenceArray(Header) \
-(PUSHORT)((ULONG_PTR)Header + Header->Header.UpdateSequenceOffset + sizeof(USHORT))
-
-#define OffsetToFirstUSN(Volume) \
-((Volume)->BytesPerSector - sizeof(USHORT))
-
 /* NOTE: For more information, see: https://flatcap.github.io/linux-ntfs/ntfs/concepts/fixup.html
  *
  * Abbreviations used
@@ -25,81 +16,104 @@
  *     USN: Update Sequence Number
  */
 
-NTSTATUS
-FileRecord::CommitFixup()
+static NTSTATUS
+ValidateFixup(_In_ PNTFSRecordHeader Header,
+              _In_ ULONG RecordSize,
+              _In_ ULONG BytesPerSector)
 {
-    USHORT UpdateSequenceNumber, USAPos;
-    PUSHORT UpdateSequenceArray;
-    PUSHORT DataPtr;
+    ULONG UsaSize = Header->SizeOfUpdateSequence * sizeof(USHORT);
 
-    // Get update sequence number
-    UpdateSequenceNumber = *GetUpdateSequenceNumber(Header);
-    UpdateSequenceArray = GetUpdateSequenceArray(Header);
-
-    /* HACK: We don't increment the USN here yet because doing so
-     * would require a working log file service (lfs).
-     */
-    DPRINT1("Skipping USN update!\n");
-
-    DataPtr = (PUSHORT)(Data + OffsetToFirstUSN(DiskVolume));
-    USAPos = 0;
-
-    while (DataPtr < (PUSHORT)((ULONG_PTR)Header + Header->AllocatedSize))
+    if (RecordSize < BytesPerSector ||
+        (RecordSize % BytesPerSector) != 0 ||
+        Header->SizeOfUpdateSequence != RecordSize / BytesPerSector + 1 ||
+        Header->UpdateSequenceOffset > RecordSize ||
+        UsaSize > RecordSize - Header->UpdateSequenceOffset)
     {
-        // Grab the last two bytes of this sector and insert into the USA.
-        UpdateSequenceArray[USAPos] = *DataPtr;
-
-        // Set the end of the sector to the USN.
-        *DataPtr = UpdateSequenceNumber;
-
-        // Move to the next element.
-        DataPtr = (PUSHORT)((ULONG_PTR)DataPtr + DiskVolume->BytesPerSector);
-        USAPos++;
+        return STATUS_FILE_CORRUPT_ERROR;
     }
 
     return STATUS_SUCCESS;
 }
 
 NTSTATUS
-FileRecord::ApplyFixup()
+NtfsApplyFixup(_Inout_ PNTFSRecordHeader Header,
+               _In_ ULONG RecordSize,
+               _In_ ULONG BytesPerSector)
 {
-    USHORT UpdateSequenceNumber, UpdateSequenceArrayPos;
-    PUSHORT UpdateSequenceArray;
-    PUSHORT DataPtr;
+    NTSTATUS Status = ValidateFixup(Header, RecordSize, BytesPerSector);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
-    /* Apply fixup to the file record in memory.
-     *
-     * Algorithm:
-     * 1. Get the (2 byte) update sequence number.
-     * 2. Get the update sequence array.
-     * 3. Replace the update sequence number at the end of each sector with its
-     *    corresponding entry in the update sequence array.
-     *
-     * Luckily for us, file records are already sector aligned.
-     */
+    PUSHORT Usa = reinterpret_cast<PUSHORT>(
+        reinterpret_cast<PUCHAR>(Header) + Header->UpdateSequenceOffset);
+    PUSHORT SectorTail = reinterpret_cast<PUSHORT>(
+        reinterpret_cast<PUCHAR>(Header) +
+        BytesPerSector - sizeof(USHORT));
 
-    // Get update sequence number
-    UpdateSequenceNumber = *GetUpdateSequenceNumber(Header);
-    UpdateSequenceArray = GetUpdateSequenceArray(Header);
-
-    DataPtr = (PUSHORT)(Data + OffsetToFirstUSN(DiskVolume));
-    UpdateSequenceArrayPos = 0;
-
-    while (DataPtr < (PUSHORT)((ULONG_PTR)Header + Header->AllocatedSize))
+    for (ULONG Index = 1;
+         Index < Header->SizeOfUpdateSequence;
+         Index++)
     {
-        /* Ensure end of sector is equal to the update sequence number
-         * Failing this assertion can be an indicator that this sector is bad.
-         * TODO: Add to $BadClus and handle that.
-         */
-        ASSERT(*DataPtr == UpdateSequenceNumber);
+        if (*SectorTail != Usa[0])
+        {
+            DPRINT1("Update-sequence mismatch: %u read, %u expected.\n",
+                    *SectorTail,
+                    Usa[0]);
+            return STATUS_FILE_CORRUPT_ERROR;
+        }
 
-        // Update end of sector from update sequence array
-        *DataPtr = UpdateSequenceArray[UpdateSequenceArrayPos];
-
-        // Move on to next sector
-        DataPtr = (PUSHORT)((ULONG_PTR)DataPtr + DiskVolume->BytesPerSector);
-        UpdateSequenceArrayPos++;
+        *SectorTail = Usa[Index];
+        SectorTail = reinterpret_cast<PUSHORT>(
+            reinterpret_cast<PUCHAR>(SectorTail) + BytesPerSector);
     }
 
     return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NtfsCommitFixup(_Inout_ PNTFSRecordHeader Header,
+                _In_ ULONG RecordSize,
+                _In_ ULONG BytesPerSector)
+{
+    NTSTATUS Status = ValidateFixup(Header, RecordSize, BytesPerSector);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    PUSHORT Usa = reinterpret_cast<PUSHORT>(
+        reinterpret_cast<PUCHAR>(Header) + Header->UpdateSequenceOffset);
+    PUSHORT SectorTail = reinterpret_cast<PUSHORT>(
+        reinterpret_cast<PUCHAR>(Header) +
+        BytesPerSector - sizeof(USHORT));
+
+    Usa[0]++;
+    if (Usa[0] == 0)
+        Usa[0]++;
+
+    for (ULONG Index = 1;
+         Index < Header->SizeOfUpdateSequence;
+         Index++)
+    {
+        Usa[Index] = *SectorTail;
+        *SectorTail = Usa[0];
+        SectorTail = reinterpret_cast<PUSHORT>(
+            reinterpret_cast<PUCHAR>(SectorTail) + BytesPerSector);
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+FileRecord::CommitFixup()
+{
+    return NtfsCommitFixup(&Header->Header,
+                           Header->AllocatedSize,
+                           DiskVolume->BytesPerSector);
+}
+
+NTSTATUS
+FileRecord::ApplyFixup()
+{
+    return NtfsApplyFixup(&Header->Header,
+                          Header->AllocatedSize,
+                          DiskVolume->BytesPerSector);
 }

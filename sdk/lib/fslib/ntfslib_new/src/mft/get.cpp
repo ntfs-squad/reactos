@@ -9,6 +9,86 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
+static BOOLEAN
+IsFileRecordHeaderValid(_In_ PFileRecord File,
+                        _In_ ULONG FileRecordSize,
+                        _In_ ULONG BytesPerSector)
+{
+    PFileRecordHeader Header = File->Header;
+    ULONG UsaSize;
+
+    if (Header->AllocatedSize > FileRecordSize ||
+        Header->AllocatedSize < sizeof(FileRecordHeader) ||
+        Header->ActualSize > Header->AllocatedSize ||
+        Header->ActualSize < sizeof(FileRecordHeader) ||
+        Header->AttributeOffset < sizeof(FileRecordHeader) ||
+        (Header->AttributeOffset & 7) != 0 ||
+        Header->AllocatedSize < BytesPerSector ||
+        (Header->AllocatedSize % BytesPerSector) != 0 ||
+        Header->Header.SizeOfUpdateSequence !=
+            Header->AllocatedSize / BytesPerSector + 1)
+    {
+        return FALSE;
+    }
+
+    UsaSize = Header->Header.SizeOfUpdateSequence * sizeof(USHORT);
+    return Header->Header.UpdateSequenceOffset <= Header->ActualSize &&
+           UsaSize <= Header->ActualSize - Header->Header.UpdateSequenceOffset;
+}
+
+static BOOLEAN
+AreFileRecordAttributesValid(_In_ PFileRecord File)
+{
+    PAttribute Attribute;
+    ULONG DataOffset, MinimumSize, Offset, Remaining;
+
+    Offset = File->Header->AttributeOffset;
+    while (Offset < File->Header->ActualSize)
+    {
+        Remaining = File->Header->ActualSize - Offset;
+        if (Remaining < sizeof(ULONG))
+            return FALSE;
+
+        Attribute = reinterpret_cast<PAttribute>(File->Data + Offset);
+        if (Attribute->AttributeType == TypeAttributeEndMarker)
+            return TRUE;
+
+        MinimumSize = Attribute->IsNonResident ? 0x40 : 0x18;
+        if (Remaining < MinimumSize ||
+            Attribute->Length < MinimumSize ||
+            (Attribute->Length & 7) != 0 ||
+            Attribute->Length > Remaining ||
+            Attribute->NameOffset > Attribute->Length ||
+            Attribute->NameLength * sizeof(WCHAR) >
+                Attribute->Length - Attribute->NameOffset)
+        {
+            return FALSE;
+        }
+
+        if (Attribute->IsNonResident)
+        {
+            DataOffset = Attribute->NonResident.DataRunsOffset;
+            if (DataOffset < MinimumSize || DataOffset >= Attribute->Length)
+                return FALSE;
+        }
+        else
+        {
+            DataOffset = Attribute->Resident.DataOffset;
+            if (DataOffset < MinimumSize ||
+                DataOffset > Attribute->Length ||
+                Attribute->Resident.DataLength >
+                    Attribute->Length - DataOffset)
+            {
+                return FALSE;
+            }
+        }
+
+        Offset += Attribute->Length;
+    }
+
+    return FALSE;
+}
+
 // NOTE: This function will search $MFTMirr automatically if needed.
 NTSTATUS
 MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
@@ -18,7 +98,11 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
     ULONG BytesToRead;
     BOOLEAN IsRecordInUse;
 
+    *File = NULL;
     *File = new(PagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
+    if (!*File)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
     BytesToRead = FileRecordSize;
 
     if (FileRecordNumber == _MFT)
@@ -56,6 +140,7 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
     if (!IsRecordInUse)
     {
         DPRINT1("File record is not in use!\n");
+        Status = STATUS_NOT_FOUND;
         goto Failed;
     }
 
@@ -69,15 +154,18 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
              : STATUS_NOT_FOUND;
 
 FileCheck:
-    /* TODO: More extensive checking needed to pass file check here.
-     * Probably need to make sure attributes are aligned to 8-byte boundaries
-     * and that the length of attributes make sense.
+    /* Reject unreadable records, invalid signatures, malformed headers, and
+     * unsafe update-sequence windows before applying fixups.
      */
     if (!NT_SUCCESS(Status) ||
-        !(RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) == 4))
+        RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) != 4 ||
+        !IsFileRecordHeaderValid(*File,
+                                 FileRecordSize,
+                                 DiskVolume->BytesPerSector))
     {
         DPRINT1("Failed to get file %ld from MFT!\n", FileRecordNumber);
         delete *File;
+        *File = NULL;
         if (FileRecordNumber != _MFT && FileRecordNumber != _MFTMirr)
             return GetFileRecordFromMFTMirr(FileRecordNumber, File);
         else
@@ -93,10 +181,17 @@ FileCheck:
         goto Failed;
     }
 
+    if (!AreFileRecordAttributesValid(*File))
+    {
+        Status = STATUS_FILE_CORRUPT_ERROR;
+        goto Failed;
+    }
+
     return Status;
 
 Failed:
     delete *File;
+    *File = NULL;
     return NT_SUCCESS(Status) ? STATUS_FILE_CORRUPT_ERROR : Status;
 }
 
@@ -107,6 +202,8 @@ MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
     NTSTATUS Status;
     BOOLEAN IsRecordInUse;
     ULONG BytesToRead;
+
+    *File = NULL;
 
     if (!IsFileRecordInMFTMirr(FileRecordNumber))
         return STATUS_NOT_FOUND;
@@ -131,11 +228,14 @@ MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
     if (!IsRecordInUse)
     {
         DPRINT1("File record is not in use!\n");
-        return Status;
+        return STATUS_NOT_FOUND;
     }
 
     // File is in MFTMirr. Let's try to get it from there.
     *File = new(PagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
+    if (!*File)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
     BytesToRead = FileRecordSize;
 
     // Grab file from $MFTMirr, reusing the cached $DATA attribute and run list.
@@ -148,7 +248,10 @@ MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
              : STATUS_NOT_FOUND;
 
     if (!NT_SUCCESS(Status) ||
-        !(RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) == 4))
+        RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) != 4 ||
+        !IsFileRecordHeaderValid(*File,
+                                 FileRecordSize,
+                                 DiskVolume->BytesPerSector))
     {
         DPRINT1("Failed to get file %ld from MFT Mirror!\n", FileRecordNumber);
         goto Failed;
@@ -163,10 +266,17 @@ MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
         goto Failed;
     }
 
+    if (!AreFileRecordAttributesValid(*File))
+    {
+        Status = STATUS_FILE_CORRUPT_ERROR;
+        goto Failed;
+    }
+
     return Status;
 
 Failed:
     delete *File;
+    *File = NULL;
     return NT_SUCCESS(Status) ? STATUS_FILE_CORRUPT_ERROR : Status;
 }
 
@@ -180,6 +290,9 @@ MasterFileTable::GetFileAttributeFromFileRecordNumber(_In_  AttributeType Type,
 {
     NTSTATUS Status;
 
+    *TargetFile = NULL;
+    *TargetAttribute = NULL;
+
     // Grab the file using GetFileRecord().
     Status = GetFileRecord(FileRecordNumber, TargetFile);
     if (!NT_SUCCESS(Status))
@@ -187,10 +300,11 @@ MasterFileTable::GetFileAttributeFromFileRecordNumber(_In_  AttributeType Type,
 
     *TargetAttribute = (*TargetFile)->GetAttribute(Type, Name);
 
-    if (!TargetAttribute)
+    if (!*TargetAttribute)
     {
         // Free current target file.
         delete *TargetFile;
+        *TargetFile = NULL;
 
         // Try getting the attribute using the file from MFTMirr.
         Status = GetFileRecordFromMFTMirr(FileRecordNumber, TargetFile);
@@ -198,10 +312,11 @@ MasterFileTable::GetFileAttributeFromFileRecordNumber(_In_  AttributeType Type,
             return Status;
 
         *TargetAttribute = (*TargetFile)->GetAttribute(Type, Name);
-        if (!TargetAttribute)
+        if (!*TargetAttribute)
         {
             // We still don't have the attribute.
             delete *TargetFile;
+            *TargetFile = NULL;
             return STATUS_NOT_FOUND;
         }
     }
@@ -214,14 +329,16 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
                                         _Out_ PFileRecord* File)
 {
     NTSTATUS Status;
-    PWCHAR QueryElementPtr;
+    PWCHAR NextSeparator, QueryElementPtr;
     Directory* CurrentDirectory;
     PFileRecord CurrentFile;
     ULONGLONG CurrentFRN;
 
+    *File = NULL;
+
     if (!Query)
     {
-        DPRINT1("INVESTIGATE ME: GetFileRecordFromQuery() called with NULL Query!\n");
+        DPRINT1("GetFileRecordFromQuery() requires a non-NULL query.\n");
         return STATUS_INVALID_PARAMETER;
     }
 
@@ -240,22 +357,34 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
     }
 
     CurrentDirectory = new(PagedPool, TAG_MFT) Directory(DiskVolume);
+    if (!CurrentDirectory)
+    {
+        delete CurrentFile;
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
     Status = CurrentDirectory->LoadDirectory(CurrentFile);
     if(!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to get root directory!\n");
+        delete CurrentDirectory;
+        delete CurrentFile;
         return STATUS_NOT_FOUND;
     }
 
     QueryElementPtr = Query;
-    QueryElementPtr = wcschr(QueryElementPtr, L'\\');
-    if (QueryElementPtr)
+    while (*QueryElementPtr == L'\\')
         QueryElementPtr++;
-    else
-        QueryElementPtr = Query;
 
-    while(QueryElementPtr)
+    /* A path consisting only of separators denotes the root directory. */
+    if (*QueryElementPtr == L'\0')
+    {
+        delete CurrentDirectory;
+        *File = CurrentFile;
+        return STATUS_SUCCESS;
+    }
+
+    while (*QueryElementPtr)
     {
         // Find the directory pointed to by the path
         Status = CurrentDirectory->FindNextFile(QueryElementPtr,
@@ -274,16 +403,26 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("Failed to find file at MFT ID %ld!\n", CurrentFRN);
-            delete CurrentDirectory;
             return STATUS_NOT_FOUND;
         }
 
-        // Second condition is to check "//folder//target//"
-        // Is this a hack or fix?
-        if (wcschr(QueryElementPtr, L'\\') &&
-            wcschr(QueryElementPtr, L'\\')[1] != L'\0')
+        NextSeparator = NtfsWcsChr(QueryElementPtr, L'\\');
+        if (NextSeparator)
         {
+            while (*NextSeparator == L'\\')
+                NextSeparator++;
+
+            /* Ignore trailing and repeated path separators. */
+            if (*NextSeparator == L'\0')
+                break;
+
             CurrentDirectory = new(PagedPool, TAG_MFT) Directory(DiskVolume);
+            if (!CurrentDirectory)
+            {
+                delete CurrentFile;
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+
             Status = CurrentDirectory->LoadDirectory(CurrentFile);
             if (!NT_SUCCESS(Status))
             {
@@ -293,9 +432,7 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
                 return STATUS_NOT_FOUND;
             }
 
-            // Set up next file
-            QueryElementPtr = wcschr(QueryElementPtr, L'\\');
-            QueryElementPtr++;
+            QueryElementPtr = NextSeparator;
         }
 
         else

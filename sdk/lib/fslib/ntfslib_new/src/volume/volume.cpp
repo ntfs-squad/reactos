@@ -26,6 +26,33 @@ static void PrintNTFSBootSector(PBootSector PartBootSector)
 }
 #endif
 
+static BOOLEAN
+IsValidRecordSize(_In_ INT8 ClustersPerRecord,
+                  _In_ ULONG ClusterSize)
+{
+    ULONG RecordSize;
+
+    if (ClustersPerRecord == 0)
+        return FALSE;
+
+    if (ClustersPerRecord < 0)
+    {
+        ULONG Exponent = (ULONG)(-ClustersPerRecord);
+        if (Exponent >= 32)
+            return FALSE;
+        RecordSize = 1UL << Exponent;
+    }
+    else
+    {
+        if ((ULONG)ClustersPerRecord > MAXULONG / ClusterSize)
+            return FALSE;
+        RecordSize = (ULONG)ClustersPerRecord * ClusterSize;
+    }
+
+    return RecordSize >= 512 && RecordSize <= 65536 &&
+           (RecordSize % sizeof(ULONGLONG)) == 0;
+}
+
 EXTERN_C
 NTSTATUS
 NtfsProbePartition(
@@ -35,6 +62,9 @@ NtfsProbePartition(
     BootSector* PartitionBootSector;
     ULONG ClusterSize;
     USHORT i;
+
+    if (!BootSectorData)
+        return STATUS_INVALID_PARAMETER;
 
     // Check bytes per sector.
     if (BytesPerSector != 512
@@ -98,6 +128,15 @@ NtfsProbePartition(
         return STATUS_UNRECOGNIZED_VOLUME;
     }
 
+    if (!IsValidRecordSize(PartitionBootSector->ClustersPerFileRecord,
+                           ClusterSize) ||
+        !IsValidRecordSize(PartitionBootSector->ClustersPerIndexRecord,
+                           ClusterSize))
+    {
+        DPRINT1("Volume has invalid file or index record sizes!\n");
+        return STATUS_UNRECOGNIZED_VOLUME;
+    }
+
     // We are NTFS.
 #ifdef NTFS_DEBUG
     PrintNTFSBootSector(PartitionBootSector);
@@ -114,6 +153,9 @@ NtfsProbePartitionAndOpenVolume(
     NTSTATUS Status;
     PVolume VolumeObject;
     PUCHAR BootSectorData;
+
+    if (!VolumeOut || BytesPerSector == 0)
+        return STATUS_INVALID_PARAMETER;
 
     // Make sure volume pointer is null if we fail for any reason.
     *VolumeOut = NULL;
@@ -161,6 +203,7 @@ Volume::~Volume()
 {
     delete MFT;
     delete LFS;
+    delete[] AttrDefCache;
     delete[] UpcaseTable;
 }
 
@@ -175,6 +218,7 @@ Volume::Initialize(_In_ PUCHAR BootSectorData)
     
     PartitionBootSector = (BootSector*)BootSectorData;
     VolumeFile = NULL;
+    ShowMetadataFiles = NtfsDefaultShowMetadataFiles;
 
     // Pull in relevant information from the boot sector.
     BytesPerSector = PartitionBootSector->BytesPerSector;
@@ -206,6 +250,9 @@ Volume::Initialize(_In_ PUCHAR BootSectorData)
     NtfsMajorVersion = VolumeInfo->MajorVersion;
     NtfsMinorVersion = VolumeInfo->MinorVersion;
     DPRINT1("NTFS Version %ld.%ld\n", VolumeInfo->MajorVersion, VolumeInfo->MinorVersion);
+    delete VolumeFile;
+    VolumeFile = NULL;
+
     
     // Initialize Log File Service
     LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);

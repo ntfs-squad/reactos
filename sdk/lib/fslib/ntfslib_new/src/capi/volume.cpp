@@ -12,14 +12,14 @@
 extern "C" {
 #endif
 
-/* Shows the super hidden NTFS metadata files in directory listings. */
-BOOLEAN NtfsShowMetadataFiles = FALSE;
+/* Applied to volumes subsequently opened by this library instance. */
+BOOLEAN NtfsDefaultShowMetadataFiles = FALSE;
 
 void
 NtfsSetShowMetadataFiles(
     _In_ BOOLEAN Show)
 {
-    NtfsShowMetadataFiles = Show;
+    NtfsDefaultShowMetadataFiles = Show;
 }
 
 NTSTATUS
@@ -34,7 +34,7 @@ NtfsVolumeGetADSPreference(
                                                                    RequestedStream);
 }
 
-UINT8
+ULONG
 NtfsVolumeGetBytesPerSector(
     _In_ PNtfsVolume DiskVolume)
 {

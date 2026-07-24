@@ -40,6 +40,42 @@ FileRecord::CopyData(_In_    PAttribute Attr,
 }
 
 NTSTATUS
+FileRecord::ReadAttributeAlloc(
+    _In_ PAttribute Attr,
+    _Outptr_result_bytebuffer_(*Length) PUCHAR* Buffer,
+    _Out_ PULONG Length)
+{
+    ULONGLONG AttributeSize;
+    ULONG BytesRemaining;
+    NTSTATUS Status;
+
+    *Buffer = NULL;
+    *Length = 0;
+    AttributeSize = GetAttributeDataSize(Attr);
+    if (AttributeSize == 0)
+        return STATUS_SUCCESS;
+
+    if (AttributeSize > MAXULONG)
+        return STATUS_FILE_TOO_LARGE;
+
+    *Buffer = new(NonPagedPool) UCHAR[(ULONG)AttributeSize];
+    if (!*Buffer)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    BytesRemaining = (ULONG)AttributeSize;
+    Status = CopyData(Attr, *Buffer, &BytesRemaining, 0);
+    if (!NT_SUCCESS(Status) || BytesRemaining != 0)
+    {
+        delete[] *Buffer;
+        *Buffer = NULL;
+        return NT_SUCCESS(Status) ? STATUS_END_OF_FILE : Status;
+    }
+
+    *Length = (ULONG)AttributeSize;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
 FileRecord::CopyData(_In_     PAttribute Attr,
                      _In_opt_ PDataRun PrecomputedRuns,
                      _In_     PUCHAR Buffer,
@@ -119,6 +155,8 @@ FileRecord::CopyData(_In_     PAttribute Attr,
                 if (!NT_SUCCESS(Status))
                 {
                     DPRINT1("Failed to read attribute contents!\n");
+                    if (!PrecomputedRuns)
+                        FreeDataRun(Head);
                     return Status;
                 }
 

@@ -206,11 +206,17 @@ typedef struct ObjectIdEx
     GUID DomainId;                         // Offset 0x30, Size 16
 } ObjectIdEx, *PObjectIdEx;
 
-// $SECURITY_DESCRIPTOR (0x50)
-/*struct SECURITY_DESCRIPTOR
+// $SECURITY_DESCRIPTOR (0x50), stored in self-relative form.
+typedef struct NtfsSecurityDescriptor
 {
-    // TODO: Complete
-};*/
+    UINT8 Revision;                        // Offset 0x00, Size 1
+    UINT8 Reserved;                        // Offset 0x01, Size 1
+    UINT16 Control;                        // Offset 0x02, Size 2
+    UINT32 OwnerOffset;                    // Offset 0x04, Size 4
+    UINT32 GroupOffset;                    // Offset 0x08, Size 4
+    UINT32 SaclOffset;                     // Offset 0x0C, Size 4
+    UINT32 DaclOffset;                     // Offset 0x10, Size 4
+} NtfsSecurityDescriptor, *PNtfsSecurityDescriptor;
 
 // $VOLUME_INFORMATION (0x70)
 typedef struct

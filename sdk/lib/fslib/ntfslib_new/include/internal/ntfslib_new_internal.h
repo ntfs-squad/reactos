@@ -29,8 +29,8 @@ NtfsIsNameInExpression(_In_     PUNICODE_STRING Expression,
                        _In_     BOOLEAN IgnoreCase,
                        _In_opt_ PWCHAR UpcaseTable);
 
-/* Library option set through public NtfsSetShowMetadataFiles(). */
-extern BOOLEAN NtfsShowMetadataFiles;
+/* Default copied into each volume when it is initialized. */
+extern BOOLEAN NtfsDefaultShowMetadataFiles;
 
 #ifdef __cplusplus
 }
@@ -58,11 +58,31 @@ struct DataRun
     ULONGLONG Length; // In clusters
 };
 
+typedef struct AttrDefCacheEntry
+{
+    AttributeType Type;
+    WCHAR Label[64];
+} AttrDefCacheEntry, *PAttrDefCacheEntry;
+
 struct _BTreeNode;
 struct _BTreeKey;
 
 typedef struct _BTreeNode BTreeNode, *PBTreeNode;
 typedef struct _BTreeKey BTreeKey, *PBTreeKey;
+
+#ifdef __cplusplus
+void NtfsDestroyBTreeNode(_In_opt_ PBTreeNode Node);
+#endif
+
+NTSTATUS
+NtfsApplyFixup(_Inout_ PNTFSRecordHeader Header,
+               _In_ ULONG RecordSize,
+               _In_ ULONG BytesPerSector);
+
+NTSTATUS
+NtfsCommitFixup(_Inout_ PNTFSRecordHeader Header,
+                _In_ ULONG RecordSize,
+                _In_ ULONG BytesPerSector);
 
 struct _BTreeNode
 {
@@ -75,6 +95,7 @@ struct _BTreeKey
     PBTreeKey   ParentNodeKey; // Used to get entries linearly.
     PBTreeNode  ChildNode;
     PBTreeKey   NextKey;
+    PBTreeKey   ShortNameKey;
     PIndexEntry Entry;
     ULONG       Flags;
 };
@@ -86,19 +107,16 @@ struct _BTreeKey
 
 #define IsFileRecordInMFTMirr(FileRecordNumber) \
 ((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) > (FileRecordSize << 2)) ? \
-((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) / FileRecordSize) < FileRecordNumber \
+FileRecordNumber < ((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) / FileRecordSize) \
 : FileRecordNumber < 4
 
 #define LONGLONG_SIGN_EXTEND(Number, Bytes) \
 (((Number) << ((sizeof(LONGLONG) - (Bytes)) * 8)) >> ((sizeof(LONGLONG) - (Bytes)) * 8))
 
 #define BytesPerIndexRecord(DiskVolume) \
-(BytesPerCluster(DiskVolume) * DiskVolume->ClustersPerIndexRecord)
-
-// Used for LoadDirectory()
-#define MayHaveShortKey(SearchKey) \
-(!((SearchKey)->Flags & DIR_KEY_8DOT3) \
-&& !((SearchKey)->Entry->Flags & INDEX_ENTRY_END))
+((DiskVolume)->ClustersPerIndexRecord < 0 \
+ ? (1UL << (-(DiskVolume)->ClustersPerIndexRecord)) \
+ : (BytesPerCluster(DiskVolume) * (DiskVolume)->ClustersPerIndexRecord))
 
 #define IsRootFile(Path) \
 ((Path)[0] == L'\0' || ((Path)[0] == L'\\' && (Path)[1] == L'\0'))
@@ -140,14 +158,50 @@ static inline PBTreeKey GetNextKey(PBTreeKey Key)
 
     return Key->NextKey;
 }
+
+static inline SIZE_T
+NtfsWcsLen(_In_ PCWSTR String)
+{
+    PCWSTR End = String;
+    while (*End)
+        End++;
+    return End - String;
+}
+
+static inline PWSTR
+NtfsWcsChr(_In_ PWSTR String, _In_ WCHAR Character)
+{
+    do
+    {
+        if (*String == Character)
+            return String;
+    } while (*String++);
+    return NULL;
+}
+
+static inline PCWSTR
+NtfsWcsChr(_In_ PCWSTR String, _In_ WCHAR Character)
+{
+    do
+    {
+        if (*String == Character)
+            return String;
+    } while (*String++);
+    return NULL;
+}
+
+static inline UNICODE_STRING
+NtfsMakeCountedUnicodeString(_In_ PWSTR Buffer,
+                             _In_ USHORT Length)
+{
+    UNICODE_STRING String;
+
+    String.Buffer = Buffer;
+    String.Length = Length;
+    String.MaximumLength = Length;
+    return String;
+}
 #endif
-
-#define IsLowercaseCharacterW(wchar) ((wchar) >= L'a' && (wchar) <= L'z')
-
-#define IsDotOrDotDotDirW(Buffer, Length) \
-((Buffer)[0] == L'.' \
-? (Length) == sizeof(WCHAR) || ((Buffer)[1] == L'.' && (Length) == 2 * sizeof(WCHAR)) \
-: FALSE)
 
 #define DIR_KEY_8DOT3 1
 
@@ -224,6 +278,7 @@ public:
     class MasterFileTable* MFT;
     class LogFileService* LFS;
     BOOLEAN IsReadOnly = FALSE;
+    BOOLEAN ShowMetadataFiles = FALSE;
 
     ~Volume();
 
@@ -259,6 +314,12 @@ public:
     NTSTATUS
     UpcaseWideString(_Inout_ PWSTR WideString,
                      _In_    ULONG Length);
+
+    PWSTR
+    GetUpcaseTable()
+    {
+        return UpcaseTable;
+    }
 
     /**
      * Gets the volume label as a 16-bit string and its length in bytes.
@@ -331,12 +392,22 @@ public:
                      _Out_ PWSTR* RequestedStream);
 
 private:
+    PAttrDefCacheEntry AttrDefCache = NULL;
+    ULONG AttrDefCacheCount = 0;
+
+    WCHAR VolumeLabelCache[MAXIMUM_VOLUME_LABEL_LENGTH / sizeof(WCHAR)] = {};
+    USHORT VolumeLabelCacheLength = 0;
+    BOOLEAN VolumeLabelCached = FALSE;
+
     /* $UpCase table, read from disk on first use by UpcaseWideString(). */
     PWSTR UpcaseTable = NULL;
     ULONG UpcaseTableLength = 0; // In WCHARs
 
     NTSTATUS
     LoadUpcaseTable();
+
+    NTSTATUS
+    LoadAttributeDefinitions();
 
 } *PVolume;
 
@@ -372,6 +443,9 @@ public:
                       _In_ PUCHAR Buffer,
                       _Inout_ PULONG Length,
                       _In_ ULONGLONG Offset = 0);
+    NTSTATUS ReadAttributeAlloc(_In_ PAttribute Attr,
+                                _Outptr_result_bytebuffer_(*Length) PUCHAR* Buffer,
+                                _Out_ PULONG Length);
     /* Same as above, but reuses an already-decoded data run list for
      * non-resident attributes instead of re-decoding it on every call.
      * The caller keeps ownership of the run list.
@@ -388,7 +462,8 @@ public:
                   _In_opt_ PWSTR StreamName,
                   _In_     PUCHAR Buffer,
                   _Inout_  PULONG Length,
-                  _In_     PLARGE_INTEGER Offset);
+                  _In_     PLARGE_INTEGER Offset,
+                  _In_opt_ PDataRun PrecomputedRuns = NULL);
 
     NTSTATUS
     UpdateResidentData(_In_ PAttribute TargetAttribute,
@@ -411,7 +486,8 @@ private:
     UpdateNonResidentData(_In_ PAttribute TargetAttribute,
                           _In_ PUCHAR Buffer,
                           _In_ PULONG Length,
-                          _In_ ULONGLONG Offset = 0);
+                          _In_ ULONGLONG Offset = 0,
+                          _In_opt_ PDataRun PrecomputedRuns = NULL);
 } *PFileRecord;
 
 class BTree
@@ -461,12 +537,11 @@ private:
 
     // ./directory.cpp
     NTSTATUS
-    VerifyUpdateSequenceArray(PNTFSRecordHeader Record);
-    NTSTATUS
     CreateNode(_In_    PFileRecord File,
-               _In_    PAttribute  IndexAllocationAttribute,
-               _In_    PDataRun    IndexAllocationRuns,
-               _Inout_ PBTreeKey   ParentNodeKey);
+                      _In_    PAttribute  IndexAllocationAttribute,
+                      _In_    PDataRun    IndexAllocationRuns,
+                      _In_    PAttribute  BitmapAttribute,
+                      _Inout_ PBTreeKey   ParentNodeKey);
     NTSTATUS
     CreateRootNode(_In_  PFileRecord File,
                    _Out_ PBTreeNode *NewRootNode);
@@ -475,8 +550,7 @@ private:
                       PBTreeKey Key,
                       BOOLEAN IgnoreCase = TRUE);
     PBTreeKey
-    GetShortNameKey(_In_ PBTreeKey Key,
-                    _In_ BOOLEAN SkipNonShortNames = TRUE);
+    GetShortNameKey(_In_ PBTreeKey Key);
 
     // ./find.cpp
     PBTreeKey
@@ -488,12 +562,6 @@ private:
     IsEligibleForFileDir(PBTreeKey Key,
                          PUNICODE_STRING FileNameFilter);
 
-    // ./util.cpp
-    BOOLEAN
-    IsLegalShortNameCharacterW(_In_ WCHAR Char);
-    BOOLEAN
-    IsLegal8Dot3ShortName(_In_ PWSTR Buffer,
-                          _In_ USHORT Length);
 } *PDirectory;
 
 typedef class MasterFileTable
@@ -922,7 +990,7 @@ private:
                    || ClientMinorVersion == 1;
         }
 
-        else if (ClientMajorVersion = 0)
+        else if (ClientMajorVersion == 0)
         {
             return ClientMinorVersion == 0;
         }

@@ -141,6 +141,10 @@ PNtfsDirectory
 NtfsDirectoryCreate(
     _In_ PNtfsVolume DiskVolume);
 
+void
+NtfsDirectoryDestroy(
+    _In_opt_ PNtfsDirectory Dir);
+
 NTSTATUS
 NtfsDirectoryLoadDirectory(
     _In_ PNtfsDirectory Dir,
@@ -234,7 +238,7 @@ NtfsVolumeGetADSPreference(
     _Out_ AttributeType* RequestedType,
     _Out_ PWSTR* RequestedStream);
 
-UINT8
+ULONG
 NtfsVolumeGetBytesPerSector(
     _In_ PNtfsVolume DiskVolume);
 

@@ -16,30 +16,45 @@ Volume::GetVolumeLabel(_Inout_ PWSTR   VolumeLabel,
     NTSTATUS Status;
     PFileRecord VolumeFile;
     PAttribute VolumeNameAttr;
-    ULONG LabelLength;
+    ULONG BytesRemaining, LabelLength;
 
-    // Retrieve the $Volume file record and $VOLUME_NAME attribute
-    Status = MFT->GetFileAttributeFromFileRecordNumber(TypeVolumeName,
-                                                       NULL,
-                                                       _Volume,
-                                                       &VolumeFile,
-                                                       &VolumeNameAttr);
-    if (!NT_SUCCESS(Status))
-        return Status;
+    if (!VolumeLabel || !Length)
+        return STATUS_INVALID_PARAMETER;
 
-    LabelLength = GetAttributeDataSize(VolumeNameAttr);
-    *Length = LabelLength;
+    if (!VolumeLabelCached)
+    {
+        Status = MFT->GetFileAttributeFromFileRecordNumber(TypeVolumeName,
+                                                           NULL,
+                                                           _Volume,
+                                                           &VolumeFile,
+                                                           &VolumeNameAttr);
+        if (!NT_SUCCESS(Status))
+            return Status;
 
-    // Get the data from the attribute
-    Status = VolumeFile->CopyData(VolumeNameAttr,
-                                  (PUCHAR)VolumeLabel,
-                                  &LabelLength);
+        LabelLength = GetAttributeDataSize(VolumeNameAttr);
+        if (LabelLength > sizeof(VolumeLabelCache))
+        {
+            delete VolumeFile;
+            return STATUS_FILE_CORRUPT_ERROR;
+        }
 
-    if (!NT_SUCCESS(Status) || LabelLength != 0)
-        *Length = 0;
+        BytesRemaining = LabelLength;
+        Status = LabelLength == 0
+                 ? STATUS_SUCCESS
+                 : VolumeFile->CopyData(VolumeNameAttr,
+                                        (PUCHAR)VolumeLabelCache,
+                                        &BytesRemaining);
+        delete VolumeFile;
+        if (!NT_SUCCESS(Status) || BytesRemaining != 0)
+            return NT_SUCCESS(Status) ? STATUS_END_OF_FILE : Status;
 
-    delete VolumeFile;
-    return Status;
+        VolumeLabelCacheLength = (USHORT)LabelLength;
+        VolumeLabelCached = TRUE;
+    }
+
+    *Length = VolumeLabelCacheLength;
+    RtlCopyMemory(VolumeLabel, VolumeLabelCache, VolumeLabelCacheLength);
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -49,6 +64,12 @@ Volume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
     NTSTATUS Status;
     FileRecord* VolumeFile;
     PAttribute VolumeNameAttr;
+
+    if ((!VolumeLabel && Length != 0) ||
+        Length > sizeof(VolumeLabelCache))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
 
     /* Allocate memory for $Volume file record, retrieve the file record, and
      * get a pointer to the $VOLUME_NAME attribute.
@@ -69,8 +90,19 @@ Volume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
 
     if (NT_SUCCESS(Status))
     {
+        /* Replacing a label is not an extending write: a shorter label must
+         * shrink the resident value as well.
+         */
+        VolumeNameAttr->Resident.DataLength = Length;
+
         // Write the volume file to disk.
         Status = MFT->WriteFileRecordToMFT(VolumeFile);
+        if (NT_SUCCESS(Status))
+        {
+            RtlCopyMemory(VolumeLabelCache, VolumeLabel, Length);
+            VolumeLabelCacheLength = (USHORT)Length;
+            VolumeLabelCached = TRUE;
+        }
     }
 
     delete VolumeFile;

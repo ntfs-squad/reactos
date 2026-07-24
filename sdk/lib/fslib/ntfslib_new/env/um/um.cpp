@@ -8,14 +8,12 @@
 #define WIN32_NO_STATUS
 #include <windows.h>
 #include <ndk/umtypes.h> // NTSTATUS, STATUS_*, UNICODE_STRING
+#include <ndk/iofuncs.h>
+#include <ndk/obfuncs.h>
 #include <ntfs_um.h>
 #include <debug.h>
 
-/* The core passes kernel POOL_TYPE values into the allocation contract;
- * the heap-backed usermode allocator ignores them, so the underlying
- * integer type is all we need here.
- */
-typedef int POOL_TYPE;
+/* The heap-backed usermode allocator ignores POOL_TYPE's semantics. */
 
 typedef BOOLEAN (NTAPI *PRtlIsNameInExpression)(
     _In_     PUNICODE_STRING Expression,
@@ -95,14 +93,31 @@ NtfsReadVolume(_In_    ULONGLONG Offset,
                _In_    ULONG Length,
                _Inout_ PUCHAR Buffer)
 {
-    // Hack: We're assuming buffering is used in readfile below.
-    if (!ReadFile(VolumeHandle,
-                  Buffer,
-                  Length,
-                  NULL,
-                  NULL))
-        return STATUS_UNSUCCESSFUL;
-    return STATUS_SUCCESS;
+    IO_STATUS_BLOCK IoStatus;
+    LARGE_INTEGER ByteOffset;
+    NTSTATUS Status;
+
+    ByteOffset.QuadPart = Offset;
+    Status = NtReadFile(VolumeHandle,
+                        NULL,
+                        NULL,
+                        NULL,
+                        &IoStatus,
+                        Buffer,
+                        Length,
+                        &ByteOffset,
+                        NULL);
+    if (Status == STATUS_PENDING)
+    {
+        Status = NtWaitForSingleObject(VolumeHandle, FALSE, NULL);
+        if (NT_SUCCESS(Status))
+            Status = IoStatus.Status;
+    }
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    return IoStatus.Information == Length ? STATUS_SUCCESS : STATUS_END_OF_FILE;
 }
 
 NTSTATUS
@@ -110,11 +125,31 @@ NtfsWriteVolume(_In_    ULONGLONG Offset,
                 _In_    ULONG Length,
                 _Inout_ PUCHAR Buffer)
 {
-    UNREFERENCED_PARAMETER(Offset);
-    UNREFERENCED_PARAMETER(Length);
-    UNREFERENCED_PARAMETER(Buffer);
+    IO_STATUS_BLOCK IoStatus;
+    LARGE_INTEGER ByteOffset;
+    NTSTATUS Status;
 
-    return STATUS_NOT_IMPLEMENTED;
+    ByteOffset.QuadPart = Offset;
+    Status = NtWriteFile(VolumeHandle,
+                         NULL,
+                         NULL,
+                         NULL,
+                         &IoStatus,
+                         Buffer,
+                         Length,
+                         &ByteOffset,
+                         NULL);
+    if (Status == STATUS_PENDING)
+    {
+        Status = NtWaitForSingleObject(VolumeHandle, FALSE, NULL);
+        if (NT_SUCCESS(Status))
+            Status = IoStatus.Status;
+    }
+
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    return IoStatus.Information == Length ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
 BOOLEAN

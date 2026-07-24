@@ -9,6 +9,22 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
+static BOOLEAN
+IsAlwaysResidentAttribute(_In_ AttributeType Type)
+{
+    switch (Type)
+    {
+        case TypeStandardInformation:
+        case TypeFileName:
+        case TypeVolumeName:
+        case TypeVolumeInformation:
+        case TypeIndexRoot:
+            return TRUE;
+
+        default:
+            return FALSE;
+    }
+}
 
 /* Find Attribute Functions */
 PAttribute
@@ -26,7 +42,7 @@ FileRecord::GetAttribute(_In_     AttributeType Type,
     // Basic sanity: ensure pointers exist; detailed signature checks happen at load time
 
     if (Name)
-        NameLength = wcslen(Name) * sizeof(WCHAR);
+        NameLength = NtfsWcsLen(Name) * sizeof(WCHAR);
 
     // Progress data pointer to attribute section.
     DataPtr = Header->AttributeOffset;
@@ -112,23 +128,22 @@ FileRecord::GetAttributeData(_In_     AttributeType Type,
 
     if (!Attr)
     {
-        // TODO: Some attributes should always be present.
-        // If they're not, we should return STATUS_FILE_CORRUPT_ERROR.
-        return STATUS_NOT_FOUND;
+        /* Every base file record must have $STANDARD_INFORMATION. Other
+         * always-resident types are conditional on the kind of record.
+         */
+        return Type == TypeStandardInformation
+            ? STATUS_FILE_CORRUPT_ERROR
+            : STATUS_NOT_FOUND;
     }
 
     // These types are always resident. If they're not, this file is corrupt.
-    // TODO: Add more types to this list.
-    if (Attr->IsNonResident
-        && Type == TypeStandardInformation)
-    {
+    if (Attr->IsNonResident && IsAlwaysResidentAttribute(Type))
         return STATUS_FILE_CORRUPT_ERROR;
-    }
 
-    // Test for invalid resident data window for $STANDARD_INFORMATION.
-    if (Type == TypeStandardInformation
-        && (Attr->Resident.DataOffset < 0x18 ||
-            (Attr->Resident.DataOffset + Attr->Resident.DataLength) > Attr->Length))
+    // Validate the resident data window before returning a pointer into it.
+    if (Attr->Resident.DataOffset < 0x18 ||
+        Attr->Resident.DataOffset > Attr->Length ||
+        Attr->Resident.DataLength > Attr->Length - Attr->Resident.DataOffset)
     {
         return STATUS_FILE_CORRUPT_ERROR;
     }

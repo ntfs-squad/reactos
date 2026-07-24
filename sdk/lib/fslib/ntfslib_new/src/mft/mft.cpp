@@ -67,7 +67,7 @@ MasterFileTable::~MasterFileTable()
 NTSTATUS
 MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
 {
-    NTSTATUS Status;
+    NTSTATUS Status, WriteStatus;
     LARGE_INTEGER FileRecordOffset;
 
     // TODO: Add logging here
@@ -85,31 +85,35 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
     FileRecordOffset.QuadPart = (File->Header->MFTRecordNumber * FileRecordSize);
 
     // Write file record to $MFT.
-    Status = MFTFile->WriteFileData(TypeData,
-                                    NULL,
-                                    File->Data,
-                                    &FRSize,
-                                    &FileRecordOffset);
+    WriteStatus = MFTFile->WriteFileData(TypeData,
+                                         NULL,
+                                         File->Data,
+                                         &FRSize,
+                                         &FileRecordOffset,
+                                         MFTDataRuns);
 
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(WriteStatus))
     {
-        DPRINT1("Unable to write to disk! (Status: 0x%X)\n", Status);
-        return Status;
+        DPRINT1("Unable to write to disk! (Status: 0x%X)\n", WriteStatus);
     }
 
-    if (IsFileRecordInMFTMirr(File->Header->MFTRecordNumber))
+    if (NT_SUCCESS(WriteStatus) &&
+        IsFileRecordInMFTMirr(File->Header->MFTRecordNumber))
     {
-        // Write file record to $MFTMirr.
-        Status = MFTMirrFile->WriteFileData(TypeData,
-                                            NULL,
-                                            File->Data,
-                                            &FRSize,
-                                            &FileRecordOffset);
+        FRSize = FileRecordSize;
 
-        if (!NT_SUCCESS(Status))
+        // Write file record to $MFTMirr.
+        WriteStatus = MFTMirrFile->WriteFileData(TypeData,
+                                                 NULL,
+                                                 File->Data,
+                                                 &FRSize,
+                                                 &FileRecordOffset,
+                                                 MFTMirrDataRuns);
+
+        if (!NT_SUCCESS(WriteStatus))
         {
-            DPRINT1("Unable to write to MFT Mirror! (Status: 0x%X)\n", Status);
-            return Status;
+            DPRINT1("Unable to write to MFT Mirror! (Status: 0x%X)\n",
+                    WriteStatus);
         }
     }
 
@@ -122,6 +126,9 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
         return Status;
     }
 
+    if (!NT_SUCCESS(WriteStatus))
+        return WriteStatus;
+
     // TODO: Update file timestamps
 
     return Status;
@@ -131,15 +138,13 @@ NTSTATUS
 MasterFileTable::IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
                                          _Out_ PBOOLEAN InUse)
 {
-#if 0
     NTSTATUS Status;
-    USHORT Bitmask;
+    UCHAR Bitmask;
     UCHAR BitmapSection;
     ULONG Size;
 
-    /* This code consistently fails an assertion:
-     * .\drivers\storage\class\disk\disk.c(589): residualOffset == 0
-     */
+    if (!MFTFile)
+        return STATUS_INVALID_DEVICE_STATE;
 
     Size = 1;
     Status = MFTFile->CopyData(TypeBitmap,
@@ -150,16 +155,12 @@ MasterFileTable::IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
 
     Bitmask = 1 << (FileRecordNumber % 8);
 
-    if(!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status) || Size != 0)
     {
         DPRINT1("Failed to get bitmap!\n");
-        return Status;
+        return NT_SUCCESS(Status) ? STATUS_END_OF_FILE : Status;
     }
 
     *InUse = !!(BitmapSection & Bitmask);
     return STATUS_SUCCESS;
-#else
-    *InUse = TRUE;
-    return STATUS_SUCCESS;
-#endif
 }

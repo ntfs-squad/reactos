@@ -37,36 +37,15 @@ NtfsDiskInitializeKm(
     _In_ PDEVICE_OBJECT DeviceObject,
     _In_ ULONG SectorBytes)
 {
-    PartDeviceObj = DeviceObject;
-    BytesPerSector = SectorBytes;
-
-    // TODO: Some bytes per sector are invalid for NTFS. Should we fail here?
-    if (BytesPerSector == 0 || !PartDeviceObj)
+    if (!DeviceObject ||
+        (SectorBytes != 512 && SectorBytes != 4096))
+    {
         return STATUS_INVALID_PARAMETER;
-
-    return STATUS_SUCCESS;
-}
-
-//TODO: This shouldn't really be needed. Honestly there's something wrong with this.
-NTSTATUS
-NTAPI
-ByPasscompletion (
-    PDEVICE_OBJECT DeviceObject,
-    PIRP Irp,
-    PVOID Context
-    )
-{ 
-    if (!NT_SUCCESS( Irp->IoStatus.Status )) {
-
-        Irp->IoStatus.Information = 0;
     }
 
-    KeSetEvent( (KEVENT*)Context, 0, FALSE );
-    Irp->IoStatus.Status = STATUS_SUCCESS;
-    return STATUS_MORE_PROCESSING_REQUIRED;
-
-    UNREFERENCED_PARAMETER( DeviceObject );
-    UNREFERENCED_PARAMETER( Irp );
+    PartDeviceObj = DeviceObject;
+    BytesPerSector = SectorBytes;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -94,17 +73,10 @@ ReadDisk(_In_ PDEVICE_OBJECT DeviceObject,
                                        &Event,
                                        &Iosb);
 
-    ASSERT(Irp);
+    if (!Irp)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
     SetFlag(IoGetNextIrpStackLocation(Irp)->Flags, SL_OVERRIDE_VERIFY_VOLUME);
-
-
-    //TODO: There's something SERIOUSLY wrong with completetion.
-    IoSetCompletionRoutine( Irp,
-                            ByPasscompletion,
-                            &Event,
-                            TRUE,
-                            TRUE,
-                            TRUE );
 
     //  Call the device to do the read and wait for it to finish.
     Status = IoCallDriver(DeviceObject, Irp);
@@ -116,7 +88,7 @@ ReadDisk(_In_ PDEVICE_OBJECT DeviceObject,
                               KernelMode,
                               FALSE,
                               NULL);
-        // Status = Iosb.Status; ???
+        Status = Iosb.Status;
     }
 
     NT_ASSERT(Status != STATUS_VERIFY_REQUIRED);
@@ -163,20 +135,10 @@ WriteDisk(_In_ PDEVICE_OBJECT DeviceObject,
                                        &Event, //event in question
                                        &Iosb); //status check
 
-    if (Irp == NULL) //if an IO request cant be allocated
-    {
-        __debugbreak(); // LOL LMAO
-        //FatRaiseStatus( IrpContext, STATUS_INSUFFICIENT_RESOURCES );
-    }
+    if (!Irp)
+        return STATUS_INSUFFICIENT_RESOURCES;
 
     SetFlag(IoGetNextIrpStackLocation( Irp )->Flags, SL_OVERRIDE_VERIFY_VOLUME); // override this because it causes problems
-    //TODO: There's something SERIOUSLY wrong with completetion.
-    IoSetCompletionRoutine( Irp,
-                            ByPasscompletion,
-                            &Event,
-                            TRUE,
-                            TRUE,
-                            TRUE );
 
     //  Call the device to do the write and wait for it to finish.
     Status = IoCallDriver(DeviceObject, Irp); // DO DE WRITE
@@ -185,7 +147,7 @@ WriteDisk(_In_ PDEVICE_OBJECT DeviceObject,
     {
         // Infinitely stall the OS until this kernel mode executive event completes
         (VOID)KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL);
-       // Status = Iosb.Status; ???
+        Status = Iosb.Status;
     }
 
     NT_ASSERT(Status != STATUS_VERIFY_REQUIRED);
@@ -254,7 +216,7 @@ NtfsReadVolume(_In_    ULONGLONG Offset,
         }
 
         // Free read buffer
-        delete ReadBuffer;
+        delete[] ReadBuffer;
     }
 
     return Status;
@@ -310,7 +272,7 @@ NtfsWriteVolume(_In_    ULONGLONG Offset,
         }
 
         // Free write buffer
-        delete WriteBuffer;
+        delete[] WriteBuffer;
     }
 
     return Status;

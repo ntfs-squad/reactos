@@ -17,7 +17,8 @@ FileRecord::WriteFileData(_In_     AttributeType AttrType,
                           _In_opt_ PWSTR StreamName,
                           _In_     PUCHAR Buffer,
                           _Inout_  PULONG Length,
-                          _In_     PLARGE_INTEGER Offset)
+                          _In_     PLARGE_INTEGER Offset,
+                          _In_opt_ PDataRun PrecomputedRuns)
 {
     NTSTATUS Status;
     PAttribute TargetAttribute;
@@ -30,7 +31,10 @@ FileRecord::WriteFileData(_In_     AttributeType AttrType,
     TargetAttribute = GetAttribute(AttrType, StreamName);
     if (!TargetAttribute)
     {
-        // TODO: We may need to create it in this case, let's see how this API grows up.
+        /* This API mutates an existing attribute. Attribute creation has
+         * different allocation and journaling requirements and stays an
+         * explicit operation.
+         */
         DPRINT1("WriteFileData():GetAttribute() failed!\n");
         return STATUS_NOT_FOUND;
     }
@@ -81,7 +85,8 @@ FileRecord::WriteFileData(_In_     AttributeType AttrType,
         Status = UpdateNonResidentData(TargetAttribute,
                                        Buffer,
                                        Length,
-                                       Offset->QuadPart);
+                                       Offset->QuadPart,
+                                       PrecomputedRuns);
 
         if (!NT_SUCCESS(Status))
         {
@@ -98,7 +103,8 @@ NTSTATUS
 FileRecord::UpdateNonResidentData(_In_ PAttribute TargetAttribute,
                                   _In_ PUCHAR Buffer,
                                   _In_ PULONG Length,
-                                  _In_ ULONGLONG Offset)
+                                  _In_ ULONGLONG Offset,
+                                  _In_opt_ PDataRun PrecomputedRuns)
 {
     NTSTATUS Status;
     ULONGLONG BytesInRun;
@@ -125,7 +131,9 @@ FileRecord::UpdateNonResidentData(_In_ PAttribute TargetAttribute,
         return STATUS_NOT_IMPLEMENTED;
     }
 
-    Head = FindNonResidentData(TargetAttribute);
+    Head = PrecomputedRuns
+           ? PrecomputedRuns
+           : FindNonResidentData(TargetAttribute);
     CurrentRun = Head;
     BytesWritten = 0;
 
@@ -145,11 +153,13 @@ FileRecord::UpdateNonResidentData(_In_ PAttribute TargetAttribute,
             Chunk = min(*Length, (BytesInRun - Offset));
             Status = DiskVolume->WriteVolume(GetOffset(CurrentRun->LCN) + Offset,
                                              Chunk,
-                                             Buffer);
+                                             Buffer + BytesWritten);
             if (!NT_SUCCESS(Status))
             {
                 DPRINT1("Failed to write data contents!\n");
                 __debugbreak();
+                if (!PrecomputedRuns)
+                    FreeDataRun(Head);
                 return Status;
             }
 
@@ -169,7 +179,8 @@ FileRecord::UpdateNonResidentData(_In_ PAttribute TargetAttribute,
     }
 
     // Free data run
-    FreeDataRun(Head);
+    if (!PrecomputedRuns)
+        FreeDataRun(Head);
 
     // Check to make sure we wrote what was requested
     if (BytesWritten != *Length)
