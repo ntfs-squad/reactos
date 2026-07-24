@@ -877,6 +877,15 @@ private:
         _Out_opt_ PBOOLEAN Changed);
 
     NTSTATUS
+    ReplaceListedExtendedAttributes(
+        _In_opt_ PAttribute InformationAttribute,
+        _In_opt_ PAttribute EaAttribute,
+        _In_ const EAInformationEx* FinalInformation,
+        _In_reads_bytes_(FinalLength)
+            const UCHAR* FinalData,
+        _In_ ULONG FinalLength);
+
+    NTSTATUS
     ResizeAttributeRecord(_In_ PAttribute TargetAttribute,
                           _In_ ULONG NewAttributeLength);
 
