@@ -20,7 +20,6 @@ target_sources(ntfslib_new PRIVATE
     lfs/lfs.cpp
     mft/get.cpp
     mft/mft.cpp
-    NtfsIsNameInExpression.cpp
     volume/metadata/attrdef.cpp
     volume/metadata/bitmap.cpp
     volume/metadata/upcase.cpp

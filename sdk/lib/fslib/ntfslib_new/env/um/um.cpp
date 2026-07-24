@@ -54,13 +54,6 @@ typedef BOOLEAN (NTAPI *PRtlIsNameInExpression)(
     _In_opt_ PWCH            UpcaseTable
 );
 
-BOOLEAN NtfsIsNameInExpressionFallback(
-    _In_     PUNICODE_STRING Expression,
-    _In_     PUNICODE_STRING Name,
-    _In_     BOOLEAN         IgnoreCase,
-    _In_opt_ PWCH            UpcaseTable
-);
-
 HANDLE VolumeHandle = NULL;
 ULONG SectorSize = 0;
 static PRtlIsNameInExpression pRtlIsNameInExpression;
@@ -95,9 +88,16 @@ NtfsDiskInitializeUm(
     if (BytesPerSector)
         *BytesPerSector = SectorSize;
 
-    // Check if we have RtlIsNameInExpression() in ntdll. If we do, save the pointer.
-    pRtlIsNameInExpression = reinterpret_cast<PRtlIsNameInExpression>(GetProcAddress(GetModuleHandleA("ntdll.dll"),
-                                                                                     "RtlIsNameInExpression"));
+    pRtlIsNameInExpression = reinterpret_cast<PRtlIsNameInExpression>(
+        GetProcAddress(GetModuleHandleA("ntdll.dll"),
+                       "RtlIsNameInExpression"));
+
+    if(!pRtlIsNameInExpression)
+    {
+        pRtlIsNameInExpression = reinterpret_cast<PRtlIsNameInExpression>(
+            GetProcAddress(GetModuleHandleA("ntdll_vista.dll"),
+                           "RtlIsNameInExpression"));
+    }
 
     return STATUS_SUCCESS;
 }
@@ -128,18 +128,74 @@ NtfsFillMemory(_In_ PVOID Buffer,
     FillMemory(Buffer, Size, Value);
 }
 
+#ifndef ALIGN_UP_BY
+#define ALIGN_UP_BY(size, align) (((size) + ((align) - 1)) / (align) * (align))
+#endif
+
 NTSTATUS
 NtfsReadVolume(_In_    ULONGLONG Offset,
                _In_    ULONG Length,
                _Inout_ PUCHAR Buffer)
 {
-    // Hack: We're assuming buffering is used in readfile below.
-    if (!ReadFile(VolumeHandle,
-                  Buffer,
-                  Length,
-                  NULL,
-                  NULL))
+    LARGE_INTEGER FileOffset;
+    ULONGLONG SectorAlignedOffset;
+    ULONG SectorAlignedLength;
+    PUCHAR ReadBuffer;
+    DWORD BytesRead;
+    BOOL Result;
+
+    if (!Length || !VolumeHandle || SectorSize == 0 || !Buffer)
+        return STATUS_INVALID_PARAMETER;
+
+    SectorAlignedOffset = Offset - (Offset % SectorSize);
+    SectorAlignedLength = ALIGN_UP_BY((ULONG)((Offset - SectorAlignedOffset) + Length), SectorSize);
+
+    if (SectorAlignedOffset == Offset && (Length % SectorSize) == 0)
+    {
+        FileOffset.QuadPart = Offset;
+        if (!SetFilePointerEx(VolumeHandle, FileOffset, NULL, FILE_BEGIN))
+            return STATUS_UNSUCCESSFUL;
+
+        Result = ReadFile(VolumeHandle,
+                          Buffer,
+                          Length,
+                          &BytesRead,
+                          NULL);
+
+        if (!Result || BytesRead != Length)
+            return STATUS_UNSUCCESSFUL;
+
+        return STATUS_SUCCESS;
+    }
+
+    ReadBuffer = (PUCHAR)HeapAlloc(GetProcessHeap(), 0, SectorAlignedLength);
+    if (!ReadBuffer)
         return STATUS_UNSUCCESSFUL;
+
+    FileOffset.QuadPart = SectorAlignedOffset;
+    if (!SetFilePointerEx(VolumeHandle, FileOffset, NULL, FILE_BEGIN))
+    {
+        HeapFree(GetProcessHeap(), 0, ReadBuffer);
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    Result = ReadFile(VolumeHandle,
+                      ReadBuffer,
+                      SectorAlignedLength,
+                      &BytesRead,
+                      NULL);
+
+    if (!Result || BytesRead != SectorAlignedLength)
+    {
+        HeapFree(GetProcessHeap(), 0, ReadBuffer);
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    CopyMemory(Buffer,
+               ReadBuffer + (ULONG)(Offset - SectorAlignedOffset),
+               Length);
+
+    HeapFree(GetProcessHeap(), 0, ReadBuffer);
     return STATUS_SUCCESS;
 }
 
@@ -161,20 +217,11 @@ NtfsIsNameInExpression(_In_     PUNICODE_STRING Expression,
                        _In_     BOOLEAN IgnoreCase,
                        _In_opt_ PWCHAR UpcaseTable)
 {
-    // If we have RtlIsNameInExpression() in ntdll, use that.
-    if (pRtlIsNameInExpression)
-    {
-        return pRtlIsNameInExpression(Expression,
-                                      Name,
-                                      IgnoreCase,
-                                      UpcaseTable);
-    }
-
-    // If we don't, use the simpler and portable fallback implementation.
-    return NtfsIsNameInExpressionFallback(Expression,
-                                          Name,
-                                          IgnoreCase,
-                                          UpcaseTable);
+    ASSERT(pRtlIsNameInExpression);
+    return pRtlIsNameInExpression(Expression,
+                                  Name,
+                                  IgnoreCase,
+                                  UpcaseTable);
 }
 
 #ifdef __cplusplus

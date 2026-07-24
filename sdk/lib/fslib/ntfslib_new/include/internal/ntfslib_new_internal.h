@@ -905,6 +905,7 @@ private:
 
 // TODO: Maybe we should remove this if NTFS_DEBUG isn't defined?
 #include <debug.h>
+#define NTFS_DEBUG
 #ifdef NTFS_DEBUG
 
 /* Debug print functions. REMOVE WHEN DONE. */

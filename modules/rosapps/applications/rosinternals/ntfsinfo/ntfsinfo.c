@@ -15,10 +15,10 @@ typedef struct _NTFS_INFORMATION
     ULONGLONG VolumeSize;
     ULONG SectorsPerCluster;
     ULONGLONG TotalClusters;
-    ULONGLONG FreeClusters;
+    LARGE_INTEGER FreeClusters;
     ULONG BytesPerSector;
     ULONG BytesPerCluster;
-    ULONG ClustersPerMftRecord;
+    LONG  ClustersPerMftRecord;
     ULONGLONG MftSize;
     ULONGLONG MftStartCluster;
     ULONGLONG MftZoneStartCluster;
@@ -90,11 +90,16 @@ char* FormatSizeWithPercentDrive(ULONGLONG size, ULONGLONG total)
     return buffer;
 }
 
-char* FormatNumber(ULONGLONG Number)
+char* FormatNumberEx(ULONGLONG Number, const char* Format)
 {
     static char buffer[50];
-    sprintf(buffer, "%llu", Number);
+    sprintf(buffer, Format, Number);
     return buffer;
+}
+
+char* FormatNumber(ULONGLONG Number)
+{
+    return FormatNumberEx(Number, "%llu");
 }
 
 char* FormatRange(ULONGLONG Number1, ULONGLONG Number2)
@@ -110,15 +115,19 @@ void PrintNtfsInformation(PNTFS_INFORMATION NtfsInformation)
     PrintRow("Volume size", FormatSize(NtfsInformation->VolumeSize));
     PrintRow("Total sectors", FormatNumber(NtfsInformation->SectorsPerCluster * NtfsInformation->TotalClusters));
     PrintRow("Total clusters", FormatNumber(NtfsInformation->TotalClusters));
-    PrintRow("Free clusters", FormatNumber(NtfsInformation->FreeClusters));
-    PrintRow("Free space", FormatSizeWithPercentDrive(NtfsInformation->FreeClusters * NtfsInformation->BytesPerCluster,
+    PrintRow("Free clusters", FormatNumber(NtfsInformation->FreeClusters.QuadPart));
+    PrintRow("Free space", FormatSizeWithPercentDrive(NtfsInformation->FreeClusters.QuadPart
+                                                      * NtfsInformation->BytesPerCluster,
                                                       NtfsInformation->VolumeSize));
 
     PrintTableHeader("Allocation size");
     PrintRow("Bytes per sector", FormatNumber(NtfsInformation->BytesPerSector));
     PrintRow("Bytes per cluster", FormatNumber(NtfsInformation->BytesPerCluster));
-    PrintRow("Bytes per MFT record", FormatNumber(NtfsInformation->BytesPerCluster * NtfsInformation->ClustersPerMftRecord));
-    PrintRow("Clusters per MFT record", FormatNumber(NtfsInformation->ClustersPerMftRecord));
+    ULONG FileRecordSize = NtfsInformation->ClustersPerMftRecord < 0 ?
+                           1 << (-(NtfsInformation->ClustersPerMftRecord))
+                           : NtfsInformation->ClustersPerMftRecord * (NtfsInformation->SectorsPerCluster * NtfsInformation->BytesPerSector);
+    PrintRow("Bytes per MFT record", FormatNumber(FileRecordSize));
+    PrintRow("Clusters per MFT record", FormatNumberEx(NtfsInformation->ClustersPerMftRecord, "%ld"));
 
     PrintTableHeader("MFT information");
     PrintRow("MFT size", FormatSizeWithPercentDrive(NtfsInformation->MftSize, NtfsInformation->VolumeSize));
@@ -157,11 +166,11 @@ void PrintLastError(const char* Prefix)
     LocalFree(MessageBuffer);
 }
 
-HANDLE OpenFromDriveLetter(WCHAR DriveLetter)
+HANDLE OpenFromDriveLetter(const WCHAR *DriveLetter)
 {
     WCHAR path[32];
 
-    swprintf(path, L"\\\\.\\%wc:", DriveLetter);
+    swprintf(path, ARRAYSIZE(path), L"\\\\.\\%wC:", DriveLetter[0]);
     return CreateFileW(path,
                        GENERIC_READ,
                        FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -175,7 +184,7 @@ HANDLE OpenFromNtNativePath(const WCHAR *NtPath)
 {
     WCHAR path[MAX_PATH];
 
-    swprintf(path, L"\\\\?\\GLOBALROOT%s", NtPath);
+    swprintf(path, ARRAYSIZE(path), L"\\\\?\\GLOBALROOT%wS", NtPath);
     return CreateFileW(path,
                        GENERIC_READ,
                        FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -193,6 +202,7 @@ int wmain(int argc, wchar_t* argv[])
     const BOOL NoBanner = (argc > 1) && (_wcsicmp(argv[1], L"-nobanner") == 0);
     ULONG BytesPerSector;
     PNtfsVolume VolumeObject;
+    PBootSector BootSector;
     // TODO: Maybe this should go in NtfsProbePartition?
     PUCHAR BootSectorData;
 
@@ -207,7 +217,7 @@ int wmain(int argc, wchar_t* argv[])
     }
 
     if (iswalpha(argv[NoBanner ? 2 : 1][0]))
-        VolumeHandle = OpenFromDriveLetter(argv[NoBanner ? 2 : 1][0]);
+        VolumeHandle = OpenFromDriveLetter(argv[NoBanner ? 2 : 1]);
 
     else
         VolumeHandle = OpenFromNtNativePath(argv[NoBanner ? 2 : 1]);
@@ -254,21 +264,21 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
-    free(BootSectorData);
-    // Let's find the NTFS information and print it.
-    // HACK: This is just mock data for now.
-    NtfsInformation.VolumeSize = 475967ull * 1024 * 1024;
-    NtfsInformation.SectorsPerCluster = 8;
-    NtfsInformation.TotalClusters = 192881;
-    NtfsInformation.FreeClusters = 192881;
+    // TODO: What we probably want is one call to get this info
+    // Maybe: NTSTATUS NtfsVolumeGetInfo(PNtfsVolume, &InfoStruct)?
+    BootSector = (PBootSector)BootSectorData;
+    NtfsInformation.VolumeSize = BootSector->SectorsInVolume * BytesPerSector;
+    NtfsInformation.SectorsPerCluster = BootSector->SectorsPerCluster;
+    NtfsInformation.TotalClusters = BootSector->SectorsInVolume / BootSector->SectorsPerCluster;
+    NtfsVolumeGetFreeClusters(VolumeObject, &NtfsInformation.FreeClusters);
     NtfsInformation.BytesPerSector = BytesPerSector;
-    NtfsInformation.BytesPerCluster = 512 * 8;
-    NtfsInformation.ClustersPerMftRecord = 1;
-    NtfsInformation.MftSize = 192881 * 512;
-    NtfsInformation.MftStartCluster = 1;
-    NtfsInformation.MftZoneStartCluster = 1;
-    NtfsInformation.MftZoneEndCluster = 1;
-    NtfsInformation.MftMirrorStartCluster = 2;  
+    NtfsInformation.BytesPerCluster = BytesPerSector * BootSector->SectorsPerCluster;
+    NtfsInformation.ClustersPerMftRecord = BootSector->ClustersPerFileRecord;
+    NtfsInformation.MftSize = 0;
+    NtfsInformation.MftStartCluster = 0;
+    NtfsInformation.MftZoneStartCluster = 0;
+    NtfsInformation.MftZoneEndCluster = 0;
+    NtfsInformation.MftMirrorStartCluster = 0;  
     NtfsInformation._MftSize = 0;
     NtfsInformation._MftMirrSize = 0;
     NtfsInformation._LogFileSize = 0;

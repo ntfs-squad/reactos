@@ -135,7 +135,7 @@ Volume::Initialize(_In_ PUCHAR BootSectorData)
     PAttribute VolumeInfoAttribute;
     PFileRecord VolumeFile;
     NTSTATUS Status;
-    
+
     PartitionBootSector = (BootSector*)BootSectorData;
     VolumeFile = NULL;
 
@@ -153,23 +153,23 @@ Volume::Initialize(_In_ PUCHAR BootSectorData)
                                                   PartitionBootSector->ClustersPerFileRecord);
     if (!MFT)
         return STATUS_INSUFFICIENT_RESOURCES;
-    
+
     // Get the NTFS Major and Minor versions from $Volume.
     Status = MFT->GetFileAttributeFromFileRecordNumber(TypeVolumeInformation,
                                                        NULL,
                                                        _Volume,
                                                        &VolumeFile,
                                                        &VolumeInfoAttribute);
-    
+
     if (!NT_SUCCESS(Status))
         return Status;
-    
+
     VolumeInfo = (PVolumeInformationEx)GetResidentDataPointer(VolumeInfoAttribute);
-    
+
     NtfsMajorVersion = VolumeInfo->MajorVersion;
     NtfsMinorVersion = VolumeInfo->MinorVersion;
     DPRINT1("NTFS Version %ld.%ld\n", VolumeInfo->MajorVersion, VolumeInfo->MinorVersion);
-    
+
     // Initialize Log File Service
     LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
 
