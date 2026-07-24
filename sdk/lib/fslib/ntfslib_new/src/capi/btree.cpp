@@ -50,6 +50,18 @@ NtfsDirectoryLoadDirectory(
     return reinterpret_cast<PDirectory>(Dir)->LoadDirectory(reinterpret_cast<PFileRecord>(File));
 }
 
+NTSTATUS
+NtfsDirectoryReadNext(
+    _In_ PNtfsDirectory Dir,
+    _In_ BOOLEAN RestartScan,
+    _Out_ PNtfsDirectoryEntry Entry)
+{
+    if (!Dir || !Entry)
+        return STATUS_INVALID_PARAMETER;
+
+    return reinterpret_cast<PDirectory>(Dir)->GetNextEntry(RestartScan, Entry);
+}
+
 #ifdef __cplusplus
 }
 #endif

@@ -12,13 +12,17 @@
 static void
 DestroyBTreeKey(PBTreeKey Key)
 {
-    if (Key->Entry)
+    if (Key->Entry &&
+        !(Key->Flags & BTREE_KEY_BORROWED_ENTRY))
+    {
         NtfsFreePool(Key->Entry);
+    }
 
     if (Key->ChildNode)
         NtfsDestroyBTreeNode(Key->ChildNode);
 
-    delete Key;
+    if (!(Key->Flags & BTREE_KEY_ARENA_OBJECT))
+        delete Key;
 }
 
 void
@@ -51,6 +55,6 @@ BTree::~BTree()
 NTSTATUS
 BTree::ResetCurrentKey()
 {
-    CurrentKey = RootNode->FirstKey;
+    CurrentKey = GetFirstKey(RootNode);
     return STATUS_SUCCESS;
 }

@@ -108,13 +108,80 @@ Directory::IsEligibleForFileDir(PBTreeKey Key,
 }
 
 NTSTATUS
+Directory::GetNextEntry(_In_ BOOLEAN RestartScan,
+                        _Out_ PNtfsDirectoryEntry Entry)
+{
+    PBTreeKey Key;
+    PBTreeKey ShortNameKey;
+    PFileNameEx FileNameData;
+
+    if (!Entry)
+        return STATUS_INVALID_PARAMETER;
+
+    if (RestartScan)
+        ResetCurrentKey();
+
+    while (CurrentKey && !IsEligibleForFileDir(CurrentKey, NULL))
+        CurrentKey = GetNextKey(CurrentKey);
+
+    if (!CurrentKey || IsEndOfNode(CurrentKey))
+        return STATUS_NO_MORE_FILES;
+
+    Key = CurrentKey;
+    CurrentKey = GetNextKey(CurrentKey);
+    FileNameData = GetFileName(Key);
+    RtlZeroMemory(Entry, sizeof(*Entry));
+    Entry->FileReference = FileRef(Key);
+    Entry->CreationTime = FileNameData->CreationTime;
+    Entry->LastAccessTime = FileNameData->LastAccessTime;
+    Entry->LastWriteTime = FileNameData->LastWriteTime;
+    Entry->ChangeTime = FileNameData->ChangeTime;
+    Entry->EndOfFile = FileNameData->DataSize;
+    Entry->AllocationSize = FileNameData->AllocatedSize;
+    Entry->FileAttributes = FileNameData->Flags;
+    if (FileNameData->Flags & FILE_PERM_REPARSE_PT)
+    {
+        Entry->EaSize = 0;
+        Entry->ReparseTag =
+            FileNameData->Extended.ReparseTag;
+    }
+    else
+    {
+        Entry->EaSize =
+            FileNameData->Extended.EAInfo.PackedEASize;
+        Entry->ReparseTag = 0;
+    }
+    Entry->NameLength = FileNameData->NameLength;
+    RtlCopyMemory(Entry->Name,
+                  FileNameData->Name,
+                  FileNameData->NameLength * sizeof(WCHAR));
+    Entry->Name[Entry->NameLength] = L'\0';
+
+    ShortNameKey = GetShortNameKey(Key);
+    if (ShortNameKey)
+    {
+        FileNameData = GetFileName(ShortNameKey);
+        if (FileNameData->NameLength > MAX_SHORTNAME_LENGTH)
+            return STATUS_FILE_CORRUPT_ERROR;
+
+        Entry->ShortNameLength = FileNameData->NameLength;
+        RtlCopyMemory(Entry->ShortName,
+                      FileNameData->Name,
+                      FileNameData->NameLength * sizeof(WCHAR));
+        Entry->ShortName[Entry->ShortNameLength] = L'\0';
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
 Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
                               _In_    BOOLEAN RestartScan,
                               _In_    PUNICODE_STRING FileNameFilter,
                               _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
                               _Inout_ PULONG BufferLength)
 {
-    NTSTATUS Status;
+    NTSTATUS Status = STATUS_SUCCESS;
     ULONG EntrySize, TotalBufferLength;
     PFILE_BOTH_DIR_INFORMATION PreviousBuffer;
 

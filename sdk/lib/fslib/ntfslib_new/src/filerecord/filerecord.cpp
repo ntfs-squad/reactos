@@ -14,6 +14,7 @@ FileRecord::FileRecord(_In_ PVolume DiskVolume,
 {
     // Save Volume pointer.
     this->DiskVolume = DiskVolume;
+    RecordBufferSize = FileRecordSize;
 
     // Initialize data buffer and header pointer.
     Data = new(PagedPool, TAG_FILE_RECORD) UCHAR[FileRecordSize];
@@ -24,6 +25,10 @@ FileRecord::FileRecord(_In_ PVolume DiskVolume) : FileRecord(DiskVolume, DiskVol
 
 FileRecord::~FileRecord()
 {
+    ClearDataRunCache();
+    ClearExtentCache();
+    if (AttributeListData)
+        delete[] AttributeListData;
     if (Data)
         delete[] Data;
 }

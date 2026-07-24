@@ -17,8 +17,23 @@ FileRecord::CopyData(_In_    AttributeType Type,
                      _In_    ULONGLONG Offset)
 {
     PAttribute Attr = GetAttribute(Type, Name);
+    BOOLEAN WofHandled;
+    NTSTATUS Status;
+
     if (!Attr)
         return STATUS_NOT_FOUND;
+
+    if (Type == TypeData && !Name)
+    {
+        Status = TryCopyWofCompressedData(Attr,
+                                          Buffer,
+                                          Length,
+                                          Offset,
+                                          &WofHandled);
+        if (!NT_SUCCESS(Status) || WofHandled)
+            return Status;
+    }
+
     // Basic guard: resident data must have valid DataOffset/length window
     if (!Attr->IsNonResident)
     {
@@ -28,15 +43,6 @@ FileRecord::CopyData(_In_    AttributeType Type,
             return STATUS_FILE_CORRUPT_ERROR;
     }
     return CopyData(Attr, Buffer, Length, Offset);
-}
-
-NTSTATUS
-FileRecord::CopyData(_In_    PAttribute Attr,
-                     _In_    PUCHAR Buffer,
-                     _Inout_ PULONG Length,
-                     _In_    ULONGLONG Offset)
-{
-    return CopyData(Attr, NULL, Buffer, Length, Offset);
 }
 
 NTSTATUS
@@ -76,14 +82,13 @@ FileRecord::ReadAttributeAlloc(
 }
 
 NTSTATUS
-FileRecord::CopyData(_In_     PAttribute Attr,
-                     _In_opt_ PDataRun PrecomputedRuns,
-                     _In_     PUCHAR Buffer,
-                     _Inout_  PULONG Length,
-                     _In_     ULONGLONG Offset)
+FileRecord::CopyData(_In_    PAttribute Attr,
+                     _In_    PUCHAR Buffer,
+                     _Inout_ PULONG Length,
+                     _In_    ULONGLONG Offset)
 {
     NTSTATUS Status;
-    ULONG BytesToRead, BytesRead, BytesInRun;
+    ULONG BytesToRead, BytesRead, BytesFromRuns;
     PDataRun Head, CurrentDR;
 
     ASSERT(Buffer);
@@ -118,6 +123,17 @@ FileRecord::CopyData(_In_     PAttribute Attr,
 
     else // Attribute is nonresident.
     {
+        /* Encrypted streams require EFS key handling that is not implemented. */
+        if (Attr->Flags & ATTR_ENCRYPTED)
+            return STATUS_NOT_IMPLEMENTED;
+
+        if (Attr->Flags & ATTR_COMPRESSION_MASK)
+        {
+            if ((Attr->Flags & ATTR_COMPRESSION_MASK) != ATTR_COMPRESSED)
+                return STATUS_NOT_IMPLEMENTED;
+            return CopyCompressedData(Attr, Buffer, Length, Offset);
+        }
+
         if (Offset >= Attr->NonResident.DataSize)
         {
             // Don't read past the file data.
@@ -128,15 +144,27 @@ FileRecord::CopyData(_In_     PAttribute Attr,
         // Determine number of bytes we need to copy.
         BytesToRead = min((Attr->NonResident.DataSize - Offset), (*Length));
 
-        // Set up data runs, reusing the caller's decoded list if provided.
-        Head = PrecomputedRuns ? PrecomputedRuns : FindNonResidentData(Attr);
+        BytesFromRuns = Offset < Attr->NonResident.InitalizedDataSize
+            ? (ULONG)min((ULONGLONG)BytesToRead,
+                         Attr->NonResident.InitalizedDataSize - Offset)
+            : 0;
+
+        /* Runs belong to the per-record cache, so no cleanup happens on
+         * any path below.
+         */
+        Head = NULL;
+        if (BytesFromRuns != 0)
+        {
+            Head = GetCachedDataRuns(Attr);
+            if (!Head)
+                return STATUS_FILE_CORRUPT_ERROR;
+        }
         CurrentDR = Head;
         BytesRead = 0;
 
-        while(CurrentDR)
+        while (CurrentDR && BytesRead < BytesFromRuns)
         {
-            // Get data run length
-            BytesInRun = GetRunSize(CurrentDR);
+            ULONGLONG BytesInRun = GetRunSize(CurrentDR);
 
             if (Offset >= BytesInRun)
             {
@@ -145,45 +173,46 @@ FileRecord::CopyData(_In_     PAttribute Attr,
 
             else
             {
-                // We need to copy data from this run before moving to the next one.
+                ULONGLONG BytesAvailable = BytesInRun - Offset;
+                ULONG BytesRemaining = BytesFromRuns - BytesRead;
+                ULONG Chunk = BytesAvailable < BytesRemaining
+                    ? (ULONG)BytesAvailable
+                    : BytesRemaining;
 
-                // Get data into the correct position in the caller's buffer
-                ULONG chunk = min(BytesToRead - BytesRead, (BytesInRun - (ULONG)Offset));
-                Status = DiskVolume->ReadVolume(GetOffset(CurrentDR->LCN) + Offset,
-                                                chunk,
-                                                Buffer + BytesRead);
-                if (!NT_SUCCESS(Status))
+                if (CurrentDR->IsSparse)
                 {
-                    DPRINT1("Failed to read attribute contents!\n");
-                    if (!PrecomputedRuns)
-                        FreeDataRun(Head);
-                    return Status;
+                    RtlZeroMemory(Buffer + BytesRead, Chunk);
+                }
+                else
+                {
+                    Status = DiskVolume->ReadVolume(
+                        GetOffset(CurrentDR->LCN) + Offset,
+                        Chunk,
+                        Buffer + BytesRead);
+                    if (!NT_SUCCESS(Status))
+                    {
+                        DPRINT1("Failed to read attribute contents!\n");
+                        return Status;
+                    }
                 }
 
-                // Adjust bytes read
-                BytesRead += chunk;
-
-                // Are we done reading?
-                if (BytesRead == BytesToRead)
-                    break;
-
-                // Clear offset
+                BytesRead += Chunk;
                 Offset = 0;
             }
 
-            // Set up next data run
             CurrentDR = CurrentDR->NextRun;
         }
 
-        // Free the data run list unless it belongs to the caller.
-        if (!PrecomputedRuns)
-            FreeDataRun(Head);
-
-        // Check to make sure we read what was requested
-        if (BytesRead != BytesToRead)
+        if (BytesRead != BytesFromRuns)
         {
             DPRINT1("Failed to copy file data!\n");
             return STATUS_NOT_FOUND;
+        }
+
+        if (BytesRead < BytesToRead)
+        {
+            RtlZeroMemory(Buffer + BytesRead, BytesToRead - BytesRead);
+            BytesRead = BytesToRead;
         }
     }
 

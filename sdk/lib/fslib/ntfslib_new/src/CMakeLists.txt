@@ -12,7 +12,14 @@ target_sources(ntfslib_new PRIVATE
     capi/volume.cpp
     filerecord/attributes/addattr.cpp
     filerecord/attributes/findattr.cpp
+    filerecord/read/allocation.cpp
+    filerecord/read/compression.cpp
     filerecord/read/copy.cpp
+    filerecord/read/ea.cpp
+    filerecord/read/reparse.cpp
+    filerecord/read/security.cpp
+    filerecord/read/streams.cpp
+    filerecord/read/wof.cpp
     filerecord/write/filedata.cpp
     filerecord/filerecord.cpp
     filerecord/fixup.cpp
