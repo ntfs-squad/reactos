@@ -89,6 +89,20 @@ NtfsFreePool(void* pObject)
 }
 
 NTSTATUS
+NtfsQuerySystemTime(_Out_ PULONGLONG NtfsTime)
+{
+    FILETIME Current;
+
+    if (!NtfsTime)
+        return STATUS_INVALID_PARAMETER;
+    GetSystemTimeAsFileTime(&Current);
+    *NtfsTime =
+        ((ULONGLONG)Current.dwHighDateTime << 32) |
+        Current.dwLowDateTime;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
 NtfsReadVolume(_In_    ULONGLONG Offset,
                _In_    ULONG Length,
                _Inout_ PUCHAR Buffer)

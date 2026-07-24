@@ -10,6 +10,7 @@
 #include "ntfslib_new_internal.h"
 
 #define INITIAL_SYSTEM_PAGE_SIZE 4096
+#define LOGFILE_SCAN_CHUNK_SIZE 0x10000
 
 static BOOLEAN
 IsPowerOfTwo(_In_ ULONG Value)
@@ -39,6 +40,55 @@ GetRestartPageLsn(_In_ PLfsRestartPage Page)
         reinterpret_cast<PUCHAR>(Page) + Page->RestartOffset)->CurrentLsn;
 }
 
+static NTSTATUS
+IsLogFileEmpty(_In_ PFileRecord LogFile,
+               _In_ PAttribute FileDataAttribute,
+               _In_ ULONG LogFileSize,
+               _Out_ PBOOLEAN Empty)
+{
+    PUCHAR Buffer;
+    ULONG Chunk;
+    ULONG Offset = 0;
+    ULONG Remaining;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    *Empty = TRUE;
+    Buffer = new(PagedPool) UCHAR[LOGFILE_SCAN_CHUNK_SIZE];
+    if (!Buffer)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    while (Offset < LogFileSize)
+    {
+        Chunk = min(LOGFILE_SCAN_CHUNK_SIZE, LogFileSize - Offset);
+        Remaining = Chunk;
+        Status = LogFile->CopyData(FileDataAttribute,
+                                   Buffer,
+                                   &Remaining,
+                                   Offset);
+        if (!NT_SUCCESS(Status) || Remaining != 0)
+        {
+            Status = NT_SUCCESS(Status)
+                ? STATUS_END_OF_FILE
+                : Status;
+            goto Done;
+        }
+
+        for (ULONG Index = 0; Index < Chunk; Index++)
+        {
+            if (Buffer[Index] != 0xff)
+            {
+                *Empty = FALSE;
+                goto Done;
+            }
+        }
+        Offset += Chunk;
+    }
+
+Done:
+    delete[] Buffer;
+    return Status;
+}
+
 LogFileService::LogFileService(_In_ PVolume TargetVolume)
 {
     // Store volume pointer
@@ -61,8 +111,9 @@ LogFileService::InitializeLFS()
 {
     NTSTATUS Status;
     PAttribute FileDataAttr;
+    ULONGLONG AttributeSize;
     ULONG BytesRemaining, LogFileDataSize, LogFileSize, SystemPageSize;
-    BOOLEAN RestartPage1Valid, RestartPage2Valid;
+    BOOLEAN LogFileEmpty, RestartPage1Valid, RestartPage2Valid;
     PLfsRestartPage SelectedPage;
 
     // Find the Log File.
@@ -83,7 +134,13 @@ LogFileService::InitializeLFS()
         return STATUS_NOT_FOUND;
     }
 
-    LogFileSize = GetAttributeDataSize(FileDataAttr);
+    AttributeSize = GetAttributeDataSize(FileDataAttr);
+    if (AttributeSize > MAXULONG)
+    {
+        Status = STATUS_FILE_TOO_LARGE;
+        goto Done;
+    }
+    LogFileSize = (ULONG)AttributeSize;
     LogFileDataSize = min(LogFileSize, 2 * INITIAL_SYSTEM_PAGE_SIZE);
     if (LogFileDataSize < sizeof(LfsRestartPage))
     {
@@ -105,6 +162,31 @@ LogFileService::InitializeLFS()
                                &BytesRemaining);
     if (!NT_SUCCESS(Status) || BytesRemaining != 0)
         goto Done;
+
+    /*
+     * An all-0xff $LogFile is the canonical empty journal used by mkntfs
+     * and ntfs-3g. It has no restart-page version to decode and requires no
+     * replay. Check the complete stream before accepting that state so a
+     * damaged first page cannot hide later log records.
+     */
+    if (LogFileData[0] == 0xff)
+    {
+        Status = IsLogFileEmpty(LogFile,
+                                FileDataAttr,
+                                LogFileSize,
+                                &LogFileEmpty);
+        if (!NT_SUCCESS(Status))
+            goto Done;
+        if (LogFileEmpty)
+        {
+            ClientMajorVersion = 0;
+            ClientMinorVersion = 0;
+            RestartPage1 = NULL;
+            RestartPage2 = NULL;
+            Status = STATUS_SUCCESS;
+            goto Done;
+        }
+    }
 
     RestartPage1 = reinterpret_cast<PLfsRestartPage>(LogFileData);
     SystemPageSize = RestartPage1->SystemPageSize;

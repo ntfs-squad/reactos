@@ -130,12 +130,15 @@ Volume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
 
 /* Allocates a NUL-terminated copy of the first Length characters of Source. */
 static PWSTR
-CopyStreamName(_In_ PWSTR Source,
+CopyStreamName(_In_ PCWSTR Source,
                _In_ ULONG Length)
 {
     PWSTR StreamName = new(NonPagedPool) WCHAR[Length + 1];
 
-    RtlCopyMemory(StreamName, Source, Length * sizeof(WCHAR));
+    if (!StreamName)
+        return NULL;
+    if (Length != 0)
+        RtlCopyMemory(StreamName, Source, Length * sizeof(WCHAR));
     StreamName[Length] = L'\0';
     return StreamName;
 }
@@ -146,88 +149,100 @@ Volume::GetADSPreference(_In_  PUNICODE_STRING FileName,
                          _Out_ PWSTR* RequestedStream)
 {
     NTSTATUS Status;
-    PWSTR FileNameQuery, ADSPtr, ADSTypePtr;
+    ULONG CharacterCount;
+    ULONG FirstColon = MAXULONG;
+    ULONG SecondColon = MAXULONG;
+    ULONG StreamLength;
+    ULONG TypeLength;
+    PWSTR TypeName = NULL;
 
     if (!FileName || !RequestedType || !RequestedStream)
         return STATUS_INVALID_PARAMETER;
 
+    *RequestedType = TypeData;
     *RequestedStream = NULL;
 
-    FileNameQuery = FileName->Buffer;
-
-    if (!FileNameQuery)
+    if ((FileName->Length & (sizeof(WCHAR) - 1)) != 0 ||
+        FileName->MaximumLength < FileName->Length ||
+        (!FileName->Buffer && FileName->Length != 0))
     {
-        DPRINT1("FileNameQuery is NULL!\n");
-        return STATUS_NOT_FOUND;
+        return STATUS_INVALID_PARAMETER;
     }
+    CharacterCount = FileName->Length / sizeof(WCHAR);
 
-    // Check for alternate data stream
-    ADSPtr = NtfsWcsChr(FileNameQuery, L':');
-
-    if (ADSPtr)
+    /*
+     * UNICODE_STRING buffers are counted and need not have a trailing NUL.
+     * Locate at most two ADS separators without reading or modifying bytes
+     * outside the declared path. A stream is valid only on the final path
+     * component.
+     */
+    for (ULONG Index = 0; Index < CharacterCount; Index++)
     {
-        /* This file request is for an alternate data stream.
-         * Format:
-         *     filename.ext:AttributeName:$AttributeType
-         * If the last element is missing, it is equivalent to
-         *     filename.ext:AttributeName:$DATA
-         */
+        WCHAR Character = FileName->Buffer[Index];
 
-        // Go to the next character after the colon
-        ADSPtr++;
-        ADSTypePtr = NtfsWcsChr(ADSPtr, L':');
-
-        if (ADSTypePtr)
+        if (Character == L'\0')
+            return STATUS_OBJECT_NAME_INVALID;
+        if (Character == L'\\')
         {
-            ADSTypePtr++;
-
-            if (ADSPtr[0] == L':')
-            {
-                /* File requested is in this format:
-                 *     filename.ext::$ATTRIBUTE_NAME
-                 * Requested stream is NULL.
-                 */
-                *RequestedStream = NULL;
-            }
-
-            else
-            {
-                // Copy the requested stream name.
-                *RequestedStream = CopyStreamName(ADSPtr, ADSTypePtr - ADSPtr - 1);
-                if (!*RequestedStream)
-                    return STATUS_INSUFFICIENT_RESOURCES;
-            }
-
-            // Stream name is copied, get the attribute type
-            Status = GetAttributeTypeFromName(ADSTypePtr, RequestedType);
-
-            if (!NT_SUCCESS(Status))
-            {
-                // If we fail to find the attribute type, the name was invalid.
-                DPRINT1("Failed to find ADS attribute type!\n");
-                delete[] *RequestedStream;
-                *RequestedStream = NULL;
+            if (FirstColon != MAXULONG)
                 return STATUS_OBJECT_NAME_INVALID;
-            }
+            continue;
         }
+        if (Character != L':')
+            continue;
 
+        if (FirstColon == MAXULONG)
+            FirstColon = Index;
+        else if (SecondColon == MAXULONG)
+            SecondColon = Index;
         else
-        {
-            // Copy the stream name
-            *RequestedStream = CopyStreamName(ADSPtr, NtfsWcsLen(ADSPtr));
-            if (!*RequestedStream)
-                return STATUS_INSUFFICIENT_RESOURCES;
-
-            // No type specified, use $DATA
-            *RequestedType = TypeData;
-        }
+            return STATUS_OBJECT_NAME_INVALID;
     }
 
+    if (FirstColon == MAXULONG)
+        return STATUS_SUCCESS;
+    if (FirstColon == 0 ||
+        FileName->Buffer[FirstColon - 1] == L'\\')
+    {
+        return STATUS_OBJECT_NAME_INVALID;
+    }
+
+    if (SecondColon == MAXULONG)
+    {
+        StreamLength = CharacterCount - FirstColon - 1;
+    }
     else
     {
-        // This is a normal file.
-        *RequestedType = TypeData;
-        *RequestedStream = NULL;
+        StreamLength = SecondColon - FirstColon - 1;
+        TypeLength = CharacterCount - SecondColon - 1;
+        if (TypeLength == 0)
+            return STATUS_OBJECT_NAME_INVALID;
+
+        TypeName = CopyStreamName(
+            FileName->Buffer + SecondColon + 1,
+            TypeLength);
+        if (!TypeName)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Status = GetAttributeTypeFromName(TypeName,
+                                          RequestedType);
+        delete[] TypeName;
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to find ADS attribute type!\n");
+            return Status == STATUS_NOT_FOUND
+                ? STATUS_OBJECT_NAME_INVALID
+                : Status;
+        }
+    }
+
+    if (StreamLength != 0)
+    {
+        *RequestedStream = CopyStreamName(
+            FileName->Buffer + FirstColon + 1,
+            StreamLength);
+        if (!*RequestedStream)
+            return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     return STATUS_SUCCESS;

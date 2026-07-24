@@ -9,6 +9,10 @@
 #include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
+#define MFT_BITMAP_CHUNK_SIZE 0x10000
+#define NTFS_FILE_REFERENCE_ORDINAL_MASK \
+    ((ULONGLONG)0x0000FFFFFFFFFFFFULL)
+
 static BOOLEAN
 IsFileRecordHeaderValid(_In_ PFileRecord File,
                         _In_ ULONG FileRecordSize,
@@ -53,7 +57,11 @@ AreFileRecordAttributesValid(_In_ PFileRecord File)
         if (Attribute->AttributeType == TypeAttributeEndMarker)
             return TRUE;
 
-        MinimumSize = Attribute->IsNonResident ? 0x40 : 0x18;
+        MinimumSize = Attribute->IsNonResident
+            ? ((Attribute->Flags & (ATTR_COMPRESSION_MASK | ATTR_SPARSE))
+                ? 0x48
+                : 0x40)
+            : 0x18;
         if (Remaining < MinimumSize ||
             Attribute->Length < MinimumSize ||
             (Attribute->Length & 7) != 0 ||
@@ -116,10 +124,17 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
 
     else if (FileRecordNumber == _MFTMirr)
     {
-        // The $MFTMirr file is calculated from the MFTMirr LCN.
-        Status = DiskVolume->ReadVolume(MFTMirrDiskOffset,
-                                        FileRecordSize,
-                                        (*File)->Data);
+        /*
+         * MFT record 1 describes the $MFTMirr file. The bytes at
+         * MFTMirrDiskOffset begin with a mirror of MFT record 0, so reading
+         * that location as record 1 silently gives us $MFT's runlist.
+         */
+        Status = MFTDataAttr
+            ? MFTFile->CopyData(MFTDataAttr,
+                                (*File)->Data,
+                                &BytesToRead,
+                                FileRecordOffset(FileRecordNumber))
+            : STATUS_INVALID_DEVICE_STATE;
         goto FileCheck;
     }
 
@@ -144,10 +159,9 @@ MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
         goto Failed;
     }
 
-    // Grab file from $MFT, reusing the cached $DATA attribute and run list.
+    // Grab file from $MFT, reusing the cached $DATA attribute.
     Status = MFTDataAttr ?
              MFTFile->CopyData(MFTDataAttr,
-                               MFTDataRuns,
                                (*File)->Data,
                                &BytesToRead,
                                FileRecordOffset(FileRecordNumber))
@@ -196,6 +210,160 @@ Failed:
 }
 
 NTSTATUS
+MasterFileTable::ReadFileRecord(
+    _In_ ULONGLONG RequestedFileReference,
+    _Out_ PULONGLONG ReturnedFileReference,
+    _Out_opt_ PUCHAR Buffer,
+    _Inout_ PULONG BufferLength)
+{
+    PAttribute BitmapAttribute;
+    PFileRecord File = NULL;
+    PUCHAR Bitmap = NULL;
+    ULONGLONG BitmapDataLength;
+    ULONGLONG Candidate;
+    ULONGLONG MftDataLength;
+    ULONGLONG RecordCount;
+    ULONGLONG ByteIndex;
+    ULONGLONG ChunkStart;
+    ULONGLONG FoundRecord = 0;
+    ULONG Capacity;
+    ULONG Length;
+    ULONG SearchLength;
+    BOOLEAN Found = FALSE;
+    NTSTATUS Status;
+
+    if (!ReturnedFileReference ||
+        !BufferLength ||
+        (!Buffer && *BufferLength != 0))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    Capacity = *BufferLength;
+    *BufferLength = FileRecordSize;
+    if (!Buffer || Capacity < FileRecordSize)
+        return STATUS_BUFFER_TOO_SMALL;
+    if (!MFTFile || !MFTDataAttr ||
+        !MFTDataAttr->IsNonResident ||
+        FileRecordSize == 0)
+    {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    MftDataLength =
+        MFTDataAttr->NonResident.DataSize;
+    if (MftDataLength < FileRecordSize ||
+        MftDataLength % FileRecordSize != 0)
+    {
+        return STATUS_FILE_CORRUPT_ERROR;
+    }
+    RecordCount = MftDataLength / FileRecordSize;
+
+    Candidate =
+        RequestedFileReference &
+        NTFS_FILE_REFERENCE_ORDINAL_MASK;
+    if (Candidate >= RecordCount)
+        Candidate = RecordCount - 1;
+    if (Candidate > MAXULONG)
+        Candidate = MAXULONG;
+
+    BitmapAttribute =
+        MFTFile->GetAttribute(TypeBitmap, NULL);
+    if (!BitmapAttribute)
+        return STATUS_FILE_CORRUPT_ERROR;
+    BitmapDataLength =
+        GetAttributeDataSize(BitmapAttribute);
+    if ((Candidate >> 3) >= BitmapDataLength)
+        return STATUS_FILE_CORRUPT_ERROR;
+
+    Bitmap =
+        new(PagedPool, TAG_MFT)
+            UCHAR[MFT_BITMAP_CHUNK_SIZE];
+    if (!Bitmap)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    ByteIndex = Candidate >> 3;
+    for (;;)
+    {
+        ChunkStart =
+            ByteIndex -
+            (ByteIndex % MFT_BITMAP_CHUNK_SIZE);
+        SearchLength =
+            (ULONG)(ByteIndex - ChunkStart + 1);
+        Length = SearchLength;
+        Status = MFTFile->CopyData(
+            BitmapAttribute,
+            Bitmap,
+            &Length,
+            ChunkStart);
+        if (!NT_SUCCESS(Status) || Length != 0)
+        {
+            if (NT_SUCCESS(Status))
+                Status = STATUS_END_OF_FILE;
+            goto Done;
+        }
+
+        while (SearchLength != 0)
+        {
+            UCHAR Value;
+            ULONG Bit;
+
+            SearchLength--;
+            Value = Bitmap[SearchLength];
+            if (SearchLength ==
+                (ULONG)(ByteIndex - ChunkStart))
+            {
+                Value &= (UCHAR)(
+                    (1u << ((Candidate & 7) + 1)) -
+                    1u);
+            }
+            if (Value == 0)
+                continue;
+
+            for (Bit = 8; Bit != 0; Bit--)
+            {
+                if (Value & (1u << (Bit - 1)))
+                {
+                    FoundRecord =
+                        (ChunkStart + SearchLength) * 8 +
+                        Bit - 1;
+                    Found = TRUE;
+                    break;
+                }
+            }
+            if (Found)
+                break;
+        }
+        if (Found)
+            break;
+        if (ChunkStart == 0)
+        {
+            Status = STATUS_NOT_FOUND;
+            goto Done;
+        }
+
+        Candidate = ChunkStart * 8 - 1;
+        ByteIndex = Candidate >> 3;
+    }
+
+    Status = GetFileRecord((ULONG)FoundRecord,
+                           &File);
+    if (!NT_SUCCESS(Status))
+        goto Done;
+
+    RtlCopyMemory(Buffer, File->Data,
+                  FileRecordSize);
+    *ReturnedFileReference = FoundRecord;
+    *BufferLength = FileRecordSize;
+    Status = STATUS_SUCCESS;
+
+Done:
+    delete File;
+    delete[] Bitmap;
+    return Status;
+}
+
+NTSTATUS
 MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
                                           _Out_  PFileRecord* File)
 {
@@ -238,10 +406,9 @@ MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
 
     BytesToRead = FileRecordSize;
 
-    // Grab file from $MFTMirr, reusing the cached $DATA attribute and run list.
+    // Grab file from $MFTMirr, reusing the cached $DATA attribute.
     Status = MFTMirrDataAttr ?
              MFTMirrFile->CopyData(MFTMirrDataAttr,
-                                   MFTMirrDataRuns,
                                    (*File)->Data,
                                    &BytesToRead,
                                    FileRecordOffset(FileRecordNumber))
@@ -330,8 +497,9 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
 {
     NTSTATUS Status;
     PWCHAR NextSeparator, QueryElementPtr;
-    Directory* CurrentDirectory;
+    Directory CurrentDirectory(DiskVolume);
     PFileRecord CurrentFile;
+    ULONGLONG CurrentFileReference;
     ULONGLONG CurrentFRN;
 
     *File = NULL;
@@ -356,22 +524,6 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
         return STATUS_NOT_FOUND;
     }
 
-    CurrentDirectory = new(PagedPool, TAG_MFT) Directory(DiskVolume);
-    if (!CurrentDirectory)
-    {
-        delete CurrentFile;
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    Status = CurrentDirectory->LoadDirectory(CurrentFile);
-    if(!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to get root directory!\n");
-        delete CurrentDirectory;
-        delete CurrentFile;
-        return STATUS_NOT_FOUND;
-    }
-
     QueryElementPtr = Query;
     while (*QueryElementPtr == L'\\')
         QueryElementPtr++;
@@ -379,7 +531,6 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
     /* A path consisting only of separators denotes the root directory. */
     if (*QueryElementPtr == L'\0')
     {
-        delete CurrentDirectory;
         *File = CurrentFile;
         return STATUS_SUCCESS;
     }
@@ -387,23 +538,36 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
     while (*QueryElementPtr)
     {
         // Find the directory pointed to by the path
-        Status = CurrentDirectory->FindNextFile(QueryElementPtr,
-                                                &CurrentFRN);
+        Status = CurrentDirectory.FindNextFile(CurrentFile,
+                                               QueryElementPtr,
+                                               &CurrentFileReference);
         if (!NT_SUCCESS(Status))
         {
-            delete CurrentDirectory;
             delete CurrentFile;
-            return STATUS_NOT_FOUND;
+            return Status;
         }
 
-        delete CurrentDirectory;
+        CurrentFRN = GetFRNFromFileRef(CurrentFileReference);
         delete CurrentFile;
+        CurrentFile = NULL;
 
-        Status = GetFileRecord(CurrentFRN, &CurrentFile);
+        if (CurrentFRN > MAXULONG)
+            return STATUS_FILE_TOO_LARGE;
+
+        Status = GetFileRecord((ULONG)CurrentFRN,
+                               &CurrentFile);
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("Failed to find file at MFT ID %ld!\n", CurrentFRN);
-            return STATUS_NOT_FOUND;
+            return Status;
+        }
+
+        if (GetSequenceFromFileRef(CurrentFileReference) != 0 &&
+            CurrentFile->Header->SequenceNumber !=
+                GetSequenceFromFileRef(CurrentFileReference))
+        {
+            delete CurrentFile;
+            return STATUS_FILE_CORRUPT_ERROR;
         }
 
         NextSeparator = NtfsWcsChr(QueryElementPtr, L'\\');
@@ -416,18 +580,8 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
             if (*NextSeparator == L'\0')
                 break;
 
-            CurrentDirectory = new(PagedPool, TAG_MFT) Directory(DiskVolume);
-            if (!CurrentDirectory)
+            if (!(CurrentFile->Header->Flags & FR_IS_DIRECTORY))
             {
-                delete CurrentFile;
-                return STATUS_INSUFFICIENT_RESOURCES;
-            }
-
-            Status = CurrentDirectory->LoadDirectory(CurrentFile);
-            if (!NT_SUCCESS(Status))
-            {
-                DPRINT1("Failed to find directory for file at MFT ID %ld!\n", CurrentFRN);
-                delete CurrentDirectory;
                 delete CurrentFile;
                 return STATUS_NOT_FOUND;
             }

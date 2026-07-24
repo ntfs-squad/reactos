@@ -14,12 +14,20 @@ extern "C" {
 
 /* Applied to volumes subsequently opened by this library instance. */
 BOOLEAN NtfsDefaultShowMetadataFiles = FALSE;
+BOOLEAN NtfsDefaultReadOnlyMode = FALSE;
 
 void
 NtfsSetShowMetadataFiles(
     _In_ BOOLEAN Show)
 {
     NtfsDefaultShowMetadataFiles = Show;
+}
+
+void
+NtfsSetReadOnlyMode(
+    _In_ BOOLEAN ReadOnly)
+{
+    NtfsDefaultReadOnlyMode = ReadOnly;
 }
 
 NTSTATUS
@@ -34,6 +42,29 @@ NtfsVolumeGetADSPreference(
                                                                    RequestedStream);
 }
 
+NTSTATUS
+NtfsVolumeReadSecurityDescriptorById(
+    _In_ PNtfsVolume DiskVolume,
+    _In_ ULONG SecurityId,
+    _In_opt_ PUCHAR Buffer,
+    _Inout_ PULONG BufferLength)
+{
+    if (!DiskVolume)
+        return STATUS_INVALID_PARAMETER;
+    return reinterpret_cast<PVolume>(DiskVolume)->
+        ReadSecurityDescriptorById(
+            SecurityId,
+            Buffer,
+            BufferLength);
+}
+
+void
+NtfsVolumeDestroy(
+    _In_opt_ PNtfsVolume DiskVolume)
+{
+    delete reinterpret_cast<PVolume>(DiskVolume);
+}
+
 ULONG
 NtfsVolumeGetBytesPerSector(
     _In_ PNtfsVolume DiskVolume)
@@ -41,7 +72,7 @@ NtfsVolumeGetBytesPerSector(
     return reinterpret_cast<PVolume>(DiskVolume)->BytesPerSector;
 }
 
-ULONG
+UINT64
 NtfsVolumeGetClustersInVolume(
     _In_ PNtfsVolume DiskVolume)
 {
@@ -54,6 +85,36 @@ NtfsVolumeGetFreeClusters(
     _Out_ PLARGE_INTEGER FreeClusters)
 {
     return reinterpret_cast<PVolume>(DiskVolume)->GetFreeClusters(FreeClusters);
+}
+
+NTSTATUS
+NtfsVolumeQueryInformation(
+    _In_ PNtfsVolume DiskVolume,
+    _Out_ PNtfsVolumeInformation Information)
+{
+    if (!DiskVolume)
+        return STATUS_INVALID_PARAMETER;
+    return reinterpret_cast<PVolume>(DiskVolume)->
+        QueryInformation(Information);
+}
+
+NTSTATUS
+NtfsVolumeReadBitmap(
+    _In_ PNtfsVolume DiskVolume,
+    _In_ ULONGLONG StartingLcn,
+    _Out_ PULONGLONG ReturnedStartingLcn,
+    _Out_ PULONGLONG BitmapSize,
+    _Out_opt_ PUCHAR Bitmap,
+    _Inout_ PULONG BitmapLength)
+{
+    if (!DiskVolume)
+        return STATUS_INVALID_PARAMETER;
+    return reinterpret_cast<PVolume>(DiskVolume)->ReadBitmap(
+        StartingLcn,
+        ReturnedStartingLcn,
+        BitmapSize,
+        Bitmap,
+        BitmapLength);
 }
 
 PNtfsLogFileService

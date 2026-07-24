@@ -70,6 +70,8 @@ Volume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
     {
         return STATUS_INVALID_PARAMETER;
     }
+    if (IsReadOnly)
+        return STATUS_ACCESS_DENIED;
 
     /* Allocate memory for $Volume file record, retrieve the file record, and
      * get a pointer to the $VOLUME_NAME attribute.
@@ -83,18 +85,14 @@ Volume::SetVolumeLabel(_In_ PWSTR VolumeLabel,
     if (!NT_SUCCESS(Status))
         return Status;
 
-    // Update the resident data attribute for volume name
-    Status = VolumeFile->UpdateResidentData(VolumeNameAttr,
-                                            (PUCHAR)VolumeLabel,
-                                            &Length);
+    // Replace and repack the complete resident $VOLUME_NAME value.
+    Status = VolumeFile->ReplaceResidentData(
+        VolumeNameAttr,
+        reinterpret_cast<const UCHAR*>(VolumeLabel),
+        Length);
 
     if (NT_SUCCESS(Status))
     {
-        /* Replacing a label is not an extending write: a shorter label must
-         * shrink the resident value as well.
-         */
-        VolumeNameAttr->Resident.DataLength = Length;
-
         // Write the volume file to disk.
         Status = MFT->WriteFileRecordToMFT(VolumeFile);
         if (NT_SUCCESS(Status))

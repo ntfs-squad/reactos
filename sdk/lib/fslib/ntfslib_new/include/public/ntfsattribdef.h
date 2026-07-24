@@ -6,6 +6,7 @@
 #define ATTR_END           0xFFFFFFFF
 
 // Attribute flags
+#define ATTR_COMPRESSION_MASK 0x00FF
 #define ATTR_COMPRESSED    0x0001
 #define ATTR_ENCRYPTED     0x4000
 #define ATTR_SPARSE        0x8000
@@ -101,13 +102,16 @@ typedef struct
             UINT64 FirstVCN;               // Offset 0x10, Size 8
             UINT64 LastVCN;                // Offset 0x18, Size 8
             UINT16 DataRunsOffset;         // Offset 0x20, Size 2
-            UINT16 CompressionUnitSize;    // Offset 0x20, Size 2
-            UINT32 Reserved;               // Offset 0x22, Size 4
+            UINT16 CompressionUnitSize;    // Offset 0x22, Size 2
+            UINT32 Reserved;               // Offset 0x24, Size 4
             UINT64 AllocatedSize;          // Offset 0x28, Size 8
             UINT64 DataSize;               // Offset 0x30, Size 8
             UINT64 InitalizedDataSize;     // Offset 0x38, Size 8
-            // This was in the old driver but I think this is wrong.
-            // UINT64 CompressedDataSize;     // Offset 0x40, Size 8
+            /*
+             * Present when ATTR_COMPRESSED or ATTR_SPARSE is set. Mapping
+             * pairs then begin at or after offset 0x48.
+             */
+            UINT64 CompressedDataSize;      // Offset 0x40, Size 8
         } NonResident;
     };
 } Attribute, *PAttribute;
@@ -232,8 +236,7 @@ typedef struct
 typedef struct
 {
     ULONG  IndexOffset;                    // Offset 0x00, Size 4
-    UINT16 TotalIndexSize;                 // Offset 0x04, Size 4
-    UINT16 Unknown;
+    ULONG  TotalIndexSize;                 // Offset 0x04, Size 4
     ULONG  AllocatedSize;                  // Offset 0x08, Size 4
     UCHAR  Flags;                          // Offset 0x0C, Size 1
     UCHAR  Padding[3];                     // Offset 0x0D, Size 3

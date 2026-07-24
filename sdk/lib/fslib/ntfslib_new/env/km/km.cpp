@@ -28,6 +28,20 @@ void NtfsFreePool(void* pObject)
     ExFreePool(pObject);
 }
 
+NTSTATUS
+NtfsQuerySystemTime(_Out_ PULONGLONG NtfsTime)
+{
+    LARGE_INTEGER Current;
+
+    if (!NtfsTime)
+        return STATUS_INVALID_PARAMETER;
+    KeQuerySystemTime(&Current);
+    if (Current.QuadPart < 0)
+        return STATUS_INVALID_DEVICE_STATE;
+    *NtfsTime = (ULONGLONG)Current.QuadPart;
+    return STATUS_SUCCESS;
+}
+
 #ifdef __cplusplus
 }
 #endif

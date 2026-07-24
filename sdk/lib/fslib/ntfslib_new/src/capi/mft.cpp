@@ -21,6 +21,23 @@ NtfsMasterFileTableGetFileRecordFromQuery(
     return reinterpret_cast<PMasterFileTable>(Mft)->GetFileRecordFromQuery(Query, reinterpret_cast<PFileRecord*>(File));
 }
 
+NTSTATUS
+NtfsMasterFileTableReadFileRecord(
+    _In_ PNtfsMasterFileTable Mft,
+    _In_ ULONGLONG RequestedFileReference,
+    _Out_ PULONGLONG ReturnedFileReference,
+    _Out_opt_ PUCHAR Buffer,
+    _Inout_ PULONG BufferLength)
+{
+    if (!Mft)
+        return STATUS_INVALID_PARAMETER;
+    return reinterpret_cast<PMasterFileTable>(Mft)->
+        ReadFileRecord(RequestedFileReference,
+                       ReturnedFileReference,
+                       Buffer,
+                       BufferLength);
+}
+
 #ifdef __cplusplus
 }
 #endif

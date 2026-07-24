@@ -73,3 +73,56 @@ Volume::UpcaseWideString(_Inout_ PWSTR WideString,
 
     return STATUS_SUCCESS;
 }
+
+NTSTATUS
+Volume::CompareFileNames(_In_  PUNICODE_STRING Left,
+                         _In_  PUNICODE_STRING Right,
+                         _Out_ LONG* Result)
+{
+    NTSTATUS Status;
+    ULONG LeftLength;
+    ULONG RightLength;
+    ULONG CommonLength;
+
+    if (!Left || !Right || !Result ||
+        (Left->Length != 0 && !Left->Buffer) ||
+        (Right->Length != 0 && !Right->Buffer) ||
+        (Left->Length & (sizeof(WCHAR) - 1)) != 0 ||
+        (Right->Length & (sizeof(WCHAR) - 1)) != 0)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    if (!UpcaseTable)
+    {
+        Status = LoadUpcaseTable();
+        if (!NT_SUCCESS(Status))
+            return Status;
+    }
+
+    LeftLength = Left->Length / sizeof(WCHAR);
+    RightLength = Right->Length / sizeof(WCHAR);
+    CommonLength = min(LeftLength, RightLength);
+
+    for (ULONG Index = 0; Index < CommonLength; Index++)
+    {
+        WCHAR LeftCharacter = Left->Buffer[Index];
+        WCHAR RightCharacter = Right->Buffer[Index];
+
+        if (LeftCharacter < UpcaseTableLength)
+            LeftCharacter = UpcaseTable[LeftCharacter];
+        if (RightCharacter < UpcaseTableLength)
+            RightCharacter = UpcaseTable[RightCharacter];
+
+        if (LeftCharacter != RightCharacter)
+        {
+            *Result = LeftCharacter < RightCharacter ? -1 : 1;
+            return STATUS_SUCCESS;
+        }
+    }
+
+    *Result = LeftLength == RightLength
+        ? 0
+        : (LeftLength < RightLength ? -1 : 1);
+    return STATUS_SUCCESS;
+}

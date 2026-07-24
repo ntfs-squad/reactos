@@ -61,6 +61,7 @@ NtfsProbePartition(
 {
     BootSector* PartitionBootSector;
     ULONG ClusterSize;
+    ULONGLONG ClusterCount;
     USHORT i;
 
     if (!BootSectorData)
@@ -125,6 +126,17 @@ NtfsProbePartition(
                 PartitionBootSector->BytesPerSector,
                 PartitionBootSector->SectorsPerCluster,
                 ClusterSize);
+        return STATUS_UNRECOGNIZED_VOLUME;
+    }
+
+    ClusterCount =
+        PartitionBootSector->SectorsInVolume /
+        PartitionBootSector->SectorsPerCluster;
+    if (ClusterCount == 0 ||
+        PartitionBootSector->MFTLCN >= ClusterCount ||
+        PartitionBootSector->MFTMirrLCN >= ClusterCount)
+    {
+        DPRINT1("Volume has invalid sector count or MFT locations!\n");
         return STATUS_UNRECOGNIZED_VOLUME;
     }
 
@@ -219,11 +231,14 @@ Volume::Initialize(_In_ PUCHAR BootSectorData)
     PartitionBootSector = (BootSector*)BootSectorData;
     VolumeFile = NULL;
     ShowMetadataFiles = NtfsDefaultShowMetadataFiles;
+    IsReadOnly = NtfsDefaultReadOnlyMode;
 
     // Pull in relevant information from the boot sector.
     BytesPerSector = PartitionBootSector->BytesPerSector;
     SectorsPerCluster = PartitionBootSector->SectorsPerCluster;
-    ClustersInVolume = (PartitionBootSector->SectorsInVolume) / (PartitionBootSector->SectorsPerCluster);
+    SectorsInVolume = PartitionBootSector->SectorsInVolume;
+    ClustersInVolume =
+        SectorsInVolume / PartitionBootSector->SectorsPerCluster;
     ClustersPerIndexRecord = PartitionBootSector->ClustersPerIndexRecord;
     SerialNumber = PartitionBootSector->SerialNumber;
 
@@ -253,6 +268,14 @@ Volume::Initialize(_In_ PUCHAR BootSectorData)
     delete VolumeFile;
     VolumeFile = NULL;
 
+    /*
+     * Diagnostic readers do not need journal replay. In particular, freshly
+     * formatted images may contain an uninitialized (all-0xff) $LogFile,
+     * which is valid for read-only inspection but has no restart page to
+     * parse.
+     */
+    if (IsReadOnly)
+        return STATUS_SUCCESS;
     
     // Initialize Log File Service
     LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
@@ -273,4 +296,50 @@ Volume::Initialize(_In_ PUCHAR BootSectorData)
     }
 
     return Status;
+}
+
+NTSTATUS
+Volume::QueryInformation(
+    _Out_ PNtfsVolumeInformation Information)
+{
+    LARGE_INTEGER FreeClusters;
+    ULONG ClusterSize;
+    NTSTATUS Status;
+
+    if (!Information)
+        return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(Information, sizeof(*Information));
+    if (!MFT || BytesPerSector == 0 ||
+        SectorsPerCluster == 0)
+    {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
+    ClusterSize =
+        BytesPerSector * (ULONG)SectorsPerCluster;
+    if (ClusterSize == 0)
+        return STATUS_INVALID_DEVICE_STATE;
+
+    Status = MFT->QueryVolumeInformation(Information);
+    if (!NT_SUCCESS(Status))
+        return Status;
+    Status = GetFreeClusters(&FreeClusters);
+    if (!NT_SUCCESS(Status))
+        return Status;
+    if (FreeClusters.QuadPart < 0)
+        return STATUS_FILE_CORRUPT_ERROR;
+
+    Information->VolumeSerialNumber = SerialNumber;
+    Information->NumberSectors = SectorsInVolume;
+    Information->TotalClusters = ClustersInVolume;
+    Information->FreeClusters =
+        (ULONGLONG)FreeClusters.QuadPart;
+    Information->BytesPerSector = BytesPerSector;
+    Information->BytesPerCluster = ClusterSize;
+    Information->ClustersPerFileRecordSegment =
+        Information->BytesPerFileRecordSegment /
+        ClusterSize;
+    Information->MajorVersion = NtfsMajorVersion;
+    Information->MinorVersion = NtfsMinorVersion;
+    return STATUS_SUCCESS;
 }

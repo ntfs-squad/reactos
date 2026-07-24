@@ -1,7 +1,15 @@
 #ifndef _NTFSLIB_NEW_INTERNAL_H_
 #define _NTFSLIB_NEW_INTERNAL_H_
 
-//Hack: Bad! Km only!
+#ifdef NTFSLIB_PORTABLE
+#include <assert.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <wctype.h>
+#include <new>
+#else
 #include <ntifs.h>
 
 /* Provides DPRINT1 for every library source (no-op in release builds).
@@ -9,6 +17,99 @@
  * target itself, only by driver builds.
  */
 #include <debug.h>
+#endif
+
+#ifdef NTFSLIB_PORTABLE
+#ifdef NTFSLIB_DEBUG
+#define DPRINT1(...) fprintf(stderr, __VA_ARGS__)
+#define DbgPrint(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define DPRINT1(...) ((void)0)
+#define DbgPrint(...) ((void)0)
+#endif
+#define ASSERT(Expression) assert(Expression)
+#define __debugbreak() ((void)0)
+#ifndef DBG
+#define DBG 0
+#endif
+
+#define RtlCopyMemory(Destination, Source, Length) \
+    memcpy((Destination), (Source), (Length))
+#define RtlMoveMemory(Destination, Source, Length) \
+    memmove((Destination), (Source), (Length))
+#define RtlZeroMemory(Destination, Length) \
+    memset((Destination), 0, (Length))
+#define RtlFillMemory(Destination, Length, Fill) \
+    memset((Destination), (Fill), (Length))
+#define min(Left, Right) ((Left) < (Right) ? (Left) : (Right))
+
+static inline SIZE_T
+RtlCompareMemory(const void* Left, const void* Right, SIZE_T Length)
+{
+    const UCHAR* LeftBytes = (const UCHAR*)Left;
+    const UCHAR* RightBytes = (const UCHAR*)Right;
+    SIZE_T Index;
+
+    for (Index = 0; Index < Length; Index++)
+    {
+        if (LeftBytes[Index] != RightBytes[Index])
+            return Index;
+    }
+    return Length;
+}
+
+static inline WCHAR
+RtlUpcaseUnicodeChar(WCHAR Character)
+{
+    return (WCHAR)towupper((wint_t)(UINT16)Character);
+}
+
+static inline LONG
+RtlCompareUnicodeString(PUNICODE_STRING Left,
+                        PUNICODE_STRING Right,
+                        BOOLEAN IgnoreCase)
+{
+    ULONG LeftLength = Left->Length / sizeof(WCHAR);
+    ULONG RightLength = Right->Length / sizeof(WCHAR);
+    ULONG CommonLength = LeftLength < RightLength ? LeftLength : RightLength;
+
+    for (ULONG Index = 0; Index < CommonLength; Index++)
+    {
+        WCHAR LeftCharacter = Left->Buffer[Index];
+        WCHAR RightCharacter = Right->Buffer[Index];
+        if (IgnoreCase)
+        {
+            LeftCharacter = RtlUpcaseUnicodeChar(LeftCharacter);
+            RightCharacter = RtlUpcaseUnicodeChar(RightCharacter);
+        }
+        if (LeftCharacter != RightCharacter)
+            return LeftCharacter < RightCharacter ? -1 : 1;
+    }
+
+    return LeftLength == RightLength ? 0 : (LeftLength < RightLength ? -1 : 1);
+}
+
+static inline void
+RtlInitializeBitMap(PRTL_BITMAP Bitmap, PULONG Buffer, ULONG Size)
+{
+    Bitmap->Buffer = Buffer;
+    Bitmap->SizeOfBitMap = Size;
+}
+
+static inline ULONG
+RtlNumberOfClearBits(PRTL_BITMAP Bitmap)
+{
+    ULONG ClearBits = 0;
+    UCHAR* Bytes = (UCHAR*)Bitmap->Buffer;
+
+    for (ULONG Bit = 0; Bit < Bitmap->SizeOfBitMap; Bit++)
+    {
+        if ((Bytes[Bit / 8] & (1u << (Bit % 8))) == 0)
+            ClearBits++;
+    }
+    return ClearBits;
+}
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,8 +130,12 @@ NtfsIsNameInExpression(_In_     PUNICODE_STRING Expression,
                        _In_     BOOLEAN IgnoreCase,
                        _In_opt_ PWCHAR UpcaseTable);
 
+NTSTATUS
+NtfsQuerySystemTime(_Out_ PULONGLONG NtfsTime);
+
 /* Default copied into each volume when it is initialized. */
 extern BOOLEAN NtfsDefaultShowMetadataFiles;
+extern BOOLEAN NtfsDefaultReadOnlyMode;
 
 #ifdef __cplusplus
 }
@@ -56,6 +161,20 @@ struct DataRun
     PDataRun  NextRun;
     ULONGLONG LCN;
     ULONGLONG Length; // In clusters
+    BOOLEAN   IsSparse;
+};
+
+struct NonResidentMappingUpdate;
+typedef struct NonResidentMappingUpdate *PNonResidentMappingUpdate;
+
+struct DataRunCacheEntry;
+typedef struct DataRunCacheEntry *PDataRunCacheEntry;
+
+struct DataRunCacheEntry
+{
+    PDataRunCacheEntry Next;
+    PAttribute Attribute;
+    PDataRun Runs;
 };
 
 typedef struct AttrDefCacheEntry
@@ -83,6 +202,10 @@ NTSTATUS
 NtfsCommitFixup(_Inout_ PNTFSRecordHeader Header,
                 _In_ ULONG RecordSize,
                 _In_ ULONG BytesPerSector);
+
+BOOLEAN
+NtfsIsDirectoryIndexEntryValid(_In_ PIndexEntry Entry,
+                               _In_ ULONG Remaining);
 
 struct _BTreeNode
 {
@@ -148,15 +271,39 @@ FileRecordNumber < ((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector)
 #define IsEndOfNode(Key) (IsLastEntry(Key) && !IsIndexNode(Key))
 
 #ifdef __cplusplus
+static inline PBTreeKey GetFirstKey(PBTreeNode Node)
+{
+    PBTreeKey Key = Node ? Node->FirstKey : NULL;
+
+    while (Key && Key->ChildNode)
+        Key = Key->ChildNode->FirstKey;
+    return Key;
+}
+
 static inline PBTreeKey GetNextKey(PBTreeKey Key)
 {
-    if (IsIndexNode(Key))
-        return Key->ChildNode->FirstKey;
+    if (!Key)
+        return NULL;
 
-    if (IsEndOfNode(Key))
-        return Key->ParentNodeKey ? Key->ParentNodeKey->NextKey : NULL;
+    if (!(Key->Entry->Flags & INDEX_ENTRY_END))
+    {
+        Key = Key->NextKey;
+        if (Key && Key->ChildNode)
+            return GetFirstKey(Key->ChildNode);
+        return Key;
+    }
 
-    return Key->NextKey;
+    /*
+     * An end marker finishes one child node. Its owning parent key is the
+     * next in-order entry. End-marker parents represent rightmost children,
+     * so keep climbing until a real separator key (or the root) is reached.
+     */
+    for (Key = Key->ParentNodeKey;
+         Key && (Key->Entry->Flags & INDEX_ENTRY_END);
+         Key = Key->ParentNodeKey)
+    {
+    }
+    return Key;
 }
 
 static inline SIZE_T
@@ -203,7 +350,18 @@ NtfsMakeCountedUnicodeString(_In_ PWSTR Buffer,
 }
 #endif
 
-#define DIR_KEY_8DOT3 1
+#define DIR_KEY_8DOT3          0x00000001
+#define BTREE_KEY_BORROWED_ENTRY 0x00000002
+#define BTREE_KEY_ARENA_OBJECT 0x00000004
+
+#define DIRECTORY_KEY_BLOCK_CAPACITY 128
+
+typedef struct _DIRECTORY_KEY_BLOCK
+{
+    struct _DIRECTORY_KEY_BLOCK* Next;
+    ULONG Used;
+    BTreeKey Keys[DIRECTORY_KEY_BLOCK_CAPACITY];
+} DIRECTORY_KEY_BLOCK, *PDIRECTORY_KEY_BLOCK;
 
 #define GetWStrLength(x) ((x) * sizeof(WCHAR))
 #define MAX_SHORTNAME_LENGTH 12
@@ -221,11 +379,27 @@ NtfsMakeCountedUnicodeString(_In_ PWSTR Buffer,
 
 // Macro to get the file record number from a file reference
 #define GetFRNFromFileRef(x) ((x) & 0xFFFFFFFFFFFF)
+#define GetSequenceFromFileRef(x) ((USHORT)((x) >> 48))
 
 #define GetNamePointer(x) (((char*)x) + (x->NameOffset))
 
 #define GetAttributeDataSize(Attribute1) \
-Attribute1->IsNonResident ? Attribute1->NonResident.DataSize : Attribute1->Resident.DataLength
+((Attribute1)->IsNonResident \
+    ? (Attribute1)->NonResident.DataSize \
+    : (Attribute1)->Resident.DataLength)
+
+#define NTFS_FILE_NAME_UPDATE_SIZES ((UINT32)0x00000001)
+#define NTFS_FILE_NAME_UPDATE_EA_SIZE ((UINT32)0x00000002)
+#define NTFS_FILE_NAME_UPDATE_ARCHIVE ((UINT32)0x00000004)
+#define NTFS_FILE_NAME_UPDATE_REPARSE_TAG ((UINT32)0x00000008)
+#define NTFS_FILE_NAME_UPDATE_STORAGE_FLAGS ((UINT32)0x00000010)
+#define NTFS_FILE_NAME_UPDATE_ALL ((UINT32)0x0000001f)
+
+NTSTATUS
+NtfsValidateReparseBuffer(
+    _In_reads_bytes_(BufferLength) const UCHAR* Buffer,
+    _In_ ULONG BufferLength,
+    _Out_opt_ PReparsePointEx CommonHeader);
 
 #ifdef __cplusplus
 extern "C" {
@@ -270,7 +444,8 @@ typedef class Volume
 public:
     ULONG  BytesPerSector;
     UINT8  SectorsPerCluster;
-    UINT32 ClustersInVolume;
+    UINT64 SectorsInVolume;
+    UINT64 ClustersInVolume;
     INT8   ClustersPerIndexRecord;
     UINT64 SerialNumber;
     USHORT NtfsMajorVersion;
@@ -303,6 +478,35 @@ public:
     NTSTATUS
     GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
 
+    NTSTATUS
+    QueryInformation(
+        _Out_ PNtfsVolumeInformation Information);
+
+    NTSTATUS
+    ReadBitmap(_In_ ULONGLONG StartingLcn,
+               _Out_ PULONGLONG ReturnedStartingLcn,
+               _Out_ PULONGLONG BitmapSize,
+               _Out_opt_ PUCHAR Bitmap,
+               _Inout_ PULONG BitmapLength);
+
+    /*
+     * Claims free clusters in $Bitmap and returns their physical runs in
+     * logical allocation order. MaxRuns bounds both fragmentation and the
+     * mapping-pairs space a caller is prepared to consume.
+     */
+    NTSTATUS
+    AllocateClusters(_In_ ULONGLONG PreferredLCN,
+                     _In_ ULONG ClusterCount,
+                     _In_ ULONG MaxRuns,
+                     _Out_ PDataRun* Runs);
+
+    /*
+     * Clears the $Bitmap bits for runs previously returned by
+     * AllocateClusters(). The caller retains ownership of the run list.
+     */
+    NTSTATUS
+    ReleaseClusters(_In_ PDataRun Runs);
+
     /**
      * Converts a null-terminated 16-bit string to uppercase using the
      * code page stored on the volume. This reads from the $UpCase metadata
@@ -314,6 +518,15 @@ public:
     NTSTATUS
     UpcaseWideString(_Inout_ PWSTR WideString,
                      _In_    ULONG Length);
+
+    /**
+     * Compares two counted NTFS file names using this volume's immutable
+     * $UpCase table. This is the collation used by the $I30 index.
+     */
+    NTSTATUS
+    CompareFileNames(_In_  PUNICODE_STRING Left,
+                     _In_  PUNICODE_STRING Right,
+                     _Out_ LONG* Result);
 
     PWSTR
     GetUpcaseTable()
@@ -391,6 +604,12 @@ public:
                      _Out_ AttributeType* RequestedType,
                      _Out_ PWSTR* RequestedStream);
 
+    NTSTATUS
+    ReadSecurityDescriptorById(
+        _In_ ULONG SecurityId,
+        _In_opt_ PUCHAR Buffer,
+        _Inout_ PULONG BufferLength);
+
 private:
     PAttrDefCacheEntry AttrDefCache = NULL;
     ULONG AttrDefCacheCount = 0;
@@ -411,6 +630,9 @@ private:
 
 } *PVolume;
 
+struct FileRecordExtentCacheEntry;
+typedef struct FileRecordExtentCacheEntry *PFileRecordExtentCacheEntry;
+
 typedef class FileRecord
 {
 public:
@@ -430,8 +652,6 @@ public:
                               _In_opt_ PWSTR Name,
                               _Out_    PUCHAR *Data);
     PDataRun FindNonResidentData(_In_ PAttribute DataAttr);
-    PDataRun FindNonResidentData(_In_     AttributeType Type,
-                                 _In_opt_ PWSTR Name);
 
     // ./copy.cpp
     NTSTATUS CopyData(_In_ AttributeType Type,
@@ -446,15 +666,45 @@ public:
     NTSTATUS ReadAttributeAlloc(_In_ PAttribute Attr,
                                 _Outptr_result_bytebuffer_(*Length) PUCHAR* Buffer,
                                 _Out_ PULONG Length);
-    /* Same as above, but reuses an already-decoded data run list for
-     * non-resident attributes instead of re-decoding it on every call.
-     * The caller keeps ownership of the run list.
-     */
-    NTSTATUS CopyData(_In_ PAttribute Attr,
-                      _In_opt_ PDataRun PrecomputedRuns,
-                      _In_ PUCHAR Buffer,
-                      _Inout_ PULONG Length,
-                      _In_ ULONGLONG Offset);
+    NTSTATUS ReadReparsePoint(_In_opt_ PUCHAR Buffer,
+                              _Inout_ PULONG BufferLength);
+    NTSTATUS SetReparsePoint(
+        _In_reads_bytes_(BufferLength)
+            const UCHAR* Buffer,
+        _In_ ULONG BufferLength);
+    NTSTATUS DeleteReparsePoint(
+        _In_reads_bytes_(BufferLength)
+            const UCHAR* Buffer,
+        _In_ ULONG BufferLength);
+    NTSTATUS DeleteExternalBacking();
+    NTSTATUS ReadExtendedAttributes(
+        _In_opt_ PUCHAR Buffer,
+        _Inout_ PULONG BufferLength,
+        _Out_opt_ PEAInformationEx Information);
+    NTSTATUS UpdateExtendedAttributes(
+        _In_reads_(UpdateCount)
+            const NtfsExtendedAttributeUpdate* Updates,
+        _In_ ULONG UpdateCount);
+    NTSTATUS ReadSecurityDescriptor(
+        _In_opt_ PUCHAR Buffer,
+        _Inout_ PULONG BufferLength);
+
+    NTSTATUS
+    GetBasicInformation(
+        _Out_ PNtfsFileBasicInformation Information);
+
+    NTSTATUS
+    SetBasicInformation(
+        _In_ const NtfsFileBasicInformation* Information);
+
+    NTSTATUS
+    SetAutomaticTimestampMask(_In_ UINT32 Fields);
+
+    UINT32
+    GetAutomaticTimestampMask() const;
+
+    NTSTATUS
+    UpdateAutomaticTimestamps(_In_ UINT32 Fields);
 
     // ./write.cpp
     NTSTATUS
@@ -462,14 +712,63 @@ public:
                   _In_opt_ PWSTR StreamName,
                   _In_     PUCHAR Buffer,
                   _Inout_  PULONG Length,
-                  _In_     PLARGE_INTEGER Offset,
-                  _In_opt_ PDataRun PrecomputedRuns = NULL);
+                  _In_     PLARGE_INTEGER Offset);
+
+    NTSTATUS
+    SetFileDataSize(_In_ AttributeType AttrType,
+                    _In_opt_ PWSTR StreamName,
+                    _In_ ULONGLONG NewSize);
+
+    NTSTATUS
+    SetFileAllocationSize(
+        _In_ AttributeType AttrType,
+        _In_opt_ PWSTR StreamName,
+        _In_ ULONGLONG NewAllocationSize);
+
+    NTSTATUS
+    SetSparse(_In_ AttributeType AttrType,
+              _In_opt_ PWSTR StreamName,
+              _In_ BOOLEAN SetSparse);
+
+    NTSTATUS
+    SetZeroData(_In_ AttributeType AttrType,
+                _In_opt_ PWSTR StreamName,
+                _In_ ULONGLONG FileOffset,
+                _In_ ULONGLONG BeyondFinalZero);
+
+    NTSTATUS
+    QueryAllocatedRanges(
+        _In_ AttributeType AttrType,
+        _In_opt_ PWSTR StreamName,
+        _In_ ULONGLONG FileOffset,
+        _In_ ULONGLONG Length,
+        _Out_opt_ PNtfsAllocatedRange Ranges,
+        _Inout_ PULONG RangeCount);
+
+    NTSTATUS
+    QueryRetrievalPointers(
+        _In_ AttributeType AttrType,
+        _In_opt_ PWSTR StreamName,
+        _In_ ULONGLONG StartingVcn,
+        _Out_ PULONGLONG ReturnedStartingVcn,
+        _Out_opt_ PNtfsRetrievalExtent Extents,
+        _Inout_ PULONG ExtentCount);
+
+    NTSTATUS
+    QueryDataStreams(
+        _Out_opt_ PNtfsDataStreamInformation Streams,
+        _Inout_ PULONG StreamCount);
 
     NTSTATUS
     UpdateResidentData(_In_ PAttribute TargetAttribute,
                        _In_ PUCHAR Buffer,
                        _In_ PULONG Length,
                        _In_ ULONGLONG Offset = 0);
+
+    NTSTATUS
+    ReplaceResidentData(_In_ PAttribute TargetAttribute,
+                        _In_opt_ const UCHAR* Buffer,
+                        _In_ ULONG Length);
 
     // ./ fixup.cpp
     NTSTATUS
@@ -480,15 +779,282 @@ public:
 
 private:
     PVolume DiskVolume;
+    ULONG RecordBufferSize;
+    PDataRunCacheEntry DataRunCache = NULL;
+    PFileRecordExtentCacheEntry ExtentCache = NULL;
+    FileRecord* BaseRecordOwner = NULL;
+    PUCHAR AttributeListData = NULL;
+    ULONG AttributeListLength = 0;
+    UINT32 AutomaticTimestampMask =
+        NTFS_AUTOMATIC_TIMESTAMP_FIELDS;
+    UCHAR WofProbeState = 0; /* 0 unknown, 1 absent/non-file, 2 present */
+    ULONG WofAlgorithm = 0;
+    ULONG WofChunkSize = 0;
+
+    PDataRun
+    GetCachedDataRuns(_In_ PAttribute Attribute);
+
+    NTSTATUS
+    CopyCompressedData(_In_ PAttribute Attribute,
+                       _In_ PUCHAR Buffer,
+                       _Inout_ PULONG Length,
+                       _In_ ULONGLONG Offset);
+
+    NTSTATUS
+    TryCopyWofCompressedData(_In_ PAttribute LogicalAttribute,
+                             _In_ PUCHAR Buffer,
+                             _Inout_ PULONG Length,
+                             _In_ ULONGLONG Offset,
+                             _Out_ PBOOLEAN Handled);
+
+    NTSTATUS
+    MaterializeWofCompressedData(
+        _Out_ PBOOLEAN Materialized);
+
+    void
+    InvalidateWofCompression()
+    {
+        WofProbeState = 0;
+        WofAlgorithm = 0;
+        WofChunkSize = 0;
+    }
+
+    PDataRun
+    BuildCompositeDataRuns(_In_ PAttribute Attribute);
+
+    PDataRun
+    DecodeDataRuns(_In_ PAttribute Attribute);
+
+    void
+    ClearDataRunCache();
+
+    NTSTATUS
+    LoadAttributeList();
+
+    PAttribute
+    FindAttributeInRecord(_In_ AttributeType Type,
+                          _In_opt_ PWSTR Name,
+                          _In_opt_ const USHORT *AttributeId);
+
+    PAttribute
+    FindAttributeFromList(_In_ AttributeType Type,
+                          _In_opt_ PWSTR Name);
+
+    FileRecord*
+    GetExtentRecord(_In_ ULONGLONG FileReference);
+
+    FileRecord*
+    GetAttributeOwner(_In_ PAttribute Attribute);
+
+    void
+    ClearExtentCache();
+
+    void
+    ClearExtentCacheExcept(_In_opt_ FileRecord* Record);
+
+    NTSTATUS
+    ValidateAttributeForUpdate(
+        _In_ PAttribute TargetAttribute,
+        _In_ BOOLEAN ExpectedNonResident,
+        _Out_opt_ PULONG DataLength);
+
+    NTSTATUS
+    ValidateResidentAttributeForUpdate(
+        _In_ PAttribute TargetAttribute,
+        _Out_opt_ PULONG DataLength);
+
+    NTSTATUS
+    GetStandardInformationForUpdate(
+        _Out_ PAttribute* Attribute,
+        _Out_ PStandardInformationEx* Standard);
+
+    BOOLEAN
+    HasAutomaticTimestampUpdate(_In_ UINT32 Fields) const;
+
+    NTSTATUS
+    PrepareAutomaticTimestamps(
+        _In_ UINT32 Fields,
+        _Out_opt_ PBOOLEAN Changed);
+
+    NTSTATUS
+    ResizeAttributeRecord(_In_ PAttribute TargetAttribute,
+                          _In_ ULONG NewAttributeLength);
+
+    NTSTATUS
+    ResizeResidentData(_In_ PAttribute TargetAttribute,
+                       _In_ ULONG NewDataLength);
+
+    NTSTATUS
+    InsertResidentAttribute(
+        _In_ AttributeType Type,
+        _In_opt_ PWSTR Name,
+        _Out_ PAttribute* NewAttribute);
+
+    NTSTATUS
+    InsertAttributeListEntry(
+        _In_ PAttribute TargetAttribute,
+        _In_ FileRecord* AttributeOwner,
+        _In_ UINT32 TimestampFields);
+
+    NTSTATUS
+    CreateInitialAttributeList();
+
+    NTSTATUS
+    RemoveAttributeRecord(_In_ PAttribute TargetAttribute);
+
+    NTSTATUS
+    CreateNamedDataStream(
+        _In_ PWSTR StreamName,
+        _In_ PUCHAR Buffer,
+        _Inout_ PULONG Length,
+        _Inout_ PLARGE_INTEGER Offset);
+
+    NTSTATUS
+    CreateNamedDataStreamInExtension(
+        _In_ PWSTR StreamName,
+        _In_ PUCHAR Buffer,
+        _Inout_ PULONG Length,
+        _Inout_ PLARGE_INTEGER Offset);
+
+    NTSTATUS
+    ReplaceNonResidentMappingPairs(
+        _Inout_ PAttribute* TargetAttribute,
+        _In_ PDataRun Runs,
+        _In_ ULONGLONG AllocatedSize,
+        _In_ ULONGLONG DataSize,
+        _In_ ULONGLONG InitializedSize,
+        _Out_ PNonResidentMappingUpdate* MappingUpdate,
+        _Out_opt_ FileRecord** ResultOwner = NULL);
+
+    NTSTATUS
+    CommitNonResidentMappingUpdate(
+        _Inout_ PNonResidentMappingUpdate* MappingUpdate);
+
+    void
+    AbortNonResidentMappingUpdate(
+        _Inout_ PNonResidentMappingUpdate* MappingUpdate);
+
+    NTSTATUS
+    BuildNonResidentMappingSegment(
+        _In_ PAttribute TargetAttribute,
+        _In_ PDataRun Runs,
+        _In_ ULONGLONG FirstVcn,
+        _In_ USHORT Flags,
+        _In_ USHORT CompressionUnitSize,
+        _In_ ULONGLONG AllocatedSize,
+        _In_ ULONGLONG DataSize,
+        _In_ ULONGLONG InitializedSize,
+        _In_ ULONGLONG CompressedDataSize);
+
+    NTSTATUS
+    ConvertResidentToNonResident(
+        _In_ PAttribute TargetAttribute,
+        _In_ PDataRun Runs,
+        _In_ ULONGLONG AllocatedSize,
+        _In_ ULONGLONG DataSize,
+        _In_ ULONGLONG InitializedSize);
+
+    NTSTATUS
+    ConvertNonResidentToResidentEmpty(
+        _In_ PAttribute TargetAttribute);
+
+    NTSTATUS
+    PromoteResidentData(_In_ PAttribute TargetAttribute,
+                        _In_opt_ PUCHAR Buffer,
+                        _In_ ULONG Length,
+                        _In_ ULONGLONG Offset,
+                        _In_ ULONGLONG NewDataSize,
+                        _In_ ULONGLONG RequestedAllocationSize);
+
+    NTSTATUS
+    ExtendNonResidentData(_In_ PAttribute TargetAttribute,
+                          _In_ PUCHAR Buffer,
+                          _In_ ULONG Length,
+                          _In_ ULONGLONG Offset);
+
+    NTSTATUS
+    ResizeNonResidentData(_In_ PAttribute TargetAttribute,
+                          _In_ ULONGLONG NewDataSize);
+
+    NTSTATUS
+    ResizeSparseData(_In_ PAttribute TargetAttribute,
+                     _In_ ULONGLONG NewDataSize);
+
+    NTSTATUS
+    ResizeNonResidentStream(
+        _In_ PAttribute TargetAttribute,
+        _In_ ULONGLONG NewDataSize,
+        _In_ ULONGLONG RequestedAllocationSize);
+
+    NTSTATUS
+    UpdateFileNameSizes(_In_ ULONGLONG AllocatedSize,
+                        _In_ ULONGLONG DataSize);
+
+    NTSTATUS
+    UpdateFileNameEaSize(_In_ USHORT PackedEaSize);
+
+    NTSTATUS
+    UpdateFileNameInformation(
+        _In_ UINT32 Fields,
+        _In_ ULONGLONG AllocatedSize,
+        _In_ ULONGLONG DataSize,
+        _In_ USHORT PackedEaSize,
+        _In_ ULONG ReparseTag,
+        _In_ ULONG StorageFlags);
+
+    NTSTATUS
+    SynchronizeFileNameSizes(_In_ ULONGLONG AllocatedSize,
+                             _In_ ULONGLONG DataSize);
+
+    NTSTATUS
+    SynchronizeFileNameEaSize(_In_ USHORT PackedEaSize);
+
+    NTSTATUS
+    SynchronizeFileNameInformation(
+        _In_ UINT32 Fields,
+        _In_ ULONGLONG AllocatedSize,
+        _In_ ULONGLONG DataSize,
+        _In_ USHORT PackedEaSize,
+        _In_ ULONG ReparseTag,
+        _In_ ULONG StorageFlags);
+
+    NTSTATUS
+    UpdateParentIndexEntry(
+        _In_ PFileNameEx TargetName,
+        _In_ ULONGLONG FileReference,
+        _In_ UINT32 Fields,
+        _In_ ULONGLONG AllocatedSize,
+        _In_ ULONGLONG DataSize,
+        _In_ USHORT PackedEaSize,
+        _In_ ULONG ReparseTag,
+        _In_ ULONG StorageFlags);
+
+    NTSTATUS
+    UpdateReparsePoint(
+        _In_opt_ const UCHAR* Buffer,
+        _In_ ULONG BufferLength,
+        _In_ BOOLEAN Delete);
 
     // ./write.cpp
     NTSTATUS
     UpdateNonResidentData(_In_ PAttribute TargetAttribute,
                           _In_ PUCHAR Buffer,
                           _In_ PULONG Length,
-                          _In_ ULONGLONG Offset = 0,
-                          _In_opt_ PDataRun PrecomputedRuns = NULL);
+                          _In_ ULONGLONG Offset = 0);
+
+    NTSTATUS
+    WriteSparseData(_In_ PAttribute TargetAttribute,
+                    _In_ PUCHAR Buffer,
+                    _In_ PULONG Length,
+                    _In_ ULONGLONG Offset);
 } *PFileRecord;
+
+struct FileRecordExtentCacheEntry
+{
+    PFileRecordExtentCacheEntry Next;
+    ULONGLONG FileReference;
+    PFileRecord Record;
+};
 
 class BTree
 {
@@ -505,12 +1071,14 @@ typedef class Directory : BTree
 public:
     // ./directory.cpp
     Directory(_In_ PVolume DiskVolume);
+    ~Directory();
     NTSTATUS
     LoadDirectory(_In_ PFileRecord File);
 
     // ./find.cpp
     NTSTATUS
-    FindNextFile(_In_  PWCHAR FileName,
+    FindNextFile(_In_  PFileRecord File,
+                 _In_  PWCHAR FileName,
                  _Out_ PULONGLONG FileRecordNumber);
 
     // ./get.cpp
@@ -520,6 +1088,10 @@ public:
                        _In_    PUNICODE_STRING FileNameFilter,
                        _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
                        _Inout_ PULONG BufferLength);
+
+    NTSTATUS
+    GetNextEntry(_In_ BOOLEAN RestartScan,
+                 _Out_ PNtfsDirectoryEntry Entry);
 
     // ./editdir.cpp
     NTSTATUS
@@ -534,14 +1106,19 @@ public:
 
 private:
     PVolume DiskVolume;
+    PUCHAR IndexAllocationData = NULL;
+    ULONG IndexAllocationLength = 0;
+    PDIRECTORY_KEY_BLOCK KeyBlocks = NULL;
 
     // ./directory.cpp
+    PBTreeKey
+    AllocateKey();
+    void
+    FreeKeyBlocks();
     NTSTATUS
-    CreateNode(_In_    PFileRecord File,
-                      _In_    PAttribute  IndexAllocationAttribute,
-                      _In_    PDataRun    IndexAllocationRuns,
-                      _In_    PAttribute  BitmapAttribute,
-                      _Inout_ PBTreeKey   ParentNodeKey);
+    CreateNode(_Inout_ PUCHAR BitmapData,
+               _In_ ULONG BitmapLength,
+               _Inout_ PBTreeKey ParentNodeKey);
     NTSTATUS
     CreateRootNode(_In_  PFileRecord File,
                    _Out_ PBTreeNode *NewRootNode);
@@ -551,11 +1128,6 @@ private:
                       BOOLEAN IgnoreCase = TRUE);
     PBTreeKey
     GetShortNameKey(_In_ PBTreeKey Key);
-
-    // ./find.cpp
-    PBTreeKey
-    FindKeyInNode(PUNICODE_STRING FileName,
-                  PBTreeKey Key);
 
     // ./get.cpp
     BOOLEAN
@@ -583,6 +1155,15 @@ public:
     IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
                             _Out_ PBOOLEAN InUse);
 
+    NTSTATUS
+    AllocateExtensionFileRecord(
+        _In_ ULONGLONG BaseFileReference,
+        _Out_ PFileRecord* File);
+
+    NTSTATUS
+    DeallocateExtensionFileRecord(
+        _Inout_ PFileRecord File);
+
     // ./get.cpp
     NTSTATUS
     GetFileRecord(_In_   ULONG FileRecordNumber,
@@ -595,6 +1176,17 @@ public:
     NTSTATUS
     GetFileRecordFromQuery(_In_  PWCHAR Query,
                            _Out_ PFileRecord* File);
+
+    NTSTATUS
+    ReadFileRecord(
+        _In_ ULONGLONG RequestedFileReference,
+        _Out_ PULONGLONG ReturnedFileReference,
+        _Out_opt_ PUCHAR Buffer,
+        _Inout_ PULONG BufferLength);
+
+    NTSTATUS
+    QueryVolumeInformation(
+        _Out_ PNtfsVolumeInformation Information);
 
     NTSTATUS
     GetFileAttributeFromFileRecordNumber(_In_  AttributeType Type,
@@ -610,14 +1202,12 @@ private:
     PFileRecord MFTFile = NULL;
     PFileRecord MFTMirrFile = NULL;
 
-    /* $DATA attribute and decoded run list of the cached $MFT/$MFTMirr
-     * records, so every GetFileRecord() doesn't re-decode the runs.
-     * Safe to cache while cluster (re)allocation is unimplemented.
+    /* $DATA attributes of the cached $MFT/$MFTMirr records, so every
+     * GetFileRecord() doesn't re-walk the attribute list. The decoded run
+     * lists live in each record's own data-run cache.
      */
     PAttribute MFTDataAttr = NULL;
     PAttribute MFTMirrDataAttr = NULL;
-    PDataRun MFTDataRuns = NULL;
-    PDataRun MFTMirrDataRuns = NULL;
 } *PMasterFileTable;
 #endif // __cplusplus
 
