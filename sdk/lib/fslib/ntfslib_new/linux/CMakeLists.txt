@@ -115,6 +115,23 @@ if(BUILD_TESTING)
         NAME ntfslib_linux_resident_update
         COMMAND ntfslib_resident_update_test
     )
+
+    add_executable(ntfslib_lznt1_roundtrip_test
+        tests/lznt1_roundtrip.cpp
+    )
+    target_compile_features(ntfslib_lznt1_roundtrip_test PRIVATE cxx_std_17)
+    target_compile_options(ntfslib_lznt1_roundtrip_test PRIVATE
+        -Wall
+        -Wextra
+    )
+    target_include_directories(ntfslib_lznt1_roundtrip_test PRIVATE
+        "${NTFSLIB_ROOT}/include/internal"
+    )
+    target_link_libraries(ntfslib_lznt1_roundtrip_test PRIVATE ntfslib_linux)
+    add_test(
+        NAME ntfslib_linux_lznt1_roundtrip
+        COMMAND ntfslib_lznt1_roundtrip_test
+    )
 endif()
 
 if(BUILD_TESTING AND NTFSLIB_BUILD_FUSE)
@@ -318,6 +335,113 @@ if(BUILD_TESTING AND NTFSLIB_BUILD_FUSE)
         )
         set_tests_properties(
             ntfslib_linux_sparse_write
+            PROPERTIES SKIP_RETURN_CODE 77
+        )
+    endif()
+    if(MKNTFS_EXECUTABLE AND
+       NTFS3G_EXECUTABLE AND
+       FUSERMOUNT3_EXECUTABLE AND
+       NTFSLS_EXECUTABLE AND
+       NTFSCAT_EXECUTABLE AND
+       NTFSFIX_EXECUTABLE)
+        add_test(
+            NAME ntfslib_linux_mount_write
+            COMMAND /bin/sh
+                "${CMAKE_CURRENT_LIST_DIR}/tests/mount_write_smoke.sh"
+                "$<TARGET_FILE:ntfslib_fuse>"
+                "${MKNTFS_EXECUTABLE}"
+                "${NTFS3G_EXECUTABLE}"
+                "${FUSERMOUNT3_EXECUTABLE}"
+                "${NTFSLS_EXECUTABLE}"
+                "${NTFSCAT_EXECUTABLE}"
+                "${NTFSFIX_EXECUTABLE}"
+        )
+        set_tests_properties(
+            ntfslib_linux_mount_write
+            PROPERTIES SKIP_RETURN_CODE 77
+        )
+    endif()
+    if(MKNTFS_EXECUTABLE AND
+       NTFSCP_EXECUTABLE AND
+       NTFSLS_EXECUTABLE AND
+       NTFSCAT_EXECUTABLE)
+        add_test(
+            NAME ntfslib_linux_fuzz
+            COMMAND /bin/sh
+                "${CMAKE_CURRENT_LIST_DIR}/tests/fuzz_smoke.sh"
+                "$<TARGET_FILE:ntfslib_fuse>"
+                "${MKNTFS_EXECUTABLE}"
+                "${NTFSCP_EXECUTABLE}"
+                "${NTFSLS_EXECUTABLE}"
+                "${NTFSCAT_EXECUTABLE}"
+        )
+        set_tests_properties(
+            ntfslib_linux_fuzz
+            PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900
+        )
+    endif()
+    if(MKNTFS_EXECUTABLE AND
+       NTFS3G_EXECUTABLE AND
+       FUSERMOUNT3_EXECUTABLE AND
+       NTFSCAT_EXECUTABLE AND
+       NTFSFIX_EXECUTABLE)
+        add_test(
+            NAME ntfslib_linux_crash_consistency
+            COMMAND /bin/sh
+                "${CMAKE_CURRENT_LIST_DIR}/tests/crash_consistency_smoke.sh"
+                "$<TARGET_FILE:ntfslib_fuse>"
+                "${MKNTFS_EXECUTABLE}"
+                "${NTFS3G_EXECUTABLE}"
+                "${FUSERMOUNT3_EXECUTABLE}"
+                "${NTFSCAT_EXECUTABLE}"
+                "${NTFSFIX_EXECUTABLE}"
+        )
+        set_tests_properties(
+            ntfslib_linux_crash_consistency
+            PROPERTIES SKIP_RETURN_CODE 77
+        )
+    endif()
+    if(MKNTFS_EXECUTABLE AND
+       NTFS3G_EXECUTABLE AND
+       FUSERMOUNT3_EXECUTABLE AND
+       NTFSCAT_EXECUTABLE AND
+       NTFSINFO_EXECUTABLE AND
+       NTFSFIX_EXECUTABLE)
+        add_test(
+            NAME ntfslib_linux_compressed_write
+            COMMAND /bin/sh
+                "${CMAKE_CURRENT_LIST_DIR}/tests/compressed_write_smoke.sh"
+                "$<TARGET_FILE:ntfslib_fuse>"
+                "${MKNTFS_EXECUTABLE}"
+                "${NTFS3G_EXECUTABLE}"
+                "${FUSERMOUNT3_EXECUTABLE}"
+                "${NTFSCAT_EXECUTABLE}"
+                "${NTFSINFO_EXECUTABLE}"
+                "${NTFSFIX_EXECUTABLE}"
+        )
+        set_tests_properties(
+            ntfslib_linux_compressed_write
+            PROPERTIES SKIP_RETURN_CODE 77
+        )
+    endif()
+    if(MKNTFS_EXECUTABLE AND
+       NTFSCP_EXECUTABLE AND
+       NTFS3G_EXECUTABLE AND
+       FUSERMOUNT3_EXECUTABLE AND
+       NTFSFIX_EXECUTABLE)
+        add_test(
+            NAME ntfslib_linux_security_write
+            COMMAND /bin/sh
+                "${CMAKE_CURRENT_LIST_DIR}/tests/security_write_smoke.sh"
+                "$<TARGET_FILE:ntfslib_fuse>"
+                "${MKNTFS_EXECUTABLE}"
+                "${NTFSCP_EXECUTABLE}"
+                "${NTFS3G_EXECUTABLE}"
+                "${FUSERMOUNT3_EXECUTABLE}"
+                "${NTFSFIX_EXECUTABLE}"
+        )
+        set_tests_properties(
+            ntfslib_linux_security_write
             PROPERTIES SKIP_RETURN_CODE 77
         )
     endif()

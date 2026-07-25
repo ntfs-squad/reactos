@@ -1,16 +1,21 @@
 /*
- * Read-only FUSE frontend and image inspection tool for ntfslib_new.
+ * FUSE frontend and image inspection tool for ntfslib_new.
  *
  * Mounting intentionally stays single-threaded because the shared library
- * currently lazy-loads per-volume metadata without locking. The direct
+ * currently lazy-loads per-volume metadata without locking. Mounts are
+ * read-only unless --writable is given; writable mounts publish mutations
+ * through the shared core in a readable order but are not crash-atomic
+ * until LFS transactions exist, so use disposable images only. The direct
  * image commands exercise the shared lookup/read/write paths without
  * requiring /dev/fuse or mount privileges. Mutation commands open the backing
  * image writable only for the duration of one explicit operation.
  */
 
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <time.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,8 +23,10 @@
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/types.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -40,8 +47,22 @@ struct NtfsFuseState
     PNtfsVolume Volume;
     uid_t Owner;
     gid_t Group;
-    std::unordered_map<std::string, NtfsDirectoryListing> DirectoryCache;
+    bool Writable;
+    /* Values are shared with open directory handles so a cache
+     * invalidation cannot free a listing a reader still holds.
+     */
+    std::unordered_map<std::string,
+                       std::shared_ptr<NtfsDirectoryListing>>
+        DirectoryCache;
+    /* Open-record cache for mounted operation: repeated opens of the same
+     * path reuse one validated record instead of re-walking the $I30
+     * tree. Entries are owned by the cache (release skips them via the
+     * low fh bit) and the map is dropped on any mutation or unmount.
+     */
+    std::unordered_map<std::string, PNtfsFileRecord> RecordCache;
 };
+
+#define NTFS_FUSE_CACHED_RECORD_BIT ((uint64_t)1)
 
 static int
 NtStatusToErrno(NTSTATUS Status)
@@ -67,6 +88,10 @@ NtStatusToErrno(NTSTATUS Status)
             return EINVAL;
         case STATUS_NOT_A_DIRECTORY:
             return ENOTDIR;
+        case STATUS_FILE_IS_A_DIRECTORY:
+            return EISDIR;
+        case STATUS_OBJECT_NAME_COLLISION:
+            return EEXIST;
         case STATUS_DIRECTORY_NOT_EMPTY:
             return ENOTEMPTY;
         case STATUS_EA_TOO_LARGE:
@@ -612,9 +637,18 @@ OpenImageWritable(const char* Image,
 }
 
 static void
+DropRecordCache(NtfsFuseState* State)
+{
+    for (auto& Entry : State->RecordCache)
+        NtfsFileRecordDestroy(Entry.second);
+    State->RecordCache.clear();
+}
+
+static void
 CloseImage(NtfsFuseState* State)
 {
     State->DirectoryCache.clear();
+    DropRecordCache(State);
     NtfsVolumeDestroy(State->Volume);
     State->Volume = NULL;
     NtfsDiskCloseLinux();
@@ -1317,6 +1351,70 @@ RenameNode(NtfsFuseState* State,
         return 1;
     }
     return 0;
+}
+
+static int
+SetSecurityFromHost(NtfsFuseState* State,
+                    const char* Path,
+                    const char* SourcePath)
+{
+    PNtfsFileRecord File = NULL;
+    std::vector<UCHAR> Value;
+    struct stat SourceStat;
+    ULONG Completed = 0;
+    NTSTATUS Status;
+    int Source = -1;
+    int Result = 1;
+
+    Source = open(SourcePath, O_RDONLY | O_CLOEXEC);
+    if (Source < 0 || fstat(Source, &SourceStat) != 0 ||
+        SourceStat.st_size <= 0 ||
+        (uint64_t)SourceStat.st_size > MAXULONG)
+    {
+        fprintf(stderr, "%s: %s\n", SourcePath, strerror(errno));
+        goto Done;
+    }
+    Value.resize((size_t)SourceStat.st_size);
+    while (Completed < Value.size())
+    {
+        ssize_t Count = read(Source,
+                             Value.data() + Completed,
+                             Value.size() - Completed);
+        if (Count > 0)
+        {
+            Completed += (ULONG)Count;
+            continue;
+        }
+        if (Count < 0 && errno == EINTR)
+            continue;
+        fprintf(stderr, "%s: incomplete input\n", SourcePath);
+        goto Done;
+    }
+
+    Status = Lookup(State->Volume, Path, &File);
+    if (NT_SUCCESS(Status))
+    {
+        Status = NtfsFileRecordSetSecurityDescriptor(
+            File,
+            Value.data(),
+            (ULONG)Value.size());
+    }
+    if (!NT_SUCCESS(Status))
+    {
+        fprintf(stderr,
+                "%s: ntfslib status 0x%08" PRIx32 " (%s)\n",
+                Path,
+                (uint32_t)Status,
+                strerror(NtStatusToErrno(Status)));
+        goto Done;
+    }
+    Result = 0;
+
+Done:
+    NtfsFileRecordDestroy(File);
+    if (Source >= 0)
+        close(Source);
+    return Result;
 }
 
 static int
@@ -2301,46 +2399,93 @@ NtfsFuseAccess(const char* Path, int Mask)
     PNtfsFileRecord File = NULL;
     NTSTATUS Status;
 
-    if (Mask & W_OK)
+    if ((Mask & W_OK) && !FuseState()->Writable)
         return -EROFS;
     Status = Lookup(FuseState()->Volume, Path, &File);
     NtfsFileRecordDestroy(File);
     return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
 }
 
+static PNtfsFileRecord
+HandleRecord(struct fuse_file_info* FileInfo)
+{
+    return (PNtfsFileRecord)(uintptr_t)
+        (FileInfo->fh & ~NTFS_FUSE_CACHED_RECORD_BIT);
+}
+
 static int
 NtfsFuseOpen(const char* Path, struct fuse_file_info* FileInfo)
 {
+    NtfsFuseState* State = FuseState();
     PNtfsFileRecord File = NULL;
     PAttribute Data;
+    bool Cached = false;
     NTSTATUS Status;
 
-    if ((FileInfo->flags & O_ACCMODE) != O_RDONLY)
+    if ((FileInfo->flags & O_ACCMODE) != O_RDONLY &&
+        !State->Writable)
+    {
         return -EROFS;
+    }
 
-    Status = Lookup(FuseState()->Volume, Path, &File);
-    if (!NT_SUCCESS(Status))
-        return -NtStatusToErrno(Status);
+    /* Read-only mounts never mutate, so records can be reused across
+     * opens for the mount lifetime. Writable mounts skip the cache: a
+     * path mutation would otherwise have to drop records that open
+     * handles still reference.
+     */
+    if (!State->Writable)
+    {
+        auto Existing = State->RecordCache.find(Path);
+        if (Existing != State->RecordCache.end())
+        {
+            File = Existing->second;
+            Cached = true;
+        }
+    }
+    if (!File)
+    {
+        Status = Lookup(State->Volume, Path, &File);
+        if (!NT_SUCCESS(Status))
+            return -NtStatusToErrno(Status);
+    }
     if (NtfsFileRecordGetHeader(File)->Flags & FR_IS_DIRECTORY)
     {
-        NtfsFileRecordDestroy(File);
+        if (!Cached)
+            NtfsFileRecordDestroy(File);
         return -EISDIR;
     }
 
     Data = NtfsFileRecordGetAttribute(File, TypeData, NULL);
     if (!Data)
     {
-        NtfsFileRecordDestroy(File);
+        if (!Cached)
+            NtfsFileRecordDestroy(File);
         return -ENOENT;
     }
     if (Data->Flags & ATTR_ENCRYPTED)
     {
-        NtfsFileRecordDestroy(File);
+        if (!Cached)
+            NtfsFileRecordDestroy(File);
         return -EOPNOTSUPP;
     }
 
+    if (!State->Writable && !Cached)
+    {
+        State->RecordCache.emplace(Path, File);
+        Cached = true;
+    }
+
     FileInfo->fh = (uint64_t)(uintptr_t)File;
-    FileInfo->keep_cache = 1;
+    if (Cached)
+        FileInfo->fh |= NTFS_FUSE_CACHED_RECORD_BIT;
+    /* Writable mounts bypass the kernel page/attribute data cache so a
+     * truncate or write through one handle cannot leave stale cached pages
+     * behind another; read-only mounts keep the fast cached path.
+     */
+    if (State->Writable)
+        FileInfo->direct_io = 1;
+    else
+        FileInfo->keep_cache = 1;
     return 0;
 }
 
@@ -2348,7 +2493,8 @@ static int
 NtfsFuseRelease(const char* Path, struct fuse_file_info* FileInfo)
 {
     UNREFERENCED_PARAMETER(Path);
-    NtfsFileRecordDestroy((PNtfsFileRecord)(uintptr_t)FileInfo->fh);
+    if (!(FileInfo->fh & NTFS_FUSE_CACHED_RECORD_BIT))
+        NtfsFileRecordDestroy(HandleRecord(FileInfo));
     FileInfo->fh = 0;
     return 0;
 }
@@ -2371,7 +2517,7 @@ NtfsFuseRead(const char* Path,
     if (Size == 0)
         return 0;
 
-    File = (PNtfsFileRecord)(uintptr_t)FileInfo->fh;
+    File = HandleRecord(FileInfo);
     if (!File)
         return -EBADF;
 
@@ -2452,15 +2598,17 @@ NtfsFuseOpendir(const char* Path, struct fuse_file_info* FileInfo)
         }
 
         Cached = State->DirectoryCache
-                     .emplace(Path, std::move(Listing))
+                     .emplace(Path,
+                              std::make_shared<NtfsDirectoryListing>(
+                                  std::move(Listing)))
                      .first;
     }
 
-    /* Listings stay in DirectoryCache for the mount lifetime, so the handle
-     * is a non-owning pointer and no releasedir hook is needed. Map entries
-     * are never erased, which keeps the pointer stable.
+    /* The handle owns a reference to the snapshot, so namespace mutations
+     * can clear the cache without freeing a listing a reader still holds.
      */
-    FileInfo->fh = (uint64_t)(uintptr_t)&Cached->second;
+    FileInfo->fh = (uint64_t)(uintptr_t)
+        new std::shared_ptr<NtfsDirectoryListing>(Cached->second);
     FileInfo->keep_cache = 1;
     FileInfo->cache_readdir = 1;
 
@@ -2471,6 +2619,15 @@ Done:
 }
 
 static int
+NtfsFuseReleasedir(const char* Path, struct fuse_file_info* FileInfo)
+{
+    UNREFERENCED_PARAMETER(Path);
+    delete (std::shared_ptr<NtfsDirectoryListing>*)(uintptr_t)FileInfo->fh;
+    FileInfo->fh = 0;
+    return 0;
+}
+
+static int
 NtfsFuseReaddir(const char* Path,
                 void* Buffer,
                 fuse_fill_dir_t Filler,
@@ -2478,8 +2635,10 @@ NtfsFuseReaddir(const char* Path,
                 struct fuse_file_info* FileInfo,
                 enum fuse_readdir_flags Flags)
 {
-    const NtfsDirectoryListing* Listing =
-        (const NtfsDirectoryListing*)(uintptr_t)FileInfo->fh;
+    const std::shared_ptr<NtfsDirectoryListing>* Handle =
+        (const std::shared_ptr<NtfsDirectoryListing>*)(uintptr_t)
+            FileInfo->fh;
+    const NtfsDirectoryListing* Listing = Handle ? Handle->get() : NULL;
     const enum fuse_fill_dir_flags Plain = (enum fuse_fill_dir_flags)0;
 
     UNREFERENCED_PARAMETER(Path);
@@ -2532,8 +2691,826 @@ NtfsFuseStatfs(const char* Path, struct statvfs* Stat)
     Stat->f_bfree = FreeClusters.QuadPart;
     Stat->f_bavail = FreeClusters.QuadPart;
     Stat->f_namemax = NTFS_MAX_FILE_NAME_LENGTH;
-    Stat->f_flag = ST_RDONLY;
+    if (!State->Writable)
+        Stat->f_flag = ST_RDONLY;
     return 0;
+}
+
+#ifndef RENAME_NOREPLACE
+#define RENAME_NOREPLACE (1U << 0)
+#endif
+#ifndef RENAME_EXCHANGE
+#define RENAME_EXCHANGE (1U << 1)
+#endif
+
+static UINT64
+TimespecToNtfsTime(const struct timespec* Time)
+{
+    const UINT64 EpochDifference = UINT64_C(116444736000000000);
+
+    return EpochDifference +
+           (UINT64)Time->tv_sec * UINT64_C(10000000) +
+           (UINT64)Time->tv_nsec / 100;
+}
+
+/* Namespace mutations drop every cached listing; open directory handles
+ * keep their snapshots alive through shared ownership.
+ */
+static void
+InvalidateDirectoryCache(NtfsFuseState* State)
+{
+    State->DirectoryCache.clear();
+}
+
+static int
+RequireWritable(NtfsFuseState* State)
+{
+    return State->Writable ? 0 : -EROFS;
+}
+
+static NTSTATUS
+CreateNodeByPath(NtfsFuseState* State,
+                 const char* Path,
+                 bool IsDirectory)
+{
+    std::vector<WCHAR> NtfsPath;
+    PNtfsFileRecord File = NULL;
+    NTSTATUS Status;
+
+    if (!Utf8ToNtfsPath(Path, NtfsPath) ||
+        NtfsPath.size() < 2 ||
+        NtfsPath.size() - 1 > MAXULONG)
+    {
+        return STATUS_OBJECT_NAME_INVALID;
+    }
+    Status = NtfsMasterFileTableCreateFile(
+        NtfsVolumeGetMft(State->Volume),
+        NtfsPath.data(),
+        (ULONG)(NtfsPath.size() - 1),
+        IsDirectory,
+        0,
+        &File);
+    NtfsFileRecordDestroy(File);
+    if (NT_SUCCESS(Status))
+        InvalidateDirectoryCache(State);
+    return Status;
+}
+
+static NTSTATUS
+RemoveNodeByPath(NtfsFuseState* State,
+                 const char* Path,
+                 bool IsDirectory)
+{
+    std::vector<WCHAR> NtfsPath;
+    NTSTATUS Status;
+
+    if (!Utf8ToNtfsPath(Path, NtfsPath) ||
+        NtfsPath.size() < 2 ||
+        NtfsPath.size() - 1 > MAXULONG)
+    {
+        return STATUS_OBJECT_NAME_INVALID;
+    }
+    Status = NtfsMasterFileTableDeleteFile(
+        NtfsVolumeGetMft(State->Volume),
+        NtfsPath.data(),
+        (ULONG)(NtfsPath.size() - 1),
+        IsDirectory);
+    if (NT_SUCCESS(Status))
+        InvalidateDirectoryCache(State);
+    return Status;
+}
+
+static NTSTATUS
+RenameNodeByPath(NtfsFuseState* State,
+                 const char* OldPath,
+                 const char* NewPath)
+{
+    std::vector<WCHAR> OldNtfsPath;
+    std::vector<WCHAR> NewNtfsPath;
+    NTSTATUS Status;
+
+    if (!Utf8ToNtfsPath(OldPath, OldNtfsPath) ||
+        !Utf8ToNtfsPath(NewPath, NewNtfsPath) ||
+        OldNtfsPath.size() < 2 ||
+        NewNtfsPath.size() < 2 ||
+        OldNtfsPath.size() - 1 > MAXULONG ||
+        NewNtfsPath.size() - 1 > MAXULONG)
+    {
+        return STATUS_OBJECT_NAME_INVALID;
+    }
+    Status = NtfsMasterFileTableRenameFile(
+        NtfsVolumeGetMft(State->Volume),
+        OldNtfsPath.data(),
+        (ULONG)(OldNtfsPath.size() - 1),
+        NewNtfsPath.data(),
+        (ULONG)(NewNtfsPath.size() - 1));
+    if (NT_SUCCESS(Status))
+        InvalidateDirectoryCache(State);
+    return Status;
+}
+
+static int
+NtfsFuseCreate(const char* Path,
+               mode_t Mode,
+               struct fuse_file_info* FileInfo)
+{
+    NtfsFuseState* State = FuseState();
+    NTSTATUS Status;
+    int Result;
+
+    UNREFERENCED_PARAMETER(Mode);
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+
+    Status = CreateNodeByPath(State, Path, false);
+    if (Status == STATUS_OBJECT_NAME_COLLISION &&
+        !(FileInfo->flags & O_EXCL))
+    {
+        Status = STATUS_SUCCESS;
+    }
+    if (!NT_SUCCESS(Status))
+        return -NtStatusToErrno(Status);
+    return NtfsFuseOpen(Path, FileInfo);
+}
+
+static int
+NtfsFuseMknod(const char* Path, mode_t Mode, dev_t Device)
+{
+    NtfsFuseState* State = FuseState();
+    NTSTATUS Status;
+    int Result;
+
+    UNREFERENCED_PARAMETER(Device);
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+    if (!S_ISREG(Mode))
+        return -EOPNOTSUPP;
+
+    Status = CreateNodeByPath(State, Path, false);
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
+}
+
+static int
+NtfsFuseMkdir(const char* Path, mode_t Mode)
+{
+    NtfsFuseState* State = FuseState();
+    NTSTATUS Status;
+    int Result;
+
+    UNREFERENCED_PARAMETER(Mode);
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+
+    Status = CreateNodeByPath(State, Path, true);
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
+}
+
+static int
+NtfsFuseUnlink(const char* Path)
+{
+    NtfsFuseState* State = FuseState();
+    NTSTATUS Status;
+    int Result;
+
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+
+    Status = RemoveNodeByPath(State, Path, false);
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
+}
+
+static int
+NtfsFuseRmdir(const char* Path)
+{
+    NtfsFuseState* State = FuseState();
+    NTSTATUS Status;
+    int Result;
+
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+
+    Status = RemoveNodeByPath(State, Path, true);
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
+}
+
+static int
+NtfsFuseRename(const char* OldPath,
+               const char* NewPath,
+               unsigned int Flags)
+{
+    NtfsFuseState* State = FuseState();
+    NTSTATUS Status;
+    int Result;
+
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+    if (Flags & RENAME_EXCHANGE)
+        return -EOPNOTSUPP;
+
+    Status = RenameNodeByPath(State, OldPath, NewPath);
+    if (Status == STATUS_OBJECT_NAME_COLLISION &&
+        !(Flags & RENAME_NOREPLACE))
+    {
+        PNtfsFileRecord Target = NULL;
+        NTSTATUS TargetStatus;
+        bool TargetIsDirectory;
+
+        /* POSIX rename replaces an existing destination. Without LFS
+         * transactions the remove and rename publish separately; every
+         * intermediate state stays readable, but the pair is not atomic.
+         */
+        TargetStatus = Lookup(State->Volume, NewPath, &Target);
+        if (NT_SUCCESS(TargetStatus))
+        {
+            TargetIsDirectory =
+                (NtfsFileRecordGetHeader(Target)->Flags &
+                 FR_IS_DIRECTORY) != 0;
+            NtfsFileRecordDestroy(Target);
+            Status = RemoveNodeByPath(State, NewPath, TargetIsDirectory);
+            if (NT_SUCCESS(Status))
+                Status = RenameNodeByPath(State, OldPath, NewPath);
+        }
+    }
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
+}
+
+static int
+NtfsFuseLink(const char* ExistingPath, const char* NewPath)
+{
+    NtfsFuseState* State = FuseState();
+    std::vector<WCHAR> ExistingNtfsPath;
+    std::vector<WCHAR> NewNtfsPath;
+    NTSTATUS Status;
+    int Result;
+
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+
+    if (!Utf8ToNtfsPath(ExistingPath, ExistingNtfsPath) ||
+        !Utf8ToNtfsPath(NewPath, NewNtfsPath) ||
+        ExistingNtfsPath.size() < 2 ||
+        NewNtfsPath.size() < 2 ||
+        ExistingNtfsPath.size() - 1 > MAXULONG ||
+        NewNtfsPath.size() - 1 > MAXULONG)
+    {
+        return -EINVAL;
+    }
+    Status = NtfsMasterFileTableCreateHardLink(
+        NtfsVolumeGetMft(State->Volume),
+        ExistingNtfsPath.data(),
+        (ULONG)(ExistingNtfsPath.size() - 1),
+        NewNtfsPath.data(),
+        (ULONG)(NewNtfsPath.size() - 1));
+    if (NT_SUCCESS(Status))
+        InvalidateDirectoryCache(State);
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
+}
+
+static int
+NtfsFuseWrite(const char* Path,
+              const char* Buffer,
+              size_t Size,
+              off_t Offset,
+              struct fuse_file_info* FileInfo)
+{
+    NtfsFuseState* State = FuseState();
+    PNtfsFileRecord File;
+    LARGE_INTEGER ByteOffset;
+    ULONG Length;
+    NTSTATUS Status;
+    int Result;
+
+    UNREFERENCED_PARAMETER(Path);
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+    if (Offset < 0)
+        return -EINVAL;
+    if (Size == 0)
+        return 0;
+
+    File = HandleRecord(FileInfo);
+    if (!File)
+        return -EBADF;
+
+    Length = Size > MAXULONG ? MAXULONG : (ULONG)Size;
+    ByteOffset.QuadPart = (LONGLONG)Offset;
+    Status = NtfsFileRecordWriteFileData(
+        File,
+        TypeData,
+        NULL,
+        (PUCHAR)const_cast<char*>(Buffer),
+        &Length,
+        &ByteOffset);
+    if (!NT_SUCCESS(Status))
+        return -NtStatusToErrno(Status);
+    return (int)Length;
+}
+
+static int
+NtfsFuseTruncate(const char* Path,
+                 off_t Size,
+                 struct fuse_file_info* FileInfo)
+{
+    NtfsFuseState* State = FuseState();
+    PNtfsFileRecord File;
+    PNtfsFileRecord Owned = NULL;
+    NTSTATUS Status;
+    int Result;
+
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+    if (Size < 0)
+        return -EINVAL;
+
+    if (FileInfo && FileInfo->fh)
+    {
+        File = HandleRecord(FileInfo);
+    }
+    else
+    {
+        Status = Lookup(State->Volume, Path, &Owned);
+        if (!NT_SUCCESS(Status))
+            return -NtStatusToErrno(Status);
+        if (NtfsFileRecordGetHeader(Owned)->Flags & FR_IS_DIRECTORY)
+        {
+            NtfsFileRecordDestroy(Owned);
+            return -EISDIR;
+        }
+        File = Owned;
+    }
+
+    Status = NtfsFileRecordSetFileDataSize(File,
+                                           TypeData,
+                                           NULL,
+                                           (ULONGLONG)Size);
+    NtfsFileRecordDestroy(Owned);
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
+}
+
+static int
+NtfsFuseFallocate(const char* Path,
+                  int Mode,
+                  off_t Offset,
+                  off_t Length,
+                  struct fuse_file_info* FileInfo)
+{
+    NtfsFuseState* State = FuseState();
+    PNtfsFileRecord File;
+    PNtfsFileRecord Owned = NULL;
+    struct stat Stat;
+    ULONGLONG Target;
+    NTSTATUS Status;
+    int Result;
+
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+    if (Mode != 0)
+        return -EOPNOTSUPP;
+    if (Offset < 0 || Length <= 0 ||
+        (uint64_t)Offset > UINT64_MAX - (uint64_t)Length)
+    {
+        return -EINVAL;
+    }
+    Target = (ULONGLONG)Offset + (ULONGLONG)Length;
+
+    if (FileInfo && FileInfo->fh)
+    {
+        File = HandleRecord(FileInfo);
+    }
+    else
+    {
+        Status = Lookup(State->Volume, Path, &Owned);
+        if (!NT_SUCCESS(Status))
+            return -NtStatusToErrno(Status);
+        File = Owned;
+    }
+
+    /* Preallocation must never shrink the existing reservation, so only
+     * grow the allocation when the requested range exceeds it.
+     */
+    Status = FillStatFromRecord(File, State, &Stat);
+    if (NT_SUCCESS(Status) &&
+        Target > (ULONGLONG)Stat.st_blocks * 512)
+    {
+        Status = NtfsFileRecordSetFileAllocationSize(File,
+                                                     TypeData,
+                                                     NULL,
+                                                     Target);
+    }
+    NtfsFileRecordDestroy(Owned);
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
+}
+
+static int
+NtfsFuseUtimens(const char* Path,
+                const struct timespec Times[2],
+                struct fuse_file_info* FileInfo)
+{
+    NtfsFuseState* State = FuseState();
+    PNtfsFileRecord File = NULL;
+    NtfsFileBasicInformation Information;
+    struct timespec Now;
+    NTSTATUS Status;
+    int Result;
+
+    UNREFERENCED_PARAMETER(FileInfo);
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+
+    Status = Lookup(State->Volume, Path, &File);
+    if (!NT_SUCCESS(Status))
+        return -NtStatusToErrno(Status);
+
+    Status = NtfsFileRecordGetBasicInformation(File, &Information);
+    if (NT_SUCCESS(Status))
+    {
+        clock_gettime(CLOCK_REALTIME, &Now);
+        if (!Times || Times[0].tv_nsec == UTIME_NOW)
+            Information.LastAccessTime = TimespecToNtfsTime(&Now);
+        else if (Times[0].tv_nsec != UTIME_OMIT)
+            Information.LastAccessTime = TimespecToNtfsTime(&Times[0]);
+        if (!Times || Times[1].tv_nsec == UTIME_NOW)
+            Information.LastWriteTime = TimespecToNtfsTime(&Now);
+        else if (Times[1].tv_nsec != UTIME_OMIT)
+            Information.LastWriteTime = TimespecToNtfsTime(&Times[1]);
+        Information.ChangeTime = TimespecToNtfsTime(&Now);
+        Status = NtfsFileRecordSetBasicInformation(File, &Information);
+    }
+    NtfsFileRecordDestroy(File);
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
+}
+
+/* NTFS has no POSIX mode or ownership bits without an ACL mapping, so
+ * these accept and discard the request exactly like NTFS-3G does when no
+ * user mapping is configured. Refusing them instead would break common
+ * tools such as cp -p and tar.
+ */
+static int
+NtfsFuseChmod(const char* Path,
+              mode_t Mode,
+              struct fuse_file_info* FileInfo)
+{
+    UNREFERENCED_PARAMETER(Path);
+    UNREFERENCED_PARAMETER(Mode);
+    UNREFERENCED_PARAMETER(FileInfo);
+    return RequireWritable(FuseState());
+}
+
+static int
+NtfsFuseChown(const char* Path,
+              uid_t Owner,
+              gid_t Group,
+              struct fuse_file_info* FileInfo)
+{
+    UNREFERENCED_PARAMETER(Path);
+    UNREFERENCED_PARAMETER(Owner);
+    UNREFERENCED_PARAMETER(Group);
+    UNREFERENCED_PARAMETER(FileInfo);
+    return RequireWritable(FuseState());
+}
+
+/* Every mutation is synchronous through the shared core and the backing
+ * image is a host file, so fsync has nothing left to schedule. flush is
+ * deliberately not registered: a no-op hook would still cost one FUSE
+ * round trip on every close.
+ */
+static int
+NtfsFuseFsync(const char* Path,
+              int DataOnly,
+              struct fuse_file_info* FileInfo)
+{
+    UNREFERENCED_PARAMETER(Path);
+    UNREFERENCED_PARAMETER(DataOnly);
+    UNREFERENCED_PARAMETER(FileInfo);
+    return 0;
+}
+
+/*
+ * Native NTFS extended attributes are exposed as user.* xattrs. NTFS-3G
+ * only offers the packed list through system.ntfs_ea; projecting each EA
+ * as its own attribute keeps ordinary getfattr/setfattr tooling usable.
+ * EA names are case-insensitive single-byte strings.
+ */
+static const char NtfsFuseXattrPrefix[] = "user.";
+
+static bool
+XattrToEaName(const char* Name,
+              const UCHAR** EaName,
+              size_t* EaNameLength)
+{
+    size_t PrefixLength = sizeof(NtfsFuseXattrPrefix) - 1;
+    size_t Length;
+
+    if (strncmp(Name, NtfsFuseXattrPrefix, PrefixLength) != 0)
+        return false;
+    Length = strlen(Name + PrefixLength);
+    if (Length == 0 || Length > 0xff)
+        return false;
+    *EaName = (const UCHAR*)(Name + PrefixLength);
+    *EaNameLength = Length;
+    return true;
+}
+
+static bool
+EaNamesEqual(const UCHAR* Left,
+             size_t LeftLength,
+             const UCHAR* Right,
+             size_t RightLength)
+{
+    if (LeftLength != RightLength)
+        return false;
+    for (size_t Index = 0; Index < LeftLength; Index++)
+    {
+        if (toupper(Left[Index]) != toupper(Right[Index]))
+            return false;
+    }
+    return true;
+}
+
+static NTSTATUS
+ReadAllExtendedAttributes(PNtfsFileRecord File,
+                          std::vector<UCHAR>& RawData,
+                          ULONG* RawLength)
+{
+    NTSTATUS Status;
+
+    *RawLength = 0;
+    Status = NtfsFileRecordReadExtendedAttributes(File,
+                                                  NULL,
+                                                  RawLength,
+                                                  NULL);
+    if (Status == STATUS_NO_EAS_ON_FILE)
+    {
+        *RawLength = 0;
+        return STATUS_SUCCESS;
+    }
+    if (Status != STATUS_BUFFER_TOO_SMALL || *RawLength == 0)
+        return NT_SUCCESS(Status) ? STATUS_SUCCESS : Status;
+
+    RawData.resize(*RawLength);
+    return NtfsFileRecordReadExtendedAttributes(File,
+                                                RawData.data(),
+                                                RawLength,
+                                                NULL);
+}
+
+static NTSTATUS
+FindExtendedAttribute(const std::vector<UCHAR>& RawData,
+                      ULONG RawLength,
+                      const UCHAR* Name,
+                      size_t NameLength,
+                      NtfsExtendedAttributeView* Found,
+                      bool* Present)
+{
+    NtfsExtendedAttributeView View;
+    ULONG Offset = 0;
+    NTSTATUS Status;
+
+    *Present = false;
+    for (;;)
+    {
+        Status = NtfsGetNextExtendedAttribute(RawData.data(),
+                                              RawLength,
+                                              &Offset,
+                                              &View);
+        if (Status == STATUS_NO_MORE_EAS)
+            return STATUS_SUCCESS;
+        if (!NT_SUCCESS(Status))
+            return Status;
+        if (EaNamesEqual(View.Name,
+                         View.NameLength,
+                         Name,
+                         NameLength))
+        {
+            *Found = View;
+            *Present = true;
+            return STATUS_SUCCESS;
+        }
+    }
+}
+
+static int
+NtfsFuseGetxattr(const char* Path,
+                 const char* Name,
+                 char* Value,
+                 size_t Size)
+{
+    NtfsFuseState* State = FuseState();
+    PNtfsFileRecord File = NULL;
+    std::vector<UCHAR> RawData;
+    NtfsExtendedAttributeView View;
+    const UCHAR* EaName;
+    size_t EaNameLength;
+    ULONG RawLength;
+    bool Present;
+    NTSTATUS Status;
+
+    if (!XattrToEaName(Name, &EaName, &EaNameLength))
+        return -ENODATA;
+
+    Status = Lookup(State->Volume, Path, &File);
+    if (!NT_SUCCESS(Status))
+        return -NtStatusToErrno(Status);
+    Status = ReadAllExtendedAttributes(File, RawData, &RawLength);
+    if (NT_SUCCESS(Status))
+        Status = FindExtendedAttribute(RawData,
+                                       RawLength,
+                                       EaName,
+                                       EaNameLength,
+                                       &View,
+                                       &Present);
+    NtfsFileRecordDestroy(File);
+    if (!NT_SUCCESS(Status))
+        return -NtStatusToErrno(Status);
+    if (!Present)
+        return -ENODATA;
+    if (Size == 0)
+        return (int)View.ValueLength;
+    if (Size < View.ValueLength)
+        return -ERANGE;
+    memcpy(Value, View.Value, View.ValueLength);
+    return (int)View.ValueLength;
+}
+
+static int
+NtfsFuseListxattr(const char* Path, char* List, size_t Size)
+{
+    NtfsFuseState* State = FuseState();
+    PNtfsFileRecord File = NULL;
+    std::vector<UCHAR> RawData;
+    NtfsExtendedAttributeView View;
+    ULONG RawLength;
+    ULONG Offset = 0;
+    size_t Needed = 0;
+    size_t Emitted = 0;
+    NTSTATUS Status;
+
+    Status = Lookup(State->Volume, Path, &File);
+    if (!NT_SUCCESS(Status))
+        return -NtStatusToErrno(Status);
+    Status = ReadAllExtendedAttributes(File, RawData, &RawLength);
+    NtfsFileRecordDestroy(File);
+    if (!NT_SUCCESS(Status))
+        return -NtStatusToErrno(Status);
+
+    for (;;)
+    {
+        Status = NtfsGetNextExtendedAttribute(RawData.data(),
+                                              RawLength,
+                                              &Offset,
+                                              &View);
+        if (Status == STATUS_NO_MORE_EAS)
+            break;
+        if (!NT_SUCCESS(Status))
+            return -NtStatusToErrno(Status);
+
+        Needed += sizeof(NtfsFuseXattrPrefix) - 1 +
+                  View.NameLength + 1;
+        if (Size == 0)
+            continue;
+        if (Needed > Size)
+            return -ERANGE;
+        memcpy(List + Emitted,
+               NtfsFuseXattrPrefix,
+               sizeof(NtfsFuseXattrPrefix) - 1);
+        Emitted += sizeof(NtfsFuseXattrPrefix) - 1;
+        memcpy(List + Emitted, View.Name, View.NameLength);
+        Emitted += View.NameLength;
+        List[Emitted++] = '\0';
+    }
+    return (int)Needed;
+}
+
+static int
+NtfsFuseSetxattr(const char* Path,
+                 const char* Name,
+                 const char* Value,
+                 size_t Size,
+                 int Flags)
+{
+    NtfsFuseState* State = FuseState();
+    PNtfsFileRecord File = NULL;
+    NtfsExtendedAttributeUpdate Update = {};
+    const UCHAR* EaName;
+    size_t EaNameLength;
+    NTSTATUS Status;
+    int Result;
+
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+    if (!XattrToEaName(Name, &EaName, &EaNameLength))
+        return -EOPNOTSUPP;
+    if (Size > 0xffff)
+        return -E2BIG;
+
+    Status = Lookup(State->Volume, Path, &File);
+    if (!NT_SUCCESS(Status))
+        return -NtStatusToErrno(Status);
+
+    if (Flags & (XATTR_CREATE | XATTR_REPLACE))
+    {
+        std::vector<UCHAR> RawData;
+        NtfsExtendedAttributeView View;
+        ULONG RawLength;
+        bool Present = false;
+
+        Status = ReadAllExtendedAttributes(File, RawData, &RawLength);
+        if (NT_SUCCESS(Status))
+            Status = FindExtendedAttribute(RawData,
+                                           RawLength,
+                                           EaName,
+                                           EaNameLength,
+                                           &View,
+                                           &Present);
+        if (NT_SUCCESS(Status) &&
+            (Flags & XATTR_CREATE) && Present)
+        {
+            Status = STATUS_OBJECT_NAME_COLLISION;
+        }
+        if (NT_SUCCESS(Status) &&
+            (Flags & XATTR_REPLACE) && !Present)
+        {
+            NtfsFileRecordDestroy(File);
+            return -ENODATA;
+        }
+    }
+
+    if (NT_SUCCESS(Status))
+    {
+        Update.Operation = NTFS_EA_UPDATE_SET;
+        Update.Flags = 0;
+        Update.NameLength = (UINT8)EaNameLength;
+        Update.ValueLength = (UINT16)Size;
+        Update.Name = EaName;
+        Update.Value = (const UCHAR*)Value;
+        Status = NtfsFileRecordUpdateExtendedAttributes(File,
+                                                        &Update,
+                                                        1);
+    }
+    NtfsFileRecordDestroy(File);
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
+}
+
+static int
+NtfsFuseRemovexattr(const char* Path, const char* Name)
+{
+    NtfsFuseState* State = FuseState();
+    PNtfsFileRecord File = NULL;
+    std::vector<UCHAR> RawData;
+    NtfsExtendedAttributeView View;
+    NtfsExtendedAttributeUpdate Update = {};
+    const UCHAR* EaName;
+    size_t EaNameLength;
+    ULONG RawLength;
+    bool Present = false;
+    NTSTATUS Status;
+    int Result;
+
+    Result = RequireWritable(State);
+    if (Result != 0)
+        return Result;
+    if (!XattrToEaName(Name, &EaName, &EaNameLength))
+        return -ENODATA;
+
+    Status = Lookup(State->Volume, Path, &File);
+    if (!NT_SUCCESS(Status))
+        return -NtStatusToErrno(Status);
+    Status = ReadAllExtendedAttributes(File, RawData, &RawLength);
+    if (NT_SUCCESS(Status))
+        Status = FindExtendedAttribute(RawData,
+                                       RawLength,
+                                       EaName,
+                                       EaNameLength,
+                                       &View,
+                                       &Present);
+    if (NT_SUCCESS(Status) && !Present)
+    {
+        NtfsFileRecordDestroy(File);
+        return -ENODATA;
+    }
+    if (NT_SUCCESS(Status))
+    {
+        Update.Operation = NTFS_EA_UPDATE_REMOVE;
+        Update.NameLength = (UINT8)EaNameLength;
+        Update.Name = EaName;
+        Status = NtfsFileRecordUpdateExtendedAttributes(File,
+                                                        &Update,
+                                                        1);
+    }
+    NtfsFileRecordDestroy(File);
+    return NT_SUCCESS(Status) ? 0 : -NtStatusToErrno(Status);
 }
 
 static int
@@ -2550,7 +3527,29 @@ MountImage(int Argc, char** Argv, NtfsFuseState* State)
     Operations.read = NtfsFuseRead;
     Operations.opendir = NtfsFuseOpendir;
     Operations.readdir = NtfsFuseReaddir;
+    Operations.releasedir = NtfsFuseReleasedir;
     Operations.statfs = NtfsFuseStatfs;
+    /* The mutation hooks refuse every request with EROFS unless the mount
+     * was opened with --writable.
+     */
+    Operations.create = NtfsFuseCreate;
+    Operations.mknod = NtfsFuseMknod;
+    Operations.mkdir = NtfsFuseMkdir;
+    Operations.unlink = NtfsFuseUnlink;
+    Operations.rmdir = NtfsFuseRmdir;
+    Operations.rename = NtfsFuseRename;
+    Operations.link = NtfsFuseLink;
+    Operations.write = NtfsFuseWrite;
+    Operations.truncate = NtfsFuseTruncate;
+    Operations.fallocate = NtfsFuseFallocate;
+    Operations.utimens = NtfsFuseUtimens;
+    Operations.chmod = NtfsFuseChmod;
+    Operations.chown = NtfsFuseChown;
+    Operations.fsync = NtfsFuseFsync;
+    Operations.getxattr = NtfsFuseGetxattr;
+    Operations.listxattr = NtfsFuseListxattr;
+    Operations.setxattr = NtfsFuseSetxattr;
+    Operations.removexattr = NtfsFuseRemovexattr;
     return fuse_main(Argc, Argv, &Operations, State);
 }
 #endif
@@ -2572,6 +3571,7 @@ PrintUsage(const char* Program)
             "  %s [--show-metadata] --basic IMAGE PATH\n"
             "  %s --set-label IMAGE LABEL\n"
             "  %s --set-basic IMAGE PATH CREATION ACCESS WRITE CHANGE ATTRS\n"
+            "  %s --set-security IMAGE PATH SOURCE\n"
             "  %s --set-reparse IMAGE PATH SOURCE\n"
             "  %s --delete-reparse IMAGE PATH SOURCE\n"
             "  %s --set-ea IMAGE PATH FLAGS NAME SOURCE\n"
@@ -2594,7 +3594,9 @@ PrintUsage(const char* Program)
             "  %s --volume-data IMAGE\n"
             "  %s --mft-record IMAGE FILE_REFERENCE\n"
             "  %s [--show-metadata] --streams IMAGE PATH\n"
-            "  %s [--show-metadata] IMAGE MOUNTPOINT [FUSE options]\n",
+            "  %s [--show-metadata] [--writable] IMAGE MOUNTPOINT"
+            " [FUSE options]\n",
+            Program,
             Program,
             Program,
             Program,
@@ -3061,6 +4063,34 @@ main(int Argc, char** Argv)
             Argv[First + 4],
             Argv[First + 5],
             false);
+        CloseImage(&State);
+        return Result;
+    }
+
+    if (strcmp(Argv[First], "--set-security") == 0)
+    {
+        if (First + 4 != Argc || ShowMetadata)
+        {
+            PrintUsage(Argv[0]);
+            return 2;
+        }
+
+        Status = OpenImageWritable(Argv[First + 1],
+                                   &State);
+        if (!NT_SUCCESS(Status))
+        {
+            fprintf(stderr,
+                    "%s: ntfslib status 0x%08" PRIx32
+                    " (%s)\n",
+                    Argv[First + 1],
+                    (uint32_t)Status,
+                    strerror(NtStatusToErrno(Status)));
+            return 1;
+        }
+        Result = SetSecurityFromHost(
+            &State,
+            Argv[First + 2],
+            Argv[First + 3]);
         CloseImage(&State);
         return Result;
     }
@@ -3600,57 +4630,76 @@ main(int Argc, char** Argv)
         return Result;
     }
 
-    if (First + 2 > Argc)
     {
-        PrintUsage(Argv[0]);
-        return 2;
-    }
+        bool WritableMount = false;
+
+        if (First < Argc &&
+            strcmp(Argv[First], "--writable") == 0)
+        {
+            WritableMount = true;
+            First++;
+        }
+        if (First + 2 > Argc)
+        {
+            PrintUsage(Argv[0]);
+            return 2;
+        }
 
 #if NTFSLIB_HAVE_FUSE
-    Status = OpenImage(Argv[First], ShowMetadata, &State);
-    if (!NT_SUCCESS(Status))
-    {
-        fprintf(stderr,
-                "%s: ntfslib status 0x%08" PRIx32 " (%s)\n",
-                Argv[First],
-                (uint32_t)Status,
-                strerror(NtStatusToErrno(Status)));
-        return 1;
-    }
+        Status = OpenImageWithMode(Argv[First],
+                                   ShowMetadata,
+                                   WritableMount,
+                                   &State);
+        if (!NT_SUCCESS(Status))
+        {
+            fprintf(stderr,
+                    "%s: ntfslib status 0x%08" PRIx32 " (%s)\n",
+                    Argv[First],
+                    (uint32_t)Status,
+                    strerror(NtStatusToErrno(Status)));
+            return 1;
+        }
+        State.Writable = WritableMount;
 
-    /*
-     * Remove IMAGE from the FUSE argv, retain MOUNTPOINT/options, and force
-     * single-threaded read-only operation until volume caches are locked.
-     */
-    {
-        std::vector<char*> FuseArguments;
-        static char SingleThreaded[] = "-s";
-        static char ReadOnly[] = "-oro";
-        static char KernelCache[] = "-okernel_cache";
-        static char AttributeTimeout[] = "-oattr_timeout=60";
-        static char EntryTimeout[] = "-oentry_timeout=60";
-        static char NegativeTimeout[] = "-onegative_timeout=5";
+        /*
+         * Remove IMAGE from the FUSE argv, retain MOUNTPOINT/options, and
+         * force single-threaded operation because the shared core has no
+         * internal locking. Mounts stay read-only unless --writable was
+         * given; writable mounts publish every mutation in a readable
+         * order but are not crash-atomic until LFS transactions exist.
+         */
+        {
+            std::vector<char*> FuseArguments;
+            static char SingleThreaded[] = "-s";
+            static char ReadOnly[] = "-oro";
+            static char KernelCache[] = "-okernel_cache";
+            static char AttributeTimeout[] = "-oattr_timeout=60";
+            static char EntryTimeout[] = "-oentry_timeout=60";
+            static char NegativeTimeout[] = "-onegative_timeout=5";
 
-        FuseArguments.push_back(Argv[0]);
-        for (int Index = First + 1; Index < Argc; Index++)
-            FuseArguments.push_back(Argv[Index]);
-        FuseArguments.push_back(SingleThreaded);
-        FuseArguments.push_back(ReadOnly);
-        FuseArguments.push_back(KernelCache);
-        FuseArguments.push_back(AttributeTimeout);
-        FuseArguments.push_back(EntryTimeout);
-        FuseArguments.push_back(NegativeTimeout);
+            FuseArguments.push_back(Argv[0]);
+            for (int Index = First + 1; Index < Argc; Index++)
+                FuseArguments.push_back(Argv[Index]);
+            FuseArguments.push_back(SingleThreaded);
+            if (!WritableMount)
+                FuseArguments.push_back(ReadOnly);
+            FuseArguments.push_back(KernelCache);
+            FuseArguments.push_back(AttributeTimeout);
+            FuseArguments.push_back(EntryTimeout);
+            FuseArguments.push_back(NegativeTimeout);
 
-        Result = MountImage((int)FuseArguments.size(),
-                            FuseArguments.data(),
-                            &State);
-    }
-    CloseImage(&State);
-    return Result;
+            Result = MountImage((int)FuseArguments.size(),
+                                FuseArguments.data(),
+                                &State);
+        }
+        CloseImage(&State);
+        return Result;
 #else
-    fprintf(stderr,
-            "This build has no libfuse3 development headers. Install "
-            "libfuse3-dev and rebuild; image inspection commands work now.\n");
-    return 2;
+        fprintf(stderr,
+                "This build has no libfuse3 development headers. Install "
+                "libfuse3-dev and rebuild; image inspection commands work "
+                "now.\n");
+        return 2;
 #endif
+    }
 }

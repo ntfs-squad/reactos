@@ -12,6 +12,8 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <string>
+#include <vector>
 
 static double
 ElapsedSeconds(std::chrono::steady_clock::time_point Start)
@@ -199,25 +201,102 @@ BenchmarkRead(const char* Path,
     return 0;
 }
 
+/*
+ * Amortized per-operation comparison: one process opens, fully reads, and
+ * closes every small file each pass, so process launch and mount setup do
+ * not dominate the way they do in fresh-process rows.
+ */
+static int
+BenchmarkSmallFiles(const char* DirectoryPath,
+                    unsigned Iterations,
+                    double* Seconds,
+                    uint64_t* Operations)
+{
+    std::vector<std::string> Files;
+    unsigned char Buffer[65536];
+    uint64_t Bytes = 0;
+    DIR* Directory = opendir(DirectoryPath);
+
+    if (!Directory)
+    {
+        fprintf(stderr,
+                "opendir(%s): %s\n",
+                DirectoryPath,
+                strerror(errno));
+        return 1;
+    }
+    while (struct dirent* Entry = readdir(Directory))
+    {
+        if (strncmp(Entry->d_name, "small-", 6) == 0)
+        {
+            Files.push_back(std::string(DirectoryPath) + "/" +
+                            Entry->d_name);
+        }
+    }
+    closedir(Directory);
+    if (Files.empty())
+    {
+        fprintf(stderr,
+                "%s has no small-* files\n",
+                DirectoryPath);
+        return 1;
+    }
+
+    for (size_t Index = 0; Index < Files.size(); Index++)
+    {
+        if (ReadFile(Files[Index].c_str(),
+                     0,
+                     Buffer,
+                     sizeof(Buffer),
+                     &Bytes) != 0)
+        {
+            return 1;
+        }
+    }
+
+    auto Start = std::chrono::steady_clock::now();
+    for (unsigned Iteration = 0; Iteration < Iterations; Iteration++)
+    {
+        for (size_t Index = 0; Index < Files.size(); Index++)
+        {
+            if (ReadFile(Files[Index].c_str(),
+                         0,
+                         Buffer,
+                         sizeof(Buffer),
+                         &Bytes) != 0)
+            {
+                return 1;
+            }
+        }
+    }
+    *Seconds = ElapsedSeconds(Start);
+    *Operations = (uint64_t)Iterations * Files.size();
+    return 0;
+}
+
 int
 main(int Argc, char** Argv)
 {
     unsigned ListIterations;
     unsigned ReadIterations;
+    unsigned SweepIterations = 10;
     double ListSeconds;
     double CachedReadSeconds;
     double DirectReadSeconds;
+    double SweepSeconds;
     uint64_t Entries;
     uint64_t CachedBytes;
     uint64_t DirectBytes;
+    uint64_t SweepOperations;
 
-    if (Argc != 6 ||
+    if ((Argc != 6 && Argc != 7) ||
         !ParseIterations(Argv[4], &ListIterations) ||
-        !ParseIterations(Argv[5], &ReadIterations))
+        !ParseIterations(Argv[5], &ReadIterations) ||
+        (Argc == 7 && !ParseIterations(Argv[6], &SweepIterations)))
     {
         fprintf(stderr,
                 "Usage: %s LABEL DIRECTORY FILE "
-                "LIST_ITERATIONS READ_ITERATIONS\n",
+                "LIST_ITERATIONS READ_ITERATIONS [SWEEP_ITERATIONS]\n",
                 Argv[0]);
         return 2;
     }
@@ -235,7 +314,11 @@ main(int Argc, char** Argv)
                       O_DIRECT,
                       ReadIterations,
                       &DirectReadSeconds,
-                      &DirectBytes) != 0)
+                      &DirectBytes) != 0 ||
+        BenchmarkSmallFiles(Argv[2],
+                            SweepIterations,
+                            &SweepSeconds,
+                            &SweepOperations) != 0)
     {
         return 1;
     }
@@ -255,5 +338,10 @@ main(int Argc, char** Argv)
            DirectReadSeconds,
            (DirectBytes / (1024.0 * 1024.0)) / DirectReadSeconds,
            (unsigned long long)DirectBytes);
+    printf("%s,small_read,%.6f,%.2f,%llu,ops/s\n",
+           Argv[1],
+           SweepSeconds,
+           SweepOperations / SweepSeconds,
+           (unsigned long long)SweepOperations);
     return 0;
 }
