@@ -1,0 +1,1399 @@
+NTFSLIB_NEW CORE NTFS CONTEXT, ACHIEVEMENTS, TESTING, AND ROADMAP
+Snapshot date: 2026-07-25 (original snapshot 2026-07-24)
+Repository: /home/ahmed/WorkDir/TTE/reactos_NTFS-Bringup2
+Branch: dev/ntfs-bringup2-cflan
+Snapshot HEAD: b8dac1f8b4e18f6f0ab21bbc32267cbb21f8a788
+
+2026-07-25 ADDITIONS (uncommitted, verified)
+============================================
+
+1. Mapping-pair encoder interop fix (src/filerecord/attributes/addattr.cpp):
+   run LENGTHS were sized as unsigned variable-length integers, so any run
+   whose top stored length byte had the sign bit set (for example 253
+   clusters encoding as one byte 0xFD) decoded as a negative length in
+   NTFS-3G, the Linux kernel driver, and Windows, which reject the runlist
+   with EIO. Lengths now use the same signed byte sizing as LCN deltas
+   (LengthMappingBytes) in GetMappingPairsSize, EncodeMappingPairs, and
+   GetMappingPairEntrySize, with Length > MaximumPositive guards. The
+   decoder (findattr.cpp) now rejects sign-bit-set stored lengths as
+   corrupt, matching the other implementations. Round-trips through our
+   own decoder had masked this; fragmented allocations through scattered
+   1 MiB holes reproduced it deterministically, and the fix was verified
+   3/3 with byte-identical ntfscat reads of an 11-extent file.
+
+2. benchmark_core.sh widened with three alternately-ordered median rows,
+   each gated on cross-implementation byte equality before timing:
+   smallread (fresh exact lookup + resident read), fragread (dedicated
+   64 MiB image whose free space is shredded into holes; NTFS-3G's own
+   allocator returns ENOSPC for that layout, ntfslib's fragmented
+   fallback allocates it, NTFS-3G verifies the bytes), and mutate
+   (1 MiB overwrite, --write versus ntfscp, consistency-checked after
+   timing). First sample set (CPU 12, powersave): directory 1.30x,
+   read 1.39x, smallread 0.99x, fragread 1.50x, mutate 1.09x, all
+   ntfslib leading except the smallread tie. Phase isolation showed the
+   fresh-process rows are launch-bound (~2.6 ms floor): beyond its own
+   usage-print baseline ntfslib's smallread work is ~0 ms versus
+   ntfscat's ~0.6 ms, and its 1 MiB mutate work ~0.36 ms versus
+   ntfscp's ~2.1 ms, so per-operation core work leads by large factors
+   that the fresh-process protocol cannot display. Cold-open rows were
+   rejected: without root cache drops, launch overhead swamps device
+   reads. benchmark_fuse.sh order bias: the script measures ntfslib
+   first, and under powersave the second-measured tool gains up to ~2x
+   on read rows; only the listing row (ntfslib 2.5-2.9x) survives order
+   reversal, cached reads tie at matched frequency, direct reads are
+   approximately tied.
+
+3. Writable FUSE mount (linux/fuse/ntfslib_fuse.cpp): mounts remain
+   read-only by default; an explicit --writable flag enables create,
+   mknod, mkdir, unlink, rmdir, rename (including POSIX replace via
+   non-atomic remove-then-rename, RENAME_NOREPLACE honored,
+   RENAME_EXCHANGE refused), link, write, truncate, fallocate
+   (grow-only), utimens, chmod/chown (accepted and discarded like
+   unmapped NTFS-3G), flush/fsync no-ops. Writable opens use direct_io
+   so no stale kernel pages survive truncates; the directory listing
+   cache is shared_ptr-owned with a releasedir hook and is cleared on
+   every namespace mutation. Every mutation hook returns EROFS unless
+   --writable was given. This matches NTFS-3G's actual guarantee level
+   (ordered publication, no journal replay, dirty images left to
+   chkdsk); crash atomicity still requires LFS, so writable mounts stay
+   restricted to disposable images. Native NTFS EAs additionally surface
+   as individual user.* xattrs (getxattr/setxattr/listxattr/removexattr
+   with case-insensitive names, XATTR_CREATE/XATTR_REPLACE semantics,
+   UINT8/UINT16 name/value limits); NTFS-3G only exposes the packed
+   blob through system.ntfs_ea. The mount smoke test verifies the
+   xattr round-trip through python3, the --ea direct command, and the
+   system.ntfs_ea blob on a real NTFS-3G mount. posix_bench gained an
+   amortized small_read sweep row (open+read+close of every small file
+   per pass inside one process) so per-operation lookup cost is
+   comparable without fresh-process launch overhead. That row initially
+   showed NTFS-3G 1.33x ahead (90.7k versus 68.1k opens/s) because the
+   mounted frontend re-walked the $I30 tree on every open and the no-op
+   flush hook cost one FUSE round trip per close; read-only mounts now
+   reuse validated records through a mount-lifetime RecordCache (the
+   low fh bit marks cache-owned records so release skips destruction;
+   writable mounts bypass the cache because mutation invalidation would
+   dangle open handles), and flush is no longer registered. With the
+   cache the amortized row flipped: ntfslib 163,434 versus NTFS-3G
+   89,740 opens/s (1.82x ahead) with directory listing at 3.17x, so
+   every FUSE row whose cost the filesystem controls now leads
+   (cached/direct sequential reads remain kernel/page-cache-bound and
+   approximately tied at matched frequency).
+
+4. New test linux/tests/mount_write_smoke.sh (ntfslib_linux_mount_write,
+   16th registered test): drives a --writable mount with ordinary POSIX
+   tools while mirroring every operation into a host twin directory
+   (mkdir trees, cp, appends, offset overwrites, 20-file bursts,
+   truncate shrink/grow, all four rename shapes including directory
+   rename and replace, hardlink, rm, rmdir, populated-rmdir refusal,
+   utimens), diffs the mounted tree against the twin, then verifies
+   independently after unmount: ntfsfix -n, ntfscat byte compares
+   (including through the hard link), ntfsls name equality, and a full
+   recursive diff plus timestamp check through a real read-only NTFS-3G
+   mount. Passes under Release and ASan/UBSan. On this host AppArmor
+   denies fusermount3 MOUNTS (not just unmounts) under /var/tmp, so
+   mount tests take NTFSLIB_BENCH_ROOT for an owned mount root; without
+   it they skip with exit 77.
+
+5. New test linux/tests/fuzz_smoke.sh (ntfslib_linux_fuzz, 17th
+   registered test): deterministic seeded bit-flip corruption of a valid
+   image (85% of flips in the metadata-bearing first 4 MiB), 150
+   variants by default (NTFSLIB_FUZZ_ROUNDS), five frontend commands per
+   variant (--probe, --list, --list-info, --cat, --streams); any
+   termination by signal or sanitizer abort fails the test, so the ASan
+   tree turns memory errors into failures. The same variants are fed to
+   ntfsls/ntfscat for comparison (crashes counted, never failing). This
+   is the first standing fuzz gate; the deeper structure-aware fuzzing
+   items in P1 remain open.
+
+6. New test linux/tests/crash_consistency_smoke.sh
+   (ntfslib_linux_crash_consistency, 18th registered test): SIGKILLs the
+   --writable mount daemon between acknowledged operation batches (four
+   rounds) and once mid-write with a background appender. After every
+   kill the volume must pass ntfsfix -n, every acknowledged byte must
+   read back exactly through ntfscat, remounting must succeed, and the
+   final volume must be fully readable through a real NTFS-3G mount.
+   This demonstrates a writable guarantee NTFS-3G does not make: its
+   buffered metadata dies with the daemon, while the shared core
+   publishes each mutation synchronously in a readable order. This is
+   acknowledged-operation daemon-crash durability, not host power-loss
+   atomicity - LFS remains the roadmap item for journaled recovery.
+
+7. Index reclamation parity measured (2026-07-25): identical churn (one
+   directory, create 400, delete 360) driven through our direct commands
+   and through a real writable NTFS-3G mount left byte-identical index
+   footprints on both volumes per ntfsinfo: $INDEX_ROOT 56 bytes,
+   $INDEX_ALLOCATION 81,920 bytes allocated, $BITMAP 8 bytes. NTFS-3G
+   does not merge underfull index nodes either; the "merge/rebalance"
+   roadmap item is an improvement beyond both implementations, not a
+   deficit against NTFS-3G.
+
+8. LZNT1 compressor landed (compressed-write tranche, phase 1 of 3):
+   NtfsCompressLznt1 in src/filerecord/read/compression.cpp beside the
+   decoder, with public NtfsLznt1Compress/NtfsLznt1Decompress wrappers.
+   Greedy hash-chain matcher (4096 buckets, 64-step chains, minimum
+   match 3), per-chunk raw fallback when a chunk does not shrink, the
+   decoder's exact position-dependent displacement/length split, and
+   STATUS_BUFFER_TOO_SMALL when the stream exceeds OutputCapacity so
+   unit writers can demand a cluster saving and fall back to raw
+   storage. One portability trap already caught and fixed: the hash
+   multiplier literal was UL (64-bit on Linux hosts), overflowing the
+   bucket index; width is now pinned to UINT32. Verified by the 19th
+   registered test ntfslib_linux_lznt1_roundtrip: 264 deterministic
+   corpora (zeros/text/random/sawtooth at 16 sizes from 1 byte to
+   100000, plus 200 mixed run/noise buffers) byte-exact through
+   compress+decompress under Release and ASan/UBSan, shrink asserted
+   for compressible corpora, tight-capacity rejection asserted for
+   random data.
+
+   Phases 2 and 3 landed the same day. FileRecord::WriteCompressedData
+   (filedata.cpp) rebuilds the complete unit grid on write: the current
+   plaintext is materialized through the verified read path, patched,
+   and recompressed unit by unit; a unit that saves at least one
+   cluster stores its compressed form with a sparse tail, a unit that
+   does not shrink stores all sixteen clusters raw, new clusters and
+   data become durable before the one-record mapping swap commits, and
+   old clusters are released afterwards. ReplaceNonResidentMappingPairs
+   and BuildNonResidentMappingSegment now accept exactly-ATTR_COMPRESSED
+   attributes (CU=4, unit-aligned allocation) and emit the 0x48 header
+   with the physical CompressedDataSize; every layout conditional that
+   keyed on ATTR_SPARSE now keys on any nonzero derived flag. The
+   supported shape is deliberately narrow - base-record $DATA flagged
+   exactly ATTR_COMPRESSED, CU=4, no $ATTRIBUTE_LIST, stream bounded to
+   4 MiB (whole-grid rebuild) - and every other shape keeps the
+   previous unsupported result. Truncate/allocation-size paths for
+   compressed streams remain unimplemented.
+
+   The 20th registered test, compressed_write_smoke.sh
+   (ntfslib_linux_compressed_write), has NTFS-3G author a genuinely
+   compressed file (directory +C via system.ntfs_attrib through a real
+   ntfs-3g mount), then drives four core writes - unaligned mid-unit
+   incompressible patch, two-unit span, EOF growth, and an all-zeros
+   rewrite that must recompress below 16 KiB physical - verifying every
+   state byte-for-byte through ntfscat (NTFS-3G's decoder over our
+   encoder and unit layout: the interop proof), our own reader, and
+   ntfsfix -n.
+
+9. Security descriptor mutation landed (first tranche):
+   FileRecord::SetSecurityDescriptor (read/security.cpp beside the
+   existing validators) replaces the file's security with a validated
+   self-relative descriptor in the legacy per-file $SECURITY_DESCRIPTOR
+   attribute and clears the NTFS 3.x SecurityId so the local value is
+   authoritative for every reader; single-record commit with
+   backup/restore, change-time maintenance, resident descriptors and
+   list-free base records only. Public API
+   NtfsFileRecordSetSecurityDescriptor, frontend --set-security. The
+   21st registered test security_write_smoke.sh
+   (ntfslib_linux_security_write) sets a python-built descriptor,
+   replaces it with a different DACL mask, rejects a truncated one
+   without changing the file, and verifies every state through our
+   reader, ntfsfix -n, and byte-exact system.ntfs_acl reads on a real
+   NTFS-3G mount. Canonical $Secure SDS/SII/SDH index maintenance for
+   shared descriptors remains the follow-on tranche.
+
+10. Verification state 2026-07-25: Release suite 21/21, ASan/UBSan
+    suite 21/21 with leak detection, ntfslib_new, ntfslib_new_km,
+    ntfslib_new_um, and ntfs.sys all build with the LZNT1 codec, the
+    compressed write path, and security mutation.
+
+PURPOSE OF THIS FILE
+====================
+
+This is the single-file handoff for the ntfslib_new effort. It records:
+
+1. The development priority and safety boundary.
+2. What the shared NTFS core currently implements.
+3. What is committed versus still uncommitted.
+4. What has already been verified.
+5. Exact build and test commands.
+6. The current ntfs-3g comparison and how it must be retested.
+7. The remaining core-first roadmap.
+
+The detailed historical cleanup record remains in CLEANUP_REPORT.md. The
+canonical checkbox list and detailed evidence remain in ROADMAP.md. The Linux
+command reference remains in linux/README.md. This file is the compact,
+self-contained operational context for continuing the work.
+
+
+0. DEVELOPMENT POLICY
+=====================
+
+The shared NTFS implementation is the product. FUSE is only a Linux test
+surface.
+
+Priority order:
+
+1. Correct on-disk NTFS behavior, corruption rejection, and complete reads.
+2. Correct allocation, attribute mutation, file creation, directory mutation,
+   and metadata consistency.
+3. LFS transaction logging, replay, recovery, and crash atomicity.
+4. Per-volume environment state, concurrency, and shared-core performance.
+5. ReactOS driver integration.
+6. FUSE conveniences only when they improve testing of the shared core.
+
+Do not optimize a FUSE-only cache and present it as an NTFS-core result.
+Core benchmarks must use the mountless image commands and compare names and
+bytes with independent ntfs-3g tools before timing.
+
+Writable tests are allowed only on disposable images. There is no safe
+writable mount until LFS logging and recovery are implemented.
+
+
+1. REPOSITORY STATE AT THIS SNAPSHOT
+====================================
+
+Current branch:
+
+    dev/ntfs-bringup2-cflan
+
+Current HEAD:
+
+    b8dac1f8b4e [ntfs] Return reparses during create
+
+Recent core/driver history:
+
+    aa692b070ce [ntfslib] Harden metadata validation
+    4ccb283a224 [ntfslib] Repair directory index traversal
+    f822229466c [ntfslib] Add volume and MFT primitives
+    e3fb574b583 [ntfslib] Add advanced metadata readers
+    512483444c0 [ntfslib] Add transactional attribute layouts
+    874c74575d8 [ntfslib] Add core file mutation support
+    e7fa114a2a3 [ntfs] Wire core NTFS operations
+    48ff2d01035 [ntfslib] Fix packed attribute ownership
+    f52c443187d [ntfslib] Support listed EA mutation
+    7cc461a420f [ntfslib] Relocate EA pairs for initial lists
+    5cc322a266c [ntfslib] Detect reparses during path lookup
+    b8dac1f8b4e [ntfs] Return reparses during create
+
+HEAD is three commits ahead of origin/dev/ntfs-bringup2-cflan at this
+snapshot:
+
+    7cc461a420f [ntfslib] Relocate EA pairs for initial lists
+    5cc322a266c [ntfslib] Detect reparses during path lookup
+    b8dac1f8b4e [ntfs] Return reparses during create
+
+Untracked support trees/documents at this snapshot:
+
+    sdk/lib/fslib/ntfslib_new/CLEANUP_REPORT.md
+    sdk/lib/fslib/ntfslib_new/ROADMAP.md
+    sdk/lib/fslib/ntfslib_new/env/linux/
+    sdk/lib/fslib/ntfslib_new/include/public/ntfsenv.h
+    sdk/lib/fslib/ntfslib_new/linux/
+
+Do not lose these merely because git reports them as untracked. They contain
+the native Linux environment, 13-test suite, benchmark tools, and the detailed
+implementation record.
+
+Unrelated untracked repository data:
+
+    docs/
+
+The docs/ directory belongs to the user and must remain untouched.
+
+
+2. CURRENT UNCOMMITTED CORE WIP
+===============================
+
+The creation tranche described here has been completed, extended with full
+$I30 B+tree mutation, and verified on 2026-07-24. The worktree additionally
+contains, relative to the original tranche:
+
+    linux/fuse/ntfslib_fuse.cpp        --create-file/--create-dir commands
+    linux/tests/create_smoke.sh        registered as ntfslib_linux_create
+    linux/tests/benchmark_core.sh      checked-in mountless benchmark
+    linux/tests/sparse_write_smoke.sh  umount fallback for confined hosts
+    include/public/ntfsenv.h           _Out_writes_bytes_ /
+                                       _Inout_updates_bytes_ no-ops
+
+What is implemented and verified:
+
+* Allocate, initialize, publish, deallocate, and roll back ordinary base MFT
+  file records through the shared extension-record allocator.
+* Initialize a new regular file with:
+  - V1 $STANDARD_INFORMATION
+  - indexed POSIX $FILE_NAME
+  - an empty unnamed resident $DATA attribute
+  - inherited compact resident legacy security where applicable
+* Initialize a new directory with a valid empty $I30 $INDEX_ROOT and,
+  matching Windows, no default ARCHIVE attribute.
+* Validate the final filename, parent path, attributes, duplicate-name state
+  (volume $UpCase collation), and parent directory.
+* Publish a new file through a public counted UTF-16 creation API:
+
+      NtfsMasterFileTableCreateFile
+
+* Insert directory index entries in every tree shape:
+  - growth inside the resident root;
+  - first-overflow push-down of the complete root list into index buffer 0,
+    creating $BITMAP and promoting a fresh nonresident $INDEX_ALLOCATION in
+    one record commit after the root shrinks in memory;
+  - in-place leaf insertion;
+  - median splits of full nodes with right-node-first publication;
+  - recursive parent insertion along the recorded descent path;
+  - root push-down at any depth.
+* Update the parent directory last-write/change timestamps.
+* Supply portable global new/delete forms required by the new native code.
+
+Write-path fixes that fell out of verification:
+
+* MasterFileTable::WriteFileRecordToMFT snapshots the fixup-committed image
+  and immediately restores the live record. Writing $MFT record 0 through
+  its own fixup-scrambled buffer corrupted the attribute walk once mapping
+  growth moved $BITMAP bytes across a sector tail, splitting record 0 from
+  $MFTMirr after 1,065 same-directory creations.
+* PromoteResidentData accepts TypeIndexAllocation.
+* The unable-to-write diagnostic includes the failing record number.
+
+The same day added the namespace tranche (src/mft/namespace.cpp plus $I30
+removal in editdir.cpp):
+
+* Directory index removal for every tree shape: root and leaf cuts,
+  internal entries replaced by their subtree's collation maximum with
+  END-child rewiring, END-only chain release, and replacement overflow
+  through the shared split-and-promote path.
+* NtfsMasterFileTableDeleteFile with Win32 DeleteFile/RemoveDirectory
+  semantics, DOS/WIN32 alias pairs, hard-link counting, and full
+  record/cluster teardown on the last name (runs captured before records
+  blank, clusters released last).
+* NtfsMasterFileTableRenameFile: same-directory, cross-directory, and
+  case-only renames; collision checks exempt only the file itself; one
+  shared parent object when source and destination coincide.
+* NtfsMasterFileTableCreateHardLink with rollback; $FILE_NAME is the one
+  unnamed attribute type allowed to repeat in a record.
+* Per-directory scaling: WriteFileData creates the initial
+  $ATTRIBUTE_LIST proactively while the base record has headroom
+  (ordinary records only) so $INDEX_ALLOCATION segments relocate to
+  extension records, and $MFT growth reserves 16-cluster chunks to keep
+  record 0 compact. 5,000 single-directory creations verified; drains
+  reclaim everything but the permanent MFT chunks.
+* Frontend: --remove, --remove-dir, --rename, --link; test
+  ntfslib_linux_namespace.
+
+Remaining limits of this tranche:
+
+* Create/split/remove publication is not crash-atomic without LFS;
+  publication order merely keeps every intermediate on-disk state
+  readable.
+* Removal never merges underfull nodes; it only releases END-only
+  chains. Long-lived churn can leave sparse index buffers.
+* SecurityId inheritance for NTFS 3.x creation is not implemented.
+
+
+3. SHARED-CORE ACHIEVEMENTS
+===========================
+
+3.1 Metadata validation and safe I/O
+------------------------------------
+
+Implemented:
+
+* Positioned reads and writes in Linux, ReactOS user mode, and kernel mode.
+* NTFS legal sector-size validation.
+* Exact 64-bit boot geometry.
+* Strong MFT record signature, bounds, alignment, attribute-layout, and
+  update-sequence validation.
+* Shared fixup application/commit logic.
+* Correct $MFTMirr bootstrap and distinct main/mirror targeting.
+* Corrupt runlist rejection without assertions or out-of-volume access.
+* Sparse mapping-pair decoding.
+* Zero reads for sparse holes and uninitialized tails.
+* Cached decoded runlists for open records and MFT metadata.
+* Correct free-cluster calculation from $Bitmap in bounded chunks.
+* Validated literal volume-bitmap queries.
+* Validated retrieval-pointer queries with sparse LCN -1 reporting.
+* Validated downward in-use MFT record enumeration.
+
+3.2 Names, lookup, and directories
+----------------------------------
+
+Implemented:
+
+* Bounded NT/DOS wildcard matching.
+* Volume $UpCase-based filename collation.
+* Correct multi-level $I30 traversal.
+* Correct in-order separator-key enumeration.
+* $I30 bitmap validation and child VCN cycle/duplicate rejection.
+* Exact lookup with lazy collation-selected child descent.
+* Bulk enumeration with one index-allocation/bitmap read and arena-backed keys.
+* Namespace-based DOS alias handling instead of quadratic guessing.
+* Case-insensitive nested path lookup.
+* Intermediate/final reparse detection with counted unparsed suffixes.
+* File and directory creation with full $I30 insertion: resident-root
+  growth, first-overflow root push-down, leaf insertion, median node
+  splits, recursive parent promotion, and root push-down at any depth.
+
+Verified large-directory case:
+
+* A 1,001-entry directory returned all 1,001 entries.
+* The older traversal returned only 261 entries.
+* Mixed-case left/middle/right exact lookups matched ntfs-3g.
+* An $INDEX_ROOT moved to an extension record was found through
+  $ATTRIBUTE_LIST.
+
+3.3 $ATTRIBUTE_LIST and fragmented streams
+------------------------------------------
+
+Implemented:
+
+* Extension-record lookup with sequence-number and base-reference validation.
+* Attribute ID, type, name, flag, and VCN validation.
+* Ordered contiguous merging of nonresident stream segments.
+* Composite runlist caching.
+* Validation that $ATTRIBUTE_LIST's own mapping pairs remain resolvable from
+  the base record.
+* Nonresident list growth.
+* Copy-on-write compaction of fragmented list storage.
+* Mapping-pair continuation records for base-owned streams.
+* Mapping-pair continuation records for extension-owned streams.
+* Staged publication and rollback of list/extent changes.
+* Collapse back to a VCN-zero owner and release obsolete MFT records.
+
+Verified examples include:
+
+* A 10,813,440-byte fragmented stream split across MFT records 568 and 570
+  matched ntfscat byte-for-byte.
+* 128 alternating base-stream runs crossed into a continuation record and
+  later collapsed back to resident zero length.
+* 384 alternating extension-stream segments were reconstructed and mutated.
+* A 4,072-byte list grew across a 4 KiB boundary.
+* An 8,152-byte two-run list was compacted copy-on-write to one 12,288-byte
+  allocation.
+* MFT bitmap ownership and old-cluster release were independently checked.
+
+3.4 Ordinary data and alternate data streams
+---------------------------------------------
+
+Implemented:
+
+* Resident reads and exact resident replacement.
+* Resident shrink/growth with complete tail relocation and 8-byte alignment.
+* Resident-to-nonresident promotion.
+* Existing nonresident in-place writes across run boundaries.
+* Nonresident extension with contiguous-first, fragmented fallback allocation.
+* Mapping-pair re-encoding and continuation.
+* Zero-filled logical gaps.
+* Initialized-size semantics.
+* EOF growth/shrink and whole-tail cluster release.
+* Zero-length demotion to resident.
+* FileAllocationInformation-style preallocation independent of EOF.
+* Named stream parsing for file:stream and file:stream:$DATA.
+* Missing named-stream creation in base or extension records.
+* Stream enumeration across base and extension records.
+* Modification, resize, promotion, and preallocation of extension-owned ADS.
+* Parent/local $FILE_NAME logical and physical size synchronization.
+* Automatic last-write/change timestamp maintenance.
+
+Independent checks use ntfscat, ntfsinfo, ntfscluster, literal $Bitmap reads,
+and ntfsfix -n.
+
+3.5 Sparse streams
+------------------
+
+Implemented for supported base-record layouts:
+
+* Sparse run encoding and decoding.
+* Writes that allocate only intersected holes.
+* Preservation of untouched sparse ranges.
+* Sparse EOF shrink/regrowth.
+* Mark-sparse metadata transition.
+* Clear-sparse materialization and zeroing.
+* Partial-unit physical zeroing.
+* Full-unit hole punching through zero-data.
+* Exact allocated-range queries.
+* Retrieval pointers for physical and sparse extents.
+* Logical/physical size synchronization.
+* ReactOS FSCTL_SET_SPARSE.
+* ReactOS FSCTL_SET_ZERO_DATA.
+* ReactOS FSCTL_QUERY_ALLOCATED_RANGES.
+
+A sparse image created independently by ntfs-3g received unaligned patches,
+allocated the exact expected clusters, matched ntfscat bytes, matched
+ntfscluster extents, and passed ntfsfix -n under Release and ASan/UBSan.
+
+3.6 Compression and externally backed data
+-------------------------------------------
+
+Implemented reads:
+
+* Native NTFS/LZNT1 compressed data.
+* Compressed, fully allocated, and fully sparse compression units.
+* Bounded chunk and back-reference validation.
+* Unaligned and final-unit reads.
+* WOF FILE-provider XPRESS4K, XPRESS8K, XPRESS16K, and LZX32K.
+* Raw and compressed WOF chunks.
+* WOF table and range validation.
+
+Implemented mutation:
+
+* Materialize WOF FILE-provider content before ordinary writes.
+* Remove WOF reparse/backing metadata after durable ordinary data is ready.
+* Release old backing/logical runs.
+* ReactOS FSCTL_DELETE_EXTERNAL_BACKING.
+
+The independent WOF fixture is generated with libwim and checks exact data,
+unaligned reads, malformed-table rejection, cluster reclamation, ntfscat,
+ntfsinfo, ntfsfix, Release, and ASan/UBSan.
+
+3.7 Reparse points
+------------------
+
+Implemented:
+
+* Raw reparse reads up to the Windows/NTFS 16 KiB ceiling.
+* Microsoft and third-party common-envelope validation.
+* Symlink and mount-point offset/length/UTF-16 validation.
+* Resident and nonresident values.
+* Create, replace, and delete operations.
+* Tag and GUID replacement rules.
+* Reparse/EA conflict enforcement.
+* Copy-on-write nonresident replacement.
+* Parent/local $FILE_NAME reparse-tag synchronization.
+* ReactOS GET/SET/DELETE reparse FSCTLs.
+* ReactOS create-time STATUS_REPARSE return path.
+* Linux mountless --readlink and --reparse probes.
+
+3.8 Extended attributes
+-----------------------
+
+Implemented:
+
+* Validated $EA_INFORMATION and $EA parsing.
+* Bounded zero-copy iteration.
+* Ordered case-insensitive last-wins mutation.
+* Set, replace, remove, NEED_EA, and packed-size maintenance.
+* Resident/nonresident copy-on-write replacement.
+* Paired attribute publication.
+* Parent/local $FILE_NAME packed-EA synchronization.
+* ReactOS IRP_MJ_QUERY_EA and IRP_MJ_SET_EA.
+* ReactOS FILE_SUPPORTS_EXTENDED_ATTRIBUTES advertisement.
+* Normal listed-layout relocation into durable extension records.
+
+3.9 Security descriptors
+------------------------
+
+Implemented read/query:
+
+* Legacy per-file $SECURITY_DESCRIPTOR.
+* NTFS 3.x centralized $Secure:$SII/$SDS lookup.
+* SID, ACL, ACE, index, bitmap, SDS header/hash/offset/length validation.
+* Retry of the duplicate 256 KiB SDS copy.
+* ReactOS IRP_MJ_QUERY_SECURITY.
+
+Security mutation and $Secure index maintenance remain unimplemented.
+
+3.10 Volume and file information
+--------------------------------
+
+Implemented:
+
+* Volume label read and bounded replacement.
+* Exact volume geometry and NTFS version.
+* Free clusters.
+* MFT locations and valid length.
+* File-record geometry.
+* MFT record enumeration.
+* Stream information.
+* Basic timestamps and attributes.
+* Explicit basic-information updates.
+* Automatic data/access/change timestamp rules.
+* Allocation and EOF information.
+* Volume bitmap and retrieval-pointer FSCTLs.
+* WOF external-backing deletion.
+
+3.11 ReactOS driver integration
+--------------------------------
+
+The ReactOS ntfs_new driver has shared-core wiring for:
+
+* Create/open and reparse return handling.
+* Read/write.
+* EOF/allocation/basic/file information.
+* Stream information.
+* Query/set EA.
+* Query security.
+* Reparse FSCTLs.
+* Sparse/zero/allocated-range FSCTLs.
+* Retrieval pointers.
+* Volume bitmap.
+* NTFS volume data.
+* NTFS file record.
+* Delete external backing.
+
+This does not imply a production-safe writable filesystem. LFS transactions
+and recovery remain the gating feature.
+
+
+4. LINUX TEST SURFACE
+=====================
+
+The native Linux build is deliberately standalone:
+
+    sdk/lib/fslib/ntfslib_new/linux/CMakeLists.txt
+
+It is not part of ReactOS top-level CMake. This preserves the requested custom
+test build and avoids introducing Linux/FUSE dependencies into ReactOS.
+
+The mounted FUSE frontend is single-threaded and read-only by default; the
+--writable flag (2026-07-25) enables the full POSIX mutation surface over
+the shared core on disposable images. Direct image commands exercise
+shared-core reads and focused mutations without requiring a mount. Mutation
+commands explicitly open only disposable images writable.
+
+Core-oriented direct commands include:
+
+    --probe
+    --list
+    --list-info
+    --cat
+    --cat-range
+    --streams
+    --readlink
+    --reparse
+    --ea
+    --security
+    --basic
+    --allocated-ranges
+    --retrieval-pointers
+    --volume-bitmap
+    --volume-data
+    --mft-record
+    --set-label
+    --set-basic
+    --set-ea
+    --remove-ea
+    --set-reparse
+    --delete-reparse
+    --delete-external-backing
+    --write
+    --truncate
+    --allocate
+    --set-sparse
+    --zero-data
+
+FUSE-only behavior should be tested only after direct core behavior is
+correct. FUSE directory snapshots and kernel caching are frontend optimizations
+and must not be cited as core speedups.
+
+
+5. VERIFIED TEST EVIDENCE BEFORE THE CURRENT CREATION WIP
+=========================================================
+
+The committed/shared-core tranches represented by ROADMAP.md have previously
+passed combinations of:
+
+* Optimized native Linux builds.
+* Debug builds.
+* ASan and UBSan builds.
+* All applicable native image tests.
+* ReactOS ntfslib_new.
+* ReactOS ntfslib_new_km.
+* ReactOS ntfslib_new_um.
+* ReactOS ntfs.sys link.
+* Byte-for-byte comparisons with ntfscat.
+* Name/count comparisons with ntfsls.
+* Metadata interpretation with ntfsinfo.
+* Run/cluster interpretation with ntfscluster.
+* Security interpretation with ntfssecaudit.
+* Filesystem consistency with ntfsfix -n.
+* Exact $Bitmap allocation/free deltas.
+* MFT bitmap ownership checks.
+* Update-sequence/fixup checks against physical records.
+
+The standalone test registration currently contains 16 tests:
+
+    ntfslib_linux_resident_update
+    ntfslib_linux_image_smoke
+    ntfslib_linux_label_write
+    ntfslib_linux_data_write
+    ntfslib_linux_ads
+    ntfslib_linux_ea_write
+    ntfslib_linux_reparse_write
+    ntfslib_linux_growth_write
+    ntfslib_linux_truncate
+    ntfslib_linux_create
+    ntfslib_linux_namespace
+    ntfslib_linux_sparse_write
+    ntfslib_linux_wof
+    ntfslib_linux_basic_info
+    ntfslib_linux_security
+    ntfslib_linux_mount_write
+
+Some tests are registered only when their independent tools/libraries are
+found. Always inspect "ctest -N" rather than assuming all 15 were enabled.
+
+On 2026-07-24 all 15 passed under Release and under ASan/UBSan with leak
+detection, and ntfslib_new, ntfslib_new_km, ntfslib_new_um, and ntfs.sys
+built cleanly. The creation test covers duplicates through $UpCase
+collation, illegal and dot names, trailing separators, missing and
+non-directory parents, attribute flags, literal $MFT:$BITMAP allocation
+bits, rollback continuity, parent timestamp deltas, byte-exact data
+round-trips, a 300-entry pure-core split growth, and a 413-entry
+NTFS-3G-built tree extended at every position. The sparse fixture now falls
+back to plain umount where AppArmor confines fusermount3 under TMPDIR.
+
+
+6. EXACT BUILD AND TEST PROCEDURE
+=================================
+
+6.1 Tool prerequisites
+----------------------
+
+Required for the broadest test coverage:
+
+    C++17 compiler
+    CMake
+    Ninja
+    pkg-config
+    libfuse3 development headers (mount tests only)
+    mkntfs
+    ntfscp
+    ntfstruncate
+    ntfslabel
+    ntfsls
+    ntfscat
+    ntfsinfo
+    ntfsfix
+    ntfscluster
+    ntfs-3g
+    fusermount3
+    ntfssecaudit
+    fakeroot
+    xxd
+    libwim (WOF fixture)
+
+The current machine has the ntfs-3g tools, libwim runtime, FUSE runtime,
+fakeroot, xxd, taskset, perf, valgrind, and fio. It does not have a
+system-visible fuse3.pc development package. A temporary extracted libfuse3
+3.18.2 development tree exists at:
+
+    /var/tmp/ntfslib-fuse3-dev
+
+For a normal machine, install libfuse3-dev and use the ordinary commands
+below. Prefer that over depending on the temporary extracted tree.
+
+Use TMPDIR=/var/tmp on this machine because /tmp has previously hit a
+per-user quota despite available filesystem space.
+
+6.2 Fresh optimized native build
+--------------------------------
+
+From the repository root:
+
+    cmake \
+      -S sdk/lib/fslib/ntfslib_new/linux \
+      -B /var/tmp/ntfslib-linux-release \
+      -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_TESTING=ON \
+      -DNTFSLIB_BUILD_FUSE=ON
+
+    cmake --build /var/tmp/ntfslib-linux-release
+
+If using this machine's temporary FUSE development tree, configure with:
+
+    PKG_CONFIG_PATH=/var/tmp/ntfslib-fuse3-dev/usr/lib/x86_64-linux-gnu/pkgconfig \
+    PKG_CONFIG_SYSROOT_DIR=/var/tmp/ntfslib-fuse3-dev \
+    cmake \
+      -S sdk/lib/fslib/ntfslib_new/linux \
+      -B /var/tmp/ntfslib-linux-release \
+      -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_TESTING=ON \
+      -DNTFSLIB_BUILD_FUSE=ON
+
+Then build:
+
+    cmake --build /var/tmp/ntfslib-linux-release
+
+6.3 Inspect which tests are enabled
+-----------------------------------
+
+    ctest --test-dir /var/tmp/ntfslib-linux-release -N
+
+The expected maximum is 13 tests. Missing tests usually indicate a missing
+independent verification tool, not a silent pass.
+
+6.4 Run the complete native test suite
+--------------------------------------
+
+    TMPDIR=/var/tmp \
+    ctest \
+      --test-dir /var/tmp/ntfslib-linux-release \
+      --output-on-failure
+
+To isolate a failing test:
+
+    TMPDIR=/var/tmp \
+    ctest \
+      --test-dir /var/tmp/ntfslib-linux-release \
+      -R 'ntfslib_linux_ads' \
+      --output-on-failure \
+      -V
+
+Replace the -R expression with the specific test name.
+
+6.5 ASan/UBSan build and test
+-----------------------------
+
+    PKG_CONFIG_PATH=/var/tmp/ntfslib-fuse3-dev/usr/lib/x86_64-linux-gnu/pkgconfig \
+    PKG_CONFIG_SYSROOT_DIR=/var/tmp/ntfslib-fuse3-dev \
+    cmake \
+      -S sdk/lib/fslib/ntfslib_new/linux \
+      -B /var/tmp/ntfslib-linux-asan \
+      -G Ninja \
+      -DCMAKE_BUILD_TYPE=Debug \
+      -DBUILD_TESTING=ON \
+      -DNTFSLIB_BUILD_FUSE=ON \
+      -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
+      -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined'
+
+    cmake --build /var/tmp/ntfslib-linux-asan
+
+    TMPDIR=/var/tmp \
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+    ctest \
+      --test-dir /var/tmp/ntfslib-linux-asan \
+      --output-on-failure
+
+If FUSE development headers are not needed for the failing core test, set:
+
+    -DNTFSLIB_BUILD_FUSE=OFF
+
+The direct command frontend itself is currently built by the fuse subdirectory,
+so leave NTFSLIB_BUILD_FUSE=ON for image tests that invoke ntfslib_fuse.
+
+6.6 ReactOS compatibility build
+-------------------------------
+
+The existing ReactOS Ninja tree is:
+
+    output-MinGW-amd64
+
+Build all relevant targets:
+
+    ninja \
+      -C output-MinGW-amd64 \
+      ntfslib_new \
+      ntfslib_new_km \
+      ntfslib_new_um \
+      ntfs.sys
+
+This must be repeated after shared header, allocation, file-record, directory,
+environment-contract, or driver-facing API changes.
+
+6.7 Diff and source hygiene
+---------------------------
+
+    git diff --check
+    git status --short
+
+Shell syntax:
+
+    sh -n sdk/lib/fslib/ntfslib_new/linux/tests/*.sh
+
+Search for newly introduced incomplete paths:
+
+    rg -n \
+      'STATUS_NOT_IMPLEMENTED|TODO|FIXME|ASSERT' \
+      sdk/lib/fslib/ntfslib_new/src \
+      sdk/lib/fslib/ntfslib_new/include
+
+Do not treat every assertion as wrong; distinguish programmer invariants from
+on-disk validation. Untrusted disk data must return an error, not assert.
+
+6.8 Direct core smoke commands
+-------------------------------
+
+After a successful native build:
+
+    FRONTEND=/var/tmp/ntfslib-linux-release/fuse/ntfslib_fuse
+    IMAGE=/path/to/disposable.ntfs
+
+Read-only examples:
+
+    "$FRONTEND" --probe "$IMAGE"
+    "$FRONTEND" --list "$IMAGE" /
+    "$FRONTEND" --list-info "$IMAGE" /
+    "$FRONTEND" --cat "$IMAGE" /path/to/file
+    "$FRONTEND" --streams "$IMAGE" /path/to/file
+    "$FRONTEND" --allocated-ranges "$IMAGE" /path/to/file 0 1048576
+    "$FRONTEND" --retrieval-pointers "$IMAGE" /path/to/file 0
+    "$FRONTEND" --volume-data "$IMAGE"
+    "$FRONTEND" --volume-bitmap "$IMAGE" 0 64
+
+Independent byte check:
+
+    "$FRONTEND" --cat "$IMAGE" /path/to/file > /var/tmp/ntfslib.actual
+    ntfscat "$IMAGE" /path/to/file > /var/tmp/ntfs3g.expected
+    cmp /var/tmp/ntfslib.actual /var/tmp/ntfs3g.expected
+
+Always use disposable images for --write, --truncate, --allocate, --set-ea,
+--set-reparse, --set-label, --set-basic, --set-sparse, or --zero-data.
+
+6.9 Filesystem consistency check after mutation
+-----------------------------------------------
+
+After every mutation fixture:
+
+    ntfsfix -n /path/to/disposable.ntfs
+
+Also inspect the changed feature independently:
+
+    ntfscat
+    ntfsinfo
+    ntfscluster
+    ntfsls
+    ntfssecaudit
+
+The exact tool depends on the metadata being changed.
+
+6.10 FUSE mount test, secondary only
+------------------------------------
+
+    mkdir -p /home/ahmed/WorkDir/TTE/ntfslib-test-mount
+
+    /var/tmp/ntfslib-linux-release/fuse/ntfslib_fuse \
+      /path/to/image.ntfs \
+      /home/ahmed/WorkDir/TTE/ntfslib-test-mount \
+      -f
+
+In another terminal:
+
+    find /home/ahmed/WorkDir/TTE/ntfslib-test-mount -maxdepth 2 -ls
+    fusermount3 -u /home/ahmed/WorkDir/TTE/ntfslib-test-mount
+
+On this host, AppArmor denies fusermount3 mountpoints under /var/tmp. Use an
+owned path under /home/ahmed. Ensure no test daemon or mount remains after an
+interrupted run:
+
+    findmnt -t fuse,fuseblk
+    ps -eo pid,user,args | rg 'ntfslib_fuse|ntfs-3g'
+
+
+7. BENCHMARK STATUS AND RETEST METHOD
+=====================================
+
+7.1 Core benchmark is authoritative
+-----------------------------------
+
+The current recorded mountless Release sample used:
+
+* A 384 MiB NTFS 3.1 image.
+* 250 small files.
+* One 64 MiB ordinary uncompressed stream.
+* Equal 251-name output.
+* Exact equal stream bytes.
+* One untimed warm-up per tool.
+* CPU 0 pinning.
+* 100 fresh directory command invocations.
+* Three fresh stream command invocations.
+* Warm host page cache.
+* New process and volume object per invocation.
+
+Recorded result:
+
+    Fresh open + directory enumeration
+      ntfslib: 2,051.35 operations/second
+      ntfsls:  1,118.03 operations/second
+      ratio:   ntfslib 1.84x
+
+    Fresh open + cached sequential read
+      ntfslib: 9,885.20 MiB/second
+      ntfscat: 4,834.32 MiB/second
+      ratio:   ntfslib 2.05x
+
+This is one regression sample, not a statistical claim.
+
+The local comparison target is:
+
+    ntfs-3g 2022.10.3 integrated FUSE 28
+
+The benchmark must be rerun after the current uncommitted creation work is
+built and tested. Do not reuse the numbers as proof for the unverified WIP.
+
+7.2 Required core benchmark retest rules
+----------------------------------------
+
+Before timing:
+
+1. Build Release with static C++ support enabled.
+2. Generate one image used by both implementations.
+3. Confirm both return the exact same visible names.
+4. Compare the complete test stream byte-for-byte.
+5. Warm each tool once.
+6. Pin the coordinator to one CPU.
+7. Alternate tool order between samples to reduce frequency/order bias.
+8. Take at least five samples and report the median.
+9. Record CPU, kernel, compiler, ntfs-3g version, image geometry, and command.
+10. Keep directory/open and sequential-read results separate.
+11. Do not mix compressed, sparse, resident, and ordinary streams into one
+    unlabeled throughput number.
+
+The workload is scripted as linux/tests/benchmark_core.sh:
+
+    linux/tests/benchmark_core.sh \
+      /var/tmp/ntfslib-linux-release/fuse/ntfslib_fuse
+
+It creates the shared fixture, refuses to time until names and bytes match,
+pins every timed launch with taskset (NTFSLIB_BENCH_CPU, default 0),
+alternates ntfslib and ntfs-3g order across at least five samples, emits raw
+CSV plus medians, never mounts, and preserves the fixture only on failure.
+
+The 2026-07-24 post-creation rerun (powersave governor with a 0.8 GHz
+floor, ~1.0 background load, NTFSLIB_BENCH_CPU=12, ntfs-3g 2022.10.3)
+reported medians of 788.14 versus 566.01 ops/s for directory enumeration
+(1.39x) and 4,398.32 versus 3,391.45 MiB/s for cached sequential reads
+(1.30x). The post-namespace nine-sample rerun the same day reported
+337.95 versus 270.55 ops/s (1.25x) and 2,813.39 versus 2,013.80 MiB/s
+(1.40x) under a post-build thermal sag; ntfslib led both metrics in
+every sample set. Absolute rates are frequency-limited and not comparable with the
+recorded boosted sample; the direction is unchanged. A CPU 0 run under the
+same governor showed launch-noise variance large enough to flip the
+directory ratio, so record governor and pin conditions with every sample.
+
+7.3 FUSE benchmark is diagnostic, not a core claim
+---------------------------------------------------
+
+Existing command:
+
+    TMPDIR=/var/tmp \
+    NTFSLIB_BENCH_ROOT=/home/ahmed/WorkDir/TTE \
+    sdk/lib/fslib/ntfslib_new/linux/tests/benchmark_fuse.sh \
+      /var/tmp/ntfslib-linux-release/fuse/ntfslib_fuse \
+      /var/tmp/ntfslib-linux-release/ntfslib_posix_bench
+
+The script validates entry counts and stream bytes, then reports listing,
+cached-read, and direct-I/O rows.
+
+Earlier FUSE context:
+
+* Directory caching can make ntfslib substantially faster.
+* Direct reads were approximately tied.
+* Cached reads were controlled mostly by the Linux kernel.
+* One older sample showed ntfs-3g 1.61x ahead on cached reads.
+
+These rows describe frontend/kernel behavior and must not override the
+mountless shared-core comparison.
+
+
+8. REMAINING CORE-FIRST ROADMAP
+===============================
+
+P0: Finish and validate file/directory creation
+-----------------------------------------------
+
+Done on 2026-07-24:
+
+* Compiled and ran the creation tranche under Release and ASan/UBSan.
+* Added the focused fresh-image test ntfslib_linux_create covering empty
+  file/directory creation, nested parents, duplicate names with NTFS
+  collation, illegal names, trailing separators, MFT bitmap allocation and
+  release, parent $I30 publication, parent timestamp updates, rollback
+  continuity, NTFS-3G visibility, and ntfsfix -n.
+* Implemented resident-root to index-allocation promotion.
+* Implemented leaf split, parent insertion, and root split (root push-down
+  at any depth), verified to 1,295 entries in one directory.
+
+Also done on 2026-07-24 (namespace tranche):
+
+* Initial $ATTRIBUTE_LIST creation wired into nonresident extension so
+  directory metadata leaves a full base record; verified to 5,000
+  entries per directory with chunked $MFT growth.
+* Directory entry removal for all tree shapes with END-only chain
+  release and bitmap release.
+* Deletion/unlink and empty-directory removal with full reclamation.
+* Rename/move with dual-parent and $FILE_NAME updates.
+* Hard-link creation/removal and link-count rules.
+
+Still open:
+
+* Merge/rebalance underfull index nodes beyond END-only chain release.
+* Wrap all multi-record creation/directory changes in future LFS transactions.
+
+P0: LFS journaling and recovery
+-------------------------------
+
+* Add log transaction begin/append/commit primitives.
+* Add restart-area version selection for NT4, 2000-2003, and Vista+ layouts.
+* Log MFT record changes.
+* Log $Bitmap changes.
+* Log directory index changes.
+* Log $ATTRIBUTE_LIST and extension-record publication.
+* Log $Secure changes.
+* Implement checkpoint writing.
+* Implement PerformFileSystemRecovery.
+* Implement clean shutdown.
+* Add fault injection at every multi-record publication step.
+* Verify replay and rollback after forced process/power-loss simulation.
+* Do not enable a writable FUSE or production ReactOS mount before this.
+
+P0: Security mutation
+---------------------
+
+* Create/replace self-relative security descriptors.
+* Maintain $Secure:$SDS.
+* Maintain $Secure:$SII.
+* Maintain $Secure:$SDH.
+* Maintain descriptor reference counts.
+* Maintain file SecurityId values.
+* Implement inheritance for newly created NTFS 3.x files/directories.
+* Register IRP_MJ_SET_SECURITY only after the shared transaction is safe.
+
+P1: Complete remaining attribute layouts
+----------------------------------------
+
+* Handle initial $ATTRIBUTE_LIST creation when the base record has neither
+  enough header room nor a safely movable resident ADS/security/EA pair.
+* Complete EA mutation when $EA_INFORMATION and $EA are split across owners.
+* Support multi-segment nonresident $EA.
+* Support EA suffix layouts followed by $PROPERTY_SET or
+  $LOGGED_UTILITY_STREAM.
+* Support sparse scalar preallocation.
+* Support sparse streams spanning $ATTRIBUTE_LIST extents.
+* Audit all STATUS_NOT_IMPLEMENTED exits in addattr.cpp, filedata.cpp,
+  ea.cpp, and reparse.cpp with explicit fixture coverage.
+* Add crash-atomic publication once LFS exists.
+
+P1: Remaining data formats
+--------------------------
+
+* EFS encrypted stream handling and key integration.
+* WOF WIM-provider data.
+* Cloud placeholders.
+* Other filter-owned payloads only when their format is known and validated.
+* Native NTFS/LZNT1 compressed writes.
+* Compressed sparse-unit mutation.
+* Preserve unknown reparse/external tags through the raw API without guessing.
+
+P1: Corruption and bad-cluster policy
+-------------------------------------
+
+* Replace fixup-mismatch assertions with bounded corruption returns.
+* Decide and implement $BadClus updates where safe.
+* Add malformed-image tests for every variable-length on-disk structure.
+* Add fuzzing for:
+  - file records
+  - attributes
+  - mapping pairs
+  - attribute lists
+  - index roots/buffers
+  - reparse buffers
+  - EA lists
+  - security descriptors
+  - compression tables
+  - WOF chunk tables
+  - LFS restart pages
+* Ensure disk-controlled input never reaches an assertion or unchecked
+  allocation calculation.
+
+P1: Portable per-volume environment
+-----------------------------------
+
+* Replace process-global disk state in km, um, and Linux environments with an
+  opaque context owned by Volume.
+* Finish moving the shared core away from direct ntifs.h dependence.
+* Replace POOL_TYPE in the portable contract with an environment-neutral
+  allocation hint.
+* Make metadata/show options per-volume.
+* Make volume caches explicitly synchronized.
+* Permit multiple volumes per process.
+* Permit safe multithreaded callers.
+* Implement the FreeLdr environment after the disk-context contract is stable.
+* Add an environment pageability assertion hook if required.
+
+P1: Core performance
+--------------------
+
+* Add the checked-in mountless benchmark_core.sh.
+* Benchmark cold open, warm open, exact lookup, full enumeration, resident
+  read, fragmented read, sparse read, compressed read, ADS read, and mutation
+  separately.
+* Report medians and raw samples.
+* Profile shared-core CPU/instruction/syscall counts, not FUSE page cache.
+* Add reusable/lookaside bounce buffers in env/km.
+* Read-modify-write only partial head/tail sectors; write aligned middle
+  sectors directly.
+* Bound directory enumeration memory on very large indexes.
+* Consider per-FCB directory/index caches in the ReactOS driver after cache
+  invalidation rules exist.
+
+P2: ReactOS driver completeness
+-------------------------------
+
+* Wire creation only after the shared creation transaction is verified.
+* Complete delete, rename, move, hard links, and directory change notification.
+* Implement SET_SECURITY after $Secure mutation.
+* Audit share access, oplocks, byte-range locks, caching, cleanup, and close.
+* Audit reparse traversal with real ReactOS object-manager integration.
+* Add boot/runtime tests on disposable VMs and images.
+* Test NTFS versions and geometry variants, including 4 KiB sectors.
+
+P2: Low-risk cleanup
+--------------------
+
+* Deduplicate the safe common tail of main-MFT and mirror-record loading while
+  preserving their different fallback semantics.
+* Convert ambient member-capturing macros into typed inline member functions.
+* Move LFS/USN on-disk structures into a dedicated internal header.
+* Migrate ReactOS directory formatting fully to the neutral directory-entry
+  API.
+* Remove or formalize bring-up-only debug tree dumping.
+* Keep CLEANUP_REPORT.md and ROADMAP.md synchronized with completed work.
+
+P3: FUSE/frontend work
+----------------------
+
+Only after the core items above:
+
+* Keep read-only mount behavior correct.
+* Add frontend mappings for core-supported metadata only when useful for
+  testing.
+* Avoid writable mounting until LFS recovery exists.
+* Do not spend core-development time chasing Linux page-cache benchmark noise.
+
+
+9. KNOWN HARD LIMITS
+====================
+
+* No journal transaction logging or replay.
+* No crash-safe writable mount.
+* One backing image/device per process in current environment glue.
+* No safe multithreaded shared-core use.
+* Directory removal never merges underfull nodes (END-only chains are
+  released); long-lived churn can leave sparse index buffers.
+* Security descriptor creation/update is unimplemented.
+* EFS is unsupported.
+* WOF WIM provider and cloud placeholders are unsupported.
+* Native compressed writes are unsupported.
+* Several rare listed EA/attribute layouts are unsupported.
+* Some sparse operations on listed streams are unsupported.
+* FreeLdr environment is unfinished.
+* $BadClus policy on fixup failure is unfinished.
+
+
+10. RECOMMENDED NEXT EXECUTION ORDER
+====================================
+
+Steps 1-10 of the previous order are complete: the creation tranche builds,
+create_smoke.sh (ntfslib_linux_create) passes with independent NTFS-3G
+verification, all 14 tests pass under Release and ASan/UBSan, the four
+ReactOS targets build, benchmark_core.sh is checked in, and the mountless
+benchmark was rerun with five alternating samples and medians. Directory
+splitting (resident-root promotion, leaf/parent/root splits) is implemented
+and verified.
+
+Next:
+
+1. Commit the creation, splitting, and namespace tranches (user
+   decision).
+2. Begin LFS transaction design before enabling any writable mount.
+3. Security mutation ($Secure SDS/SII/SDH) per the P0 list.
+4. Merge/rebalance underfull index nodes when churn warrants it.
+
+
+11. IMPORTANT SOURCE MAP
+========================
+
+Core public API:
+
+    include/public/ntfslib_new.h
+    include/public/ntfsattribdef.h
+    include/public/ntfsenv.h
+
+Core internal structures:
+
+    include/internal/ntfslib_new_internal.h
+
+Attribute parsing/layout:
+
+    src/filerecord/attributes/findattr.cpp
+    src/filerecord/attributes/addattr.cpp
+
+Data reads:
+
+    src/filerecord/read/copy.cpp
+    src/filerecord/read/allocation.cpp
+    src/filerecord/read/compression.cpp
+    src/filerecord/read/wof.cpp
+    src/filerecord/read/streams.cpp
+    src/filerecord/read/reparse.cpp
+    src/filerecord/read/ea.cpp
+    src/filerecord/read/security.cpp
+
+Data/metadata writes:
+
+    src/filerecord/write/basic.cpp
+    src/filerecord/write/create.cpp
+    src/filerecord/write/filedata.cpp
+    src/filerecord/write/filename.cpp
+    src/filerecord/write/reparse.cpp
+    src/filerecord/write/ea.cpp
+
+MFT:
+
+    src/mft/get.cpp
+    src/mft/mft.cpp
+    src/mft/create.cpp
+
+Directories:
+
+    src/btree/btree.cpp
+    src/btree/directory/directory.cpp
+    src/btree/directory/find.cpp
+    src/btree/directory/get.cpp
+    src/btree/directory/editdir.cpp
+
+Allocation/volume metadata:
+
+    src/volume/metadata/bitmap.cpp
+    src/volume/metadata/attrdef.cpp
+    src/volume/metadata/upcase.cpp
+    src/volume/metadata/volume.cpp
+
+LFS:
+
+    src/lfs/lfs.cpp
+
+ReactOS driver:
+
+    drivers/filesystems/ntfs_new/
+
+Native Linux test environment:
+
+    env/linux/
+    linux/CMakeLists.txt
+    linux/fuse/ntfslib_fuse.cpp
+    linux/tests/
+
+Detailed records:
+
+    CLEANUP_REPORT.md
+    ROADMAP.md
+    linux/README.md
+
+
+12. HANDOFF CHECKLIST
+=====================
+
+Before reporting a feature complete:
+
+[ ] Disk-controlled sizes and offsets are validated before pointer arithmetic.
+[ ] Arithmetic overflow is checked.
+[ ] Sequence numbers and base references are validated.
+[ ] VCN coverage is complete and ordered.
+[ ] Allocation ownership is explicit through commit and rollback.
+[ ] Old runs/records remain owned until replacement metadata is durable.
+[ ] Failure leaves the original record and bitmap state intact.
+[ ] Exact bytes match ntfscat or another independent implementation.
+[ ] Names/counts match ntfsls where applicable.
+[ ] Metadata matches ntfsinfo/ntfscluster/ntfssecaudit where applicable.
+[ ] ntfsfix -n passes.
+[ ] Release test passes.
+[ ] ASan/UBSan test passes.
+[ ] Full native CTest passes.
+[ ] ReactOS ntfslib_new, km, um, and ntfs.sys build.
+[ ] ROADMAP.md is updated.
+[ ] Performance results validate correctness before timing.
+[ ] FUSE-only behavior is not presented as shared-core performance.
+
+END OF SNAPSHOT
