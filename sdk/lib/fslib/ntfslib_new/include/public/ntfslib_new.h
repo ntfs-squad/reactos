@@ -479,6 +479,18 @@ NtfsFileRecordReadSecurityDescriptor(
     _Inout_ PULONG BufferLength);
 
 /*
+ * Replaces the file's security with a validated self-relative descriptor
+ * stored in the legacy per-file $SECURITY_DESCRIPTOR attribute and
+ * clears any $Secure SecurityId reference so the local value is
+ * authoritative for every reader.
+ */
+NTSTATUS
+NtfsFileRecordSetSecurityDescriptor(
+    _In_ NtfsFileRecord *FileRecord,
+    _In_reads_bytes_(BufferLength) const UCHAR* Buffer,
+    _In_ ULONG BufferLength);
+
+/*
  * Projects the entry at *Offset from a validated/raw $EA sequence and advances
  * *Offset. The first call uses offset zero; a call at the end returns
  * STATUS_NO_MORE_EAS.
@@ -489,6 +501,28 @@ NtfsGetNextExtendedAttribute(
     _In_ ULONG BufferLength,
     _Inout_ PULONG Offset,
     _Out_ PNtfsExtendedAttributeView View);
+
+/*
+ * LZNT1 codec for ordinary NTFS compression. Compress fails with
+ * STATUS_BUFFER_TOO_SMALL when the stream cannot fit OutputCapacity, so
+ * unit writers can bound it by the byte saving they require and fall
+ * back to raw storage.
+ */
+NTSTATUS
+NtfsLznt1Compress(
+    _In_ PUCHAR Input,
+    _In_ ULONG InputSize,
+    _Out_ PUCHAR Output,
+    _In_ ULONG OutputCapacity,
+    _Out_ PULONG FinalSize);
+
+NTSTATUS
+NtfsLznt1Decompress(
+    _Out_ PUCHAR Output,
+    _In_ ULONG OutputSize,
+    _In_ PUCHAR Input,
+    _In_ ULONG InputSize,
+    _Out_ PULONG FinalSize);
 
 NTSTATUS
 NtfsFileRecordWriteFileData(

@@ -529,8 +529,15 @@ FileRecord::DecodeDataRuns(_In_ PAttribute DataAttr)
         }
 
         RtlCopyMemory(&RunLength, DataRunPtr + 1, LengthSize);
-        if (RunLength == 0 || LogicalClusters > MaximumValue - RunLength)
+        /*
+         * Lengths share the signed variable-length encoding used by LCN
+         * deltas; Windows and NTFS-3G treat a stored negative as corrupt.
+         */
+        if (LONGLONG_SIGN_EXTEND((LONGLONG)RunLength, LengthSize) <= 0 ||
+            LogicalClusters > MaximumValue - RunLength)
+        {
             goto Corrupt;
+        }
 
         if (!IsSparse)
         {

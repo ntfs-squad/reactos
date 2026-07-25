@@ -20,19 +20,6 @@ NtfsUnnamedAttributeMayRepeat(_In_ AttributeType Type)
 }
 
 static ULONG
-UnsignedMappingBytes(_In_ ULONGLONG Value)
-{
-    ULONG Bytes = 1;
-
-    while (Bytes < sizeof(Value) &&
-           (Value >> (Bytes * 8)) != 0)
-    {
-        Bytes++;
-    }
-    return Bytes;
-}
-
-static ULONG
 SignedMappingBytes(_In_ LONGLONG Value)
 {
     for (ULONG Bytes = 1;
@@ -49,6 +36,18 @@ SignedMappingBytes(_In_ LONGLONG Value)
             return Bytes;
     }
     return sizeof(Value);
+}
+
+/*
+ * Run lengths use the same signed variable-length encoding as LCN deltas:
+ * a stored top byte with its high bit set decodes as a negative length,
+ * which Windows and NTFS-3G reject as corrupt. A positive length must
+ * therefore keep one spare high bit in its most significant stored byte.
+ */
+static ULONG
+LengthMappingBytes(_In_ ULONGLONG Value)
+{
+    return SignedMappingBytes((LONGLONG)Value);
 }
 
 static NTSTATUS
@@ -72,6 +71,7 @@ GetMappingPairsSize(_In_ PDataRun Runs,
         ULONG EntryBytes;
 
         if (Run->Length == 0 ||
+            Run->Length > MaximumPositive ||
             Clusters > ~(ULONGLONG)0 - Run->Length)
         {
             return STATUS_INVALID_PARAMETER;
@@ -80,7 +80,7 @@ GetMappingPairsSize(_In_ PDataRun Runs,
         if (Run->IsSparse)
         {
             EntryBytes =
-                1 + UnsignedMappingBytes(Run->Length);
+                1 + LengthMappingBytes(Run->Length);
         }
         else if (Run->LCN >= PreviousLCN)
         {
@@ -89,7 +89,7 @@ GetMappingPairsSize(_In_ PDataRun Runs,
                 return STATUS_FILE_TOO_LARGE;
             Delta = (LONGLONG)Difference;
             EntryBytes = 1 +
-                UnsignedMappingBytes(Run->Length) +
+                LengthMappingBytes(Run->Length) +
                 SignedMappingBytes(Delta);
         }
         else
@@ -99,7 +99,7 @@ GetMappingPairsSize(_In_ PDataRun Runs,
                 return STATUS_FILE_TOO_LARGE;
             Delta = -(LONGLONG)Difference;
             EntryBytes = 1 +
-                UnsignedMappingBytes(Run->Length) +
+                LengthMappingBytes(Run->Length) +
                 SignedMappingBytes(Delta);
         }
 
@@ -143,7 +143,7 @@ EncodeMappingPairs(_In_ PDataRun Runs,
                 : -(LONGLONG)(PreviousLCN - Run->LCN));
         ULONGLONG EncodedDelta = (ULONGLONG)Delta;
         ULONG LengthBytes =
-            UnsignedMappingBytes(Run->Length);
+            LengthMappingBytes(Run->Length);
         ULONG OffsetBytes = Run->IsSparse
             ? 0
             : SignedMappingBytes(Delta);
@@ -323,13 +323,16 @@ GetMappingPairEntrySize(
     ULONGLONG Difference;
     LONGLONG Delta;
 
-    if (!Run || !EntryBytes || Run->Length == 0)
+    if (!Run || !EntryBytes || Run->Length == 0 ||
+        Run->Length > MaximumPositive)
+    {
         return STATUS_INVALID_PARAMETER;
+    }
 
     if (Run->IsSparse)
     {
         *EntryBytes =
-            1 + UnsignedMappingBytes(Run->Length);
+            1 + LengthMappingBytes(Run->Length);
         return STATUS_SUCCESS;
     }
 
@@ -349,7 +352,7 @@ GetMappingPairEntrySize(
     }
 
     *EntryBytes =
-        1 + UnsignedMappingBytes(Run->Length) +
+        1 + LengthMappingBytes(Run->Length) +
         SignedMappingBytes(Delta);
     return STATUS_SUCCESS;
 }
@@ -2123,8 +2126,10 @@ FileRecord::BuildNonResidentMappingSegment(
     if (!NT_SUCCESS(Status))
         return Status;
     if (!Runs ||
-        (Flags & ~ATTR_SPARSE) != 0 ||
-        (Flags == ATTR_SPARSE &&
+        (Flags != 0 &&
+         Flags != ATTR_SPARSE &&
+         Flags != ATTR_COMPRESSED) ||
+        (Flags != 0 &&
          CompressionUnitSize != 4) ||
         (Flags == 0 &&
          CompressionUnitSize != 0) ||
@@ -2167,7 +2172,7 @@ FileRecord::BuildNonResidentMappingSegment(
     }
 
     DataRunsOffset = ALIGN_UP_BY(
-        (Flags == ATTR_SPARSE ? 0x48 : 0x40) +
+        (Flags != 0 ? 0x48 : 0x40) +
             NameBytes,
         sizeof(ULONGLONG));
     if (DataRunsOffset > MAXUSHORT ||
@@ -2203,7 +2208,7 @@ FileRecord::BuildNonResidentMappingSegment(
     TargetAttribute->NameLength = NameLength;
     TargetAttribute->NameOffset =
         NameBytes != 0
-        ? (Flags == ATTR_SPARSE ? 0x48 : 0x40)
+        ? (Flags != 0 ? 0x48 : 0x40)
         : 0;
     TargetAttribute->Flags = Flags;
     TargetAttribute->AttributeID = AttributeId;
@@ -2241,7 +2246,7 @@ FileRecord::BuildNonResidentMappingSegment(
     TargetAttribute->NonResident.DataSize = DataSize;
     TargetAttribute->NonResident.InitalizedDataSize =
         InitializedSize;
-    if (Flags == ATTR_SPARSE)
+    if (Flags != 0)
     {
         TargetAttribute->NonResident.CompressedDataSize =
             CompressedDataSize;
@@ -2346,6 +2351,7 @@ FileRecord::ReplaceNonResidentMappingPairs(
     USHORT CompressionUnitSize;
     BOOLEAN FoundFirstEntry = FALSE;
     BOOLEAN Sparse = FALSE;
+    BOOLEAN Compressed = FALSE;
     NTSTATUS Status;
 
     if (!TargetAttribute || !*TargetAttribute ||
@@ -2391,7 +2397,21 @@ FileRecord::ReplaceNonResidentMappingPairs(
     if (!NT_SUCCESS(Status))
         return Status;
     ClusterSize = BytesPerCluster(DiskVolume);
-    if ((Attribute->Flags & ~ATTR_SPARSE) != 0 ||
+    /*
+     * LZNT1-compressed streams keep their flag and 16-cluster unit grid
+     * through a mapping replacement; their allocation must stay
+     * unit-aligned. Other compression formats and combined flags remain
+     * unsupported.
+     */
+    Compressed =
+        (Attribute->Flags & ATTR_COMPRESSION_MASK) != 0;
+    if ((Compressed &&
+         (Attribute->Flags != ATTR_COMPRESSED ||
+          Attribute->NonResident.CompressionUnitSize != 4 ||
+          ClusterSize == 0 ||
+          AllocatedSize % (ClusterSize << 4) != 0)) ||
+        (!Compressed &&
+         (Attribute->Flags & ~ATTR_SPARSE) != 0) ||
         Attribute->NonResident.FirstVCN != 0 ||
         ClusterSize == 0 ||
         AllocatedSize == 0 ||
@@ -2420,9 +2440,11 @@ FileRecord::ReplaceNonResidentMappingPairs(
             PhysicalClusters += Run->Length;
         }
     }
-    Flags = Sparse ? ATTR_SPARSE : 0;
+    Flags = Compressed
+        ? ATTR_COMPRESSED
+        : (Sparse ? ATTR_SPARSE : 0);
     CompressionUnitSize =
-        Sparse ? 4 : 0;
+        Flags != 0 ? 4 : 0;
     if (PhysicalClusters >
         ~(ULONGLONG)0 / ClusterSize)
     {
@@ -2452,7 +2474,7 @@ FileRecord::ReplaceNonResidentMappingPairs(
                 Attribute->NameOffset);
     }
     DataRunsOffset = ALIGN_UP_BY(
-        (Flags == ATTR_SPARSE ? 0x48 : 0x40) +
+        (Flags != 0 ? 0x48 : 0x40) +
             NameBytes,
         sizeof(ULONGLONG));
     if (DataRunsOffset > MAXULONG -
@@ -2502,7 +2524,7 @@ FileRecord::ReplaceNonResidentMappingPairs(
             AllocatedSize,
             DataSize,
             InitializedSize,
-            Flags == ATTR_SPARSE
+            Flags != 0
                 ? CompressedDataSize
                 : 0);
         if (NT_SUCCESS(Status) && ResultOwner)
@@ -2528,7 +2550,7 @@ FileRecord::ReplaceNonResidentMappingPairs(
             AllocatedSize,
             DataSize,
             InitializedSize,
-            Flags == ATTR_SPARSE
+            Flags != 0
                 ? CompressedDataSize
                 : 0);
         if (NT_SUCCESS(Status) && ResultOwner)
@@ -2726,7 +2748,7 @@ FileRecord::ReplaceNonResidentMappingPairs(
             AllocatedSize,
             DataSize,
             InitializedSize,
-            Flags == ATTR_SPARSE
+            Flags != 0
                 ? CompressedDataSize
                 : 0);
         if (NT_SUCCESS(Status))
@@ -2831,7 +2853,7 @@ FileRecord::ReplaceNonResidentMappingPairs(
         AllocatedSize,
         DataSize,
         InitializedSize,
-        Flags == ATTR_SPARSE
+        Flags != 0
             ? CompressedDataSize
             : 0);
     FreeDataRun(Segment);

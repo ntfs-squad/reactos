@@ -2002,6 +2002,21 @@ RestoreResident:
          */
         BOOLEAN SparseFile =
             !!(TargetAttribute->Flags & ATTR_SPARSE);
+
+        if (AttrType == TypeData &&
+            (TargetAttribute->Flags &
+             ATTR_COMPRESSION_MASK) != 0)
+        {
+            Status = WriteCompressedData(
+                TargetAttribute,
+                Buffer,
+                Length,
+                (ULONGLONG)Offset->QuadPart);
+            if (NT_SUCCESS(Status))
+                *Length = RequestedLength;
+            return Status;
+        }
+
         if (!SparseFile &&
             AttrType == TypeData &&
             (TargetAttribute->Flags &
@@ -5286,6 +5301,274 @@ Done:
     FreeDataRun(ExistingRuns);
     delete[] OwnerRecordBackup;
     delete[] RecordBackup;
+    return Status;
+}
+
+/*
+ * Write into an LZNT1-compressed stream by rebuilding the complete unit
+ * grid: the current plaintext is materialized, patched, and recompressed
+ * unit by unit. A unit that saves at least one cluster stores its
+ * compressed form followed by a sparse tail; a unit that does not shrink
+ * stores all sixteen clusters raw, which is how readers distinguish the
+ * two. New clusters and their data become durable before the one-record
+ * mapping swap commits, and the old clusters are released only
+ * afterwards, so every intermediate state stays readable. The supported
+ * shape is deliberately narrow: a base-record attribute flagged exactly
+ * ATTR_COMPRESSED with a 16-cluster unit and a bounded stream size;
+ * everything else keeps the previous unsupported result.
+ */
+#define NTFS_COMPRESSED_WRITE_LIMIT (4ULL * 1024 * 1024)
+
+NTSTATUS
+FileRecord::WriteCompressedData(_In_ PAttribute TargetAttribute,
+                                _In_ PUCHAR Buffer,
+                                _In_ PULONG Length,
+                                _In_ ULONGLONG Offset)
+{
+    PDataRun OldPhysicalRuns = NULL;
+    PDataRun NewPhysicalRuns = NULL;
+    PDataRun NewPhysicalTail = NULL;
+    PDataRun CompositeRuns = NULL;
+    PDataRun CompositeTail = NULL;
+    PDataRun ExistingRuns;
+    PNonResidentMappingUpdate MappingUpdate = NULL;
+    PUCHAR Plain = NULL;
+    PUCHAR Stored = NULL;
+    PUCHAR RecordBackup = NULL;
+    ULONGLONG ClusterSize;
+    ULONGLONG UnitBytes;
+    ULONGLONG OldDataSize;
+    ULONGLONG NewDataSize;
+    ULONGLONG EndOffset;
+    ULONGLONG UnitCount;
+    ULONGLONG PhysicalBytes = 0;
+    ULONGLONG PlainBytes;
+    ULONG Remaining;
+    BOOLEAN Committed = FALSE;
+    NTSTATUS Status;
+    NTSTATUS ReleaseStatus;
+
+    if (!TargetAttribute || !Buffer || !Length || *Length == 0)
+        return STATUS_INVALID_PARAMETER;
+    ClusterSize = BytesPerCluster(DiskVolume);
+    UnitBytes = ClusterSize << 4;
+    OldDataSize = TargetAttribute->NonResident.DataSize;
+    if (Offset > ~(ULONGLONG)0 - *Length)
+        return STATUS_FILE_TOO_LARGE;
+    EndOffset = Offset + *Length;
+    NewDataSize = EndOffset > OldDataSize
+        ? EndOffset
+        : OldDataSize;
+
+    if (TargetAttribute->AttributeType != TypeData ||
+        !TargetAttribute->IsNonResident ||
+        TargetAttribute->Flags != ATTR_COMPRESSED ||
+        TargetAttribute->NonResident.CompressionUnitSize != 4 ||
+        TargetAttribute->NonResident.FirstVCN != 0 ||
+        GetAttributeOwner(TargetAttribute) != this ||
+        FindAttributeInRecord(TypeAttributeList, NULL, NULL) ||
+        ClusterSize == 0 ||
+        NewDataSize > NTFS_COMPRESSED_WRITE_LIMIT)
+    {
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    ExistingRuns = GetCachedDataRuns(TargetAttribute);
+    if (!ExistingRuns)
+        return STATUS_FILE_CORRUPT_ERROR;
+    Status = CloneAllocatedRuns(ExistingRuns, &OldPhysicalRuns);
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    UnitCount = (NewDataSize + UnitBytes - 1) / UnitBytes;
+    PlainBytes = UnitCount * UnitBytes;
+    Plain = new(PagedPool, TAG_NTFS) UCHAR[(ULONG)PlainBytes];
+    Stored = new(PagedPool, TAG_NTFS) UCHAR[(ULONG)UnitBytes];
+    if (!Plain || !Stored)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Done;
+    }
+    RtlZeroMemory(Plain, (ULONG)PlainBytes);
+
+    if (OldDataSize != 0)
+    {
+        Remaining = (ULONG)OldDataSize;
+        Status = CopyData(TypeData,
+                          NULL,
+                          Plain,
+                          &Remaining,
+                          0);
+        if (!NT_SUCCESS(Status) || Remaining != 0)
+        {
+            if (NT_SUCCESS(Status))
+                Status = STATUS_FILE_CORRUPT_ERROR;
+            goto Done;
+        }
+    }
+    RtlCopyMemory(Plain + Offset, Buffer, *Length);
+
+    for (ULONGLONG Unit = 0; Unit < UnitCount; Unit++)
+    {
+        PDataRun UnitRuns = NULL;
+        ULONGLONG UnitStart = Unit * UnitBytes;
+        ULONG UnitPlain = (ULONG)min(UnitBytes,
+                                     NewDataSize - UnitStart);
+        ULONG StoredSize = 0;
+        ULONG StoredClusters;
+        BOOLEAN Raw = FALSE;
+
+        Status = NtfsLznt1Compress(Plain + UnitStart,
+                                   UnitPlain,
+                                   Stored,
+                                   (ULONG)(UnitBytes - ClusterSize),
+                                   &StoredSize);
+        if (Status == STATUS_BUFFER_TOO_SMALL)
+        {
+            Raw = TRUE;
+            Status = STATUS_SUCCESS;
+        }
+        if (!NT_SUCCESS(Status))
+            goto Done;
+
+        if (Raw)
+        {
+            StoredClusters = 16;
+            RtlCopyMemory(Stored, Plain + UnitStart, UnitPlain);
+            RtlZeroMemory(Stored + UnitPlain,
+                          (ULONG)(UnitBytes - UnitPlain));
+        }
+        else
+        {
+            StoredClusters = (ULONG)
+                ((StoredSize + ClusterSize - 1) / ClusterSize);
+            RtlZeroMemory(Stored + StoredSize,
+                          (ULONG)(StoredClusters * ClusterSize -
+                                  StoredSize));
+        }
+
+        Status = DiskVolume->AllocateClusters(
+            0,
+            StoredClusters,
+            8,
+            &UnitRuns);
+        if (!NT_SUCCESS(Status))
+            goto Done;
+        Status = WriteRunBytes(DiskVolume,
+                               UnitRuns,
+                               0,
+                               Stored,
+                               StoredClusters * ClusterSize);
+        if (NT_SUCCESS(Status))
+        {
+            for (PDataRun Run = UnitRuns;
+                 Run && NT_SUCCESS(Status);
+                 Run = Run->NextRun)
+            {
+                Status = AppendLogicalRun(&CompositeRuns,
+                                          &CompositeTail,
+                                          FALSE,
+                                          Run->LCN,
+                                          Run->Length);
+            }
+        }
+        if (NT_SUCCESS(Status) && StoredClusters < 16)
+        {
+            Status = AppendLogicalRun(&CompositeRuns,
+                                      &CompositeTail,
+                                      TRUE,
+                                      0,
+                                      16 - StoredClusters);
+        }
+
+        /* The unit chain joins the rollback list either way; on failure
+         * every cluster allocated so far is released through it.
+         */
+        if (NewPhysicalTail)
+            NewPhysicalTail->NextRun = UnitRuns;
+        else
+            NewPhysicalRuns = UnitRuns;
+        NewPhysicalTail = UnitRuns;
+        while (NewPhysicalTail && NewPhysicalTail->NextRun)
+            NewPhysicalTail = NewPhysicalTail->NextRun;
+        if (!NT_SUCCESS(Status))
+            goto Done;
+        PhysicalBytes += (ULONGLONG)StoredClusters * ClusterSize;
+    }
+
+    RecordBackup =
+        new(PagedPool, TAG_FILE_RECORD) UCHAR[RecordBufferSize];
+    if (!RecordBackup)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Done;
+    }
+    RtlCopyMemory(RecordBackup, Data, RecordBufferSize);
+
+    Status = ReplaceNonResidentMappingPairs(
+        &TargetAttribute,
+        CompositeRuns,
+        UnitCount * UnitBytes,
+        NewDataSize,
+        NewDataSize,
+        &MappingUpdate,
+        NULL);
+    if (!NT_SUCCESS(Status))
+        goto Restore;
+    if (TargetAttribute->NonResident.CompressedDataSize !=
+        PhysicalBytes)
+    {
+        Status = STATUS_FILE_CORRUPT_ERROR;
+        goto Restore;
+    }
+
+    if (TargetAttribute->NameLength == 0)
+    {
+        Status = SynchronizeFileNameSizes(PhysicalBytes,
+                                          NewDataSize);
+        if (!NT_SUCCESS(Status))
+            goto Restore;
+    }
+
+    Status = PrepareAutomaticTimestamps(
+        AutomaticTimestampFieldsForAttribute(TypeData, TRUE),
+        NULL);
+    if (!NT_SUCCESS(Status))
+        goto Restore;
+
+    Status = MappingUpdate
+        ? CommitNonResidentMappingUpdate(&MappingUpdate)
+        : DiskVolume->MFT->WriteFileRecordToMFT(this);
+    if (!NT_SUCCESS(Status))
+        goto Restore;
+
+    ClearDataRunCache();
+    Committed = TRUE;
+
+    ReleaseStatus = STATUS_SUCCESS;
+    if (OldPhysicalRuns)
+        ReleaseStatus = DiskVolume->ReleaseClusters(OldPhysicalRuns);
+    Status = ReleaseStatus;
+    goto Done;
+
+Restore:
+    if (!Committed)
+    {
+        AbortNonResidentMappingUpdate(&MappingUpdate);
+        RtlCopyMemory(Data, RecordBackup, RecordBufferSize);
+        Header = reinterpret_cast<PFileRecordHeader>(Data);
+        ClearDataRunCache();
+    }
+
+Done:
+    if (!Committed && NewPhysicalRuns)
+        (void)DiskVolume->ReleaseClusters(NewPhysicalRuns);
+    FreeDataRun(OldPhysicalRuns);
+    FreeDataRun(NewPhysicalRuns);
+    FreeDataRun(CompositeRuns);
+    delete[] RecordBackup;
+    delete[] Plain;
+    delete[] Stored;
     return Status;
 }
 

@@ -165,6 +165,272 @@ NtfsDecompressLznt1(
 }
 #endif
 
+#define NTFS_LZNT1_HASH_BUCKETS 4096
+#define NTFS_LZNT1_CHAIN_LIMIT 64
+#define NTFS_LZNT1_MINIMUM_MATCH 3
+
+typedef struct LZNT1_ENCODER_SCRATCH
+{
+    USHORT Head[NTFS_LZNT1_HASH_BUCKETS];
+    USHORT Chain[NTFS_LZNT1_CHUNK_SIZE];
+    UCHAR Payload[NTFS_LZNT1_CHUNK_SIZE +
+                  NTFS_LZNT1_CHUNK_SIZE / 8 + 2];
+} LZNT1_ENCODER_SCRATCH, *PLZNT1_ENCODER_SCRATCH;
+
+static ULONG
+Lznt1Hash(_In_ const UCHAR* Bytes)
+{
+    UINT32 Value = (UINT32)Bytes[0] |
+                   ((UINT32)Bytes[1] << 8) |
+                   ((UINT32)Bytes[2] << 16);
+
+    /* 32-bit multiplicative hash; ULONG is wider than 32 bits on some
+     * host platforms, so the width is pinned explicitly.
+     */
+    return (ULONG)((UINT32)(Value * (UINT32)0x9e3779b1u) >> 20) &
+           (NTFS_LZNT1_HASH_BUCKETS - 1);
+}
+
+/*
+ * Encode the LZNT1 stream used by ordinary NTFS compression. Chunks are
+ * independent and cover at most 4 KiB of plain data; each carries the
+ * 0x3000 signature header with the stored size biased by one, and
+ * compressed chunks add 0x8000. Back-reference tokens split their 16
+ * bits between displacement and length by the same position rule the
+ * decoder applies, so the split must be computed before each token from
+ * the bytes already produced in the chunk. A chunk that does not shrink
+ * is stored raw. The caller bounds the whole stream with OutputCapacity;
+ * exceeding it returns STATUS_BUFFER_TOO_SMALL so unit writers can fall
+ * back to the uncompressed form when no cluster would be saved.
+ */
+NTSTATUS
+NtfsCompressLznt1(
+    _In_ PUCHAR Input,
+    _In_ ULONG InputSize,
+    _Out_ PUCHAR Output,
+    _In_ ULONG OutputCapacity,
+    _Out_ PULONG FinalSize)
+{
+    PLZNT1_ENCODER_SCRATCH Scratch;
+    ULONG InputOffset = 0;
+    ULONG OutputOffset = 0;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    if (!Input || !Output || !FinalSize || InputSize == 0)
+        return STATUS_INVALID_PARAMETER;
+    *FinalSize = 0;
+
+    Scratch = new(PagedPool, TAG_NTFS) LZNT1_ENCODER_SCRATCH();
+    if (!Scratch)
+        return STATUS_INSUFFICIENT_RESOURCES;
+
+    while (InputOffset < InputSize)
+    {
+        const UCHAR* Chunk = Input + InputOffset;
+        ULONG ChunkSize = min((ULONG)NTFS_LZNT1_CHUNK_SIZE,
+                              InputSize - InputOffset);
+        ULONG Position = 0;
+        ULONG PayloadSize = 0;
+        ULONG FlagOffset = 0;
+        ULONG TokenIndex = 8;
+        USHORT Header;
+
+        RtlZeroMemory(Scratch->Head, sizeof(Scratch->Head));
+
+        while (Position < ChunkSize &&
+               PayloadSize < ChunkSize)
+        {
+            ULONG DisplacementBits;
+            ULONG MaximumLength;
+            ULONG BestLength = 0;
+            ULONG BestDisplacement = 0;
+
+            if (TokenIndex == 8)
+            {
+                FlagOffset = PayloadSize;
+                if (PayloadSize >= ChunkSize)
+                    break;
+                Scratch->Payload[PayloadSize++] = 0;
+                TokenIndex = 0;
+            }
+
+            for (DisplacementBits = 12;
+                 DisplacementBits > 4;
+                 DisplacementBits--)
+            {
+                if ((1UL << (DisplacementBits - 1)) < Position)
+                    break;
+            }
+            MaximumLength =
+                ((1UL << (16 - DisplacementBits)) - 1) +
+                NTFS_LZNT1_MINIMUM_MATCH;
+            if (MaximumLength > ChunkSize - Position)
+                MaximumLength = ChunkSize - Position;
+
+            if (Position + NTFS_LZNT1_MINIMUM_MATCH <= ChunkSize)
+            {
+                ULONG Candidate =
+                    Scratch->Head[Lznt1Hash(Chunk + Position)];
+                ULONG Steps = 0;
+
+                while (Candidate != 0 &&
+                       Steps < NTFS_LZNT1_CHAIN_LIMIT)
+                {
+                    ULONG MatchStart = Candidate - 1;
+                    ULONG Displacement = Position - MatchStart;
+                    ULONG Length = 0;
+
+                    if (Displacement > (1UL << DisplacementBits))
+                        break;
+
+                    while (Length < MaximumLength &&
+                           Chunk[MatchStart + Length] ==
+                               Chunk[Position + Length])
+                    {
+                        Length++;
+                    }
+                    if (Length > BestLength)
+                    {
+                        BestLength = Length;
+                        BestDisplacement = Displacement;
+                        if (Length == MaximumLength)
+                            break;
+                    }
+                    Candidate = Scratch->Chain[MatchStart];
+                    Steps++;
+                }
+            }
+
+            if (BestLength >= NTFS_LZNT1_MINIMUM_MATCH)
+            {
+                USHORT Token = (USHORT)
+                    (((BestDisplacement - 1) <<
+                      (16 - DisplacementBits)) |
+                     (BestLength - NTFS_LZNT1_MINIMUM_MATCH));
+
+                if (PayloadSize + sizeof(USHORT) > ChunkSize)
+                    break;
+                Scratch->Payload[FlagOffset] |=
+                    (UCHAR)(1 << TokenIndex);
+                Scratch->Payload[PayloadSize++] =
+                    (UCHAR)Token;
+                Scratch->Payload[PayloadSize++] =
+                    (UCHAR)(Token >> 8);
+
+                while (BestLength--)
+                {
+                    if (Position + NTFS_LZNT1_MINIMUM_MATCH <=
+                        ChunkSize)
+                    {
+                        ULONG Bucket = Lznt1Hash(Chunk + Position);
+
+                        Scratch->Chain[Position] =
+                            Scratch->Head[Bucket];
+                        Scratch->Head[Bucket] =
+                            (USHORT)(Position + 1);
+                    }
+                    Position++;
+                }
+            }
+            else
+            {
+                if (PayloadSize >= ChunkSize)
+                    break;
+                if (Position + NTFS_LZNT1_MINIMUM_MATCH <= ChunkSize)
+                {
+                    ULONG Bucket = Lznt1Hash(Chunk + Position);
+
+                    Scratch->Chain[Position] =
+                        Scratch->Head[Bucket];
+                    Scratch->Head[Bucket] =
+                        (USHORT)(Position + 1);
+                }
+                Scratch->Payload[PayloadSize++] = Chunk[Position++];
+            }
+            TokenIndex++;
+        }
+
+        if (Position == ChunkSize && PayloadSize < ChunkSize)
+        {
+            /* The chunk shrank: emit it compressed. */
+            if (OutputOffset + sizeof(USHORT) + PayloadSize >
+                OutputCapacity)
+            {
+                Status = STATUS_BUFFER_TOO_SMALL;
+                break;
+            }
+            Header = (USHORT)(0xb000 | (PayloadSize - 1));
+            Output[OutputOffset++] = (UCHAR)Header;
+            Output[OutputOffset++] = (UCHAR)(Header >> 8);
+            RtlCopyMemory(Output + OutputOffset,
+                          Scratch->Payload,
+                          PayloadSize);
+            OutputOffset += PayloadSize;
+        }
+        else
+        {
+            /* No gain: store the chunk raw. */
+            if (OutputOffset + sizeof(USHORT) + ChunkSize >
+                OutputCapacity)
+            {
+                Status = STATUS_BUFFER_TOO_SMALL;
+                break;
+            }
+            Header = (USHORT)(0x3000 | (ChunkSize - 1));
+            Output[OutputOffset++] = (UCHAR)Header;
+            Output[OutputOffset++] = (UCHAR)(Header >> 8);
+            RtlCopyMemory(Output + OutputOffset, Chunk, ChunkSize);
+            OutputOffset += ChunkSize;
+        }
+        InputOffset += ChunkSize;
+    }
+
+    delete Scratch;
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    /* A terminating zero header is conventional when it fits. */
+    if (OutputOffset + sizeof(USHORT) <= OutputCapacity)
+    {
+        Output[OutputOffset++] = 0;
+        Output[OutputOffset++] = 0;
+    }
+    *FinalSize = OutputOffset;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+NtfsLznt1Compress(
+    _In_ PUCHAR Input,
+    _In_ ULONG InputSize,
+    _Out_ PUCHAR Output,
+    _In_ ULONG OutputCapacity,
+    _Out_ PULONG FinalSize)
+{
+    return NtfsCompressLznt1(Input,
+                             InputSize,
+                             Output,
+                             OutputCapacity,
+                             FinalSize);
+}
+
+NTSTATUS
+NtfsLznt1Decompress(
+    _Out_ PUCHAR Output,
+    _In_ ULONG OutputSize,
+    _In_ PUCHAR Input,
+    _In_ ULONG InputSize,
+    _Out_ PULONG FinalSize)
+{
+    if (!Input || !Output || !FinalSize)
+        return STATUS_INVALID_PARAMETER;
+    return NtfsDecompressLznt1(Output,
+                               OutputSize,
+                               Input,
+                               InputSize,
+                               FinalSize);
+}
+
 static NTSTATUS
 ReadCompressionUnit(
     _In_ PVolume DiskVolume,

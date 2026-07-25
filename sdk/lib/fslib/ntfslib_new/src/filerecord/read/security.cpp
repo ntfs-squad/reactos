@@ -198,6 +198,105 @@ ValidateSecurityDescriptor(_In_ const UCHAR* Descriptor,
     return TRUE;
 }
 
+/*
+ * Replace the file's security with a validated self-relative descriptor
+ * stored in the legacy per-file $SECURITY_DESCRIPTOR attribute. Clearing
+ * SecurityId makes the local value authoritative for every reader
+ * (including NTFS-3G and this library's own lookup order), because the
+ * volume-wide $Secure reference only applies while the id is nonzero.
+ * Maintaining the NTFS 3.x $Secure SDS/SII/SDH indexes for a canonical
+ * shared descriptor remains future work.
+ */
+NTSTATUS
+FileRecord::SetSecurityDescriptor(
+    _In_reads_bytes_(BufferLength) const UCHAR* Buffer,
+    _In_ ULONG BufferLength)
+{
+    PAttribute SecurityAttribute;
+    PAttribute StandardAttribute;
+    PStandardInformationEx Standard;
+    PUCHAR RecordBackup = NULL;
+    BOOLEAN Committed = FALSE;
+    NTSTATUS Status;
+
+    if (!Buffer || BufferLength == 0)
+        return STATUS_INVALID_PARAMETER;
+    if (!DiskVolume)
+        return STATUS_INVALID_DEVICE_STATE;
+    if (DiskVolume->IsReadOnly)
+        return STATUS_ACCESS_DENIED;
+    if (FindAttributeInRecord(TypeAttributeList, NULL, NULL))
+        return STATUS_NOT_IMPLEMENTED;
+    if (!ValidateSecurityDescriptor(Buffer, BufferLength))
+        return STATUS_INVALID_PARAMETER;
+
+    RecordBackup =
+        new(PagedPool, TAG_FILE_RECORD) UCHAR[RecordBufferSize];
+    if (!RecordBackup)
+        return STATUS_INSUFFICIENT_RESOURCES;
+    RtlCopyMemory(RecordBackup, Data, RecordBufferSize);
+
+    SecurityAttribute = FindAttributeInRecord(
+        TypeSecurityDescriptor,
+        NULL,
+        NULL);
+    if (SecurityAttribute &&
+        SecurityAttribute->IsNonResident)
+    {
+        Status = STATUS_NOT_IMPLEMENTED;
+        goto Restore;
+    }
+    if (!SecurityAttribute)
+    {
+        Status = InsertResidentAttribute(
+            TypeSecurityDescriptor,
+            NULL,
+            &SecurityAttribute);
+        if (!NT_SUCCESS(Status))
+            goto Restore;
+    }
+    Status = ReplaceResidentData(SecurityAttribute,
+                                 Buffer,
+                                 BufferLength);
+    if (!NT_SUCCESS(Status))
+        goto Restore;
+
+    Status = GetStandardInformationForUpdate(
+        &StandardAttribute,
+        &Standard);
+    if (!NT_SUCCESS(Status))
+        goto Restore;
+    /* V1 $STANDARD_INFORMATION predates SecurityId; only the NTFS 3.x
+     * form carries the field to clear.
+     */
+    if (StandardAttribute->Resident.DataLength >=
+        FIELD_OFFSET(StandardInformationEx, SecurityId) +
+            sizeof(UINT32))
+    {
+        Standard->SecurityId = 0;
+    }
+
+    Status = PrepareAutomaticTimestamps(
+        NTFS_BASIC_INFO_CHANGE_TIME,
+        NULL);
+    if (!NT_SUCCESS(Status))
+        goto Restore;
+    Status = DiskVolume->MFT->WriteFileRecordToMFT(this);
+    if (!NT_SUCCESS(Status))
+        goto Restore;
+    Committed = TRUE;
+
+Restore:
+    if (!Committed)
+    {
+        RtlCopyMemory(Data, RecordBackup, RecordBufferSize);
+        Header = reinterpret_cast<PFileRecordHeader>(Data);
+        ClearDataRunCache();
+    }
+    delete[] RecordBackup;
+    return Status;
+}
+
 static ULONG
 SecurityDescriptorHash(_In_ const UCHAR* Descriptor,
                        _In_ ULONG DescriptorLength)

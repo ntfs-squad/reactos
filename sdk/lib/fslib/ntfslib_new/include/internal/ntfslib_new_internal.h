@@ -704,6 +704,11 @@ public:
         _In_reads_(UpdateCount)
             const NtfsExtendedAttributeUpdate* Updates,
         _In_ ULONG UpdateCount);
+    NTSTATUS
+    SetSecurityDescriptor(
+        _In_reads_bytes_(BufferLength) const UCHAR* Buffer,
+        _In_ ULONG BufferLength);
+
     NTSTATUS ReadSecurityDescriptor(
         _In_opt_ PUCHAR Buffer,
         _Inout_ PULONG BufferLength);
@@ -1101,6 +1106,12 @@ private:
                     _In_ PUCHAR Buffer,
                     _In_ PULONG Length,
                     _In_ ULONGLONG Offset);
+
+    NTSTATUS
+    WriteCompressedData(_In_ PAttribute TargetAttribute,
+                        _In_ PUCHAR Buffer,
+                        _In_ PULONG Length,
+                        _In_ ULONGLONG Offset);
 } *PFileRecord;
 
 struct FileRecordExtentCacheEntry

@@ -249,6 +249,19 @@ NtfsFileRecordReadSecurityDescriptor(
 }
 
 NTSTATUS
+NtfsFileRecordSetSecurityDescriptor(
+    _In_ PNtfsFileRecord Fr,
+    _In_reads_bytes_(BufferLength) const UCHAR* Buffer,
+    _In_ ULONG BufferLength)
+{
+    if (!Fr)
+        return STATUS_INVALID_PARAMETER;
+    return reinterpret_cast<PFileRecord>(Fr)->SetSecurityDescriptor(
+        Buffer,
+        BufferLength);
+}
+
+NTSTATUS
 NtfsFileRecordWriteFileData(
     _In_ PNtfsFileRecord Fr,
     _In_ AttributeType AttrType,
