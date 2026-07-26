@@ -503,6 +503,9 @@ public:
                                          _Out_ PFileRecord* TargetFile,
                                          _Out_ PAttribute* TargetAttribute);
 
+    // NTSTATUS
+    // GetMftInfo(_In_ );
+
 private:
     PVolume DiskVolume;
     UINT64 MFTLCN;

@@ -202,6 +202,7 @@ int wmain(int argc, wchar_t* argv[])
     const BOOL NoBanner = (argc > 1) && (_wcsicmp(argv[1], L"-nobanner") == 0);
     ULONG BytesPerSector;
     PNtfsVolume VolumeObject;
+    PNtfsMasterFileTable Mft;
     PBootSector BootSector;
     // TODO: Maybe this should go in NtfsProbePartition?
     PUCHAR BootSectorData;
@@ -264,9 +265,16 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
-    // TODO: What we probably want is one call to get this info
-    // Maybe: NTSTATUS NtfsVolumeGetInfo(PNtfsVolume, &InfoStruct)?
+    /* TODO: What we probably want is a couple calls to get this info
+     * Maybe:
+     *    NTSTATUS NtfsVolumeGetInfo(PNtfsVolume, &InfoStruct);
+     *    NTSTATUS NtfsMasterFileTableGetInfo(PNtfsMasterFileTable, &InfoStruct2);
+     *
+     */
+
     BootSector = (PBootSector)BootSectorData;
+    Mft = NtfsVolumeGetMft(VolumeObject);
+
     NtfsInformation.VolumeSize = BootSector->SectorsInVolume * BytesPerSector;
     NtfsInformation.SectorsPerCluster = BootSector->SectorsPerCluster;
     NtfsInformation.TotalClusters = BootSector->SectorsInVolume / BootSector->SectorsPerCluster;
@@ -278,7 +286,7 @@ int wmain(int argc, wchar_t* argv[])
     NtfsInformation.MftStartCluster = 0;
     NtfsInformation.MftZoneStartCluster = 0;
     NtfsInformation.MftZoneEndCluster = 0;
-    NtfsInformation.MftMirrorStartCluster = 0;  
+    NtfsInformation.MftMirrorStartCluster = 0;
     NtfsInformation._MftSize = 0;
     NtfsInformation._MftMirrSize = 0;
     NtfsInformation._LogFileSize = 0;

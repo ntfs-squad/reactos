@@ -144,6 +144,14 @@ typedef struct
     IndexNodeHeader IndexHeader;
 } IndexBuffer, *PIndexBuffer;
 
+typedef struct _MasterFileTableInfo
+{
+    UINT64 MFTLCN;
+    UINT64 MFTMirrLCN;
+    UINT8  ZoneReservationMultiplier;
+} MasterFileTableInfo, *PMasterFileTableInfo;
+
+
 // =========================
 // NTFS C API
 // =========================
