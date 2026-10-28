@@ -1,0 +1,5 @@
+list(APPEND SOURCE ntfsinfo.c ntfsinfo.rc)
+add_executable(ntfsinfo_old ${SOURCE})
+set_module_type(ntfsinfo_old win32cui UNICODE)
+add_importlibs(ntfsinfo_old msvcrt kernel32 ntdll)
+add_cd_file(TARGET ntfsinfo_old DESTINATION reactos/system32 FOR all)
