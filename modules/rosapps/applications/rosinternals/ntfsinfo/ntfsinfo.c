@@ -1,212 +1,302 @@
-/*
- * COPYRIGHT:       See COPYING in the top level directory
- * PROJECT:         ReactOS NTFS Information tool
- * FILE:            cmdutils/ntfsinfo/ntfsinfo.c
- * PURPOSE:         Query information from NTFS volume using FSCTL
- * PROGRAMMERS:     Pierre Schweitzer <pierre@reactos.org>
- */
+
 
 #include <windows.h>
-#include <tchar.h>
 #include <stdio.h>
+#include <wchar.h>
+#include <ntfs_um.h>
+#include <ntfslib_new.h>
+// Hack: We shouldn't be defining this here.
+#ifndef NT_SUCCESS
+#define NT_SUCCESS(Status) ((Status) >= 0)
+#endif
 
-typedef struct
+typedef struct _NTFS_INFORMATION
 {
-    ULONG Type;
-    USHORT UsaOffset;
-    USHORT UsaCount;
-    ULONGLONG Lsn;
-} NTFS_RECORD_HEADER, *PNTFS_RECORD_HEADER;
-
-#define NRH_FILE_TYPE  0x454C4946
-#define ATTRIBUTE_TYPE_DATA 0x80
-#define ATTRIBUTE_TYPE_END 0xFFFFFFFF
-
-typedef struct _FILE_RECORD_HEADER
-{
-    NTFS_RECORD_HEADER Ntfs;
-    USHORT SequenceNumber;
-    USHORT LinkCount;
-    USHORT AttributeOffset;
-    USHORT Flags;
-    ULONG BytesInUse;
-    ULONG BytesAllocated;
-    ULONGLONG BaseFileRecord;
-    USHORT NextAttributeNumber;
-} FILE_RECORD_HEADER, *PFILE_RECORD_HEADER;
-
-typedef struct
-{
-    ULONG Type;
-    ULONG Length;
-    UCHAR IsNonResident;
-    UCHAR NameLength;
-    USHORT NameOffset;
-    USHORT Flags;
-    USHORT Instance;
-    union
-    {
-        struct
-        {
-            ULONG ValueLength;
-            USHORT ValueOffset;
-            UCHAR Flags;
-            UCHAR Reserved;
-        } Resident;
-        struct
-        {
-            ULONGLONG LowestVCN;
-            ULONGLONG HighestVCN;
-            USHORT MappingPairsOffset;
-            USHORT CompressionUnit;
-            UCHAR Reserved[4];
-            LONGLONG AllocatedSize;
-            LONGLONG DataSize;
-            LONGLONG InitializedSize;
-            LONGLONG CompressedSize;
-        } NonResident;
-    };
-} NTFS_ATTR_RECORD, *PNTFS_ATTR_RECORD;
-
-static TCHAR * MetaDataFiles[] = {
-    _T("$MFT\t\t"),
-    _T("$MFTMirr\t"),
-    _T("$LogFile\t"),
-    _T("$Volume\t\t"),
-    _T("$AttrDef\t"),
-    _T("."),
-    _T("$Bitmap\t\t"),
-    _T("$Boot\t\t"),
-    _T("$BadClus\t"),
-    _T("$Quota\t\t"),
-    _T("$UpCase\t\t"),
-    _T("$Extended\t"),
-    NULL,
-};
-
-int
-__cdecl
-_tmain(int argc, const TCHAR *argv[])
-{
-    TCHAR VolumeName[] = _T("\\\\.\\C:");
-    HANDLE VolumeHandle;
-    NTFS_VOLUME_DATA_BUFFER VolumeInfo;
-    DWORD LengthReturned;
     ULONGLONG VolumeSize;
-    ULONGLONG MftClusters;
-    UINT File = 0;
-    PNTFS_FILE_RECORD_OUTPUT_BUFFER OutputBuffer;
+    ULONG SectorsPerCluster;
+    ULONGLONG TotalClusters;
+    LARGE_INTEGER FreeClusters;
+    ULONG BytesPerSector;
+    ULONG BytesPerCluster;
+    LONG  ClustersPerMftRecord;
+    ULONGLONG MftSize;
+    ULONGLONG MftStartCluster;
+    ULONGLONG MftZoneStartCluster;
+    ULONGLONG MftZoneEndCluster;
+    ULONGLONG MftMirrorStartCluster;
+    ULONGLONG _MftSize;
+    ULONGLONG _MftMirrSize;
+    ULONGLONG _LogFileSize;
+    ULONGLONG _VolumeSize;
+    ULONGLONG _AttrDefSize;
+    ULONGLONG _DotSize;
+    ULONGLONG _BitmapSize;
+    ULONGLONG _BootSize;
+    ULONGLONG _BadClusSize;
+    ULONGLONG _UpCaseSize;
+} NTFS_INFORMATION, *PNTFS_INFORMATION;
 
-    if (argc > 1)
+void PrintBanner()
+{
+    printf("\nNtfsInfo v1.0 - NTFS Information Dump\n");
+    printf("Copyright (C) 2026 Carl Bialorucki\n");
+    printf("ReactOS - reactos.org\n\n");
+}
+
+void PrintUsage()
+{
+    printf("Usage: ntfsinfo [-nobanner] <volume>\n");
+    printf("-nobanner    Do not display the startup banner and copyright message.\n\n");
+    printf("Volume formats:\n");
+    printf("    %-32sDrive letter\n", "C:");
+    printf("    %-32sNT native path\n", "\\Device\\Harddisk0\\Partition1");
+}
+
+void PrintTableHeader(const char* header)
+{
+    unsigned int width = strlen(header);
+
+    printf("\n%s\n", header);
+    for (unsigned int i = 0; i < width; i++)
+        putchar('-');
+    putchar('\n');
+}
+
+void PrintRow(const char* label, const char* value)
+{
+    printf("%-23s: %s\n", label, value);
+}
+
+char* FormatSize(ULONGLONG size)
+{
+    static char buffer[50];
+    if (size < 1024)
+        sprintf(buffer, "%llu B", size);
+    else if (size < 1024 * 1024)
+        sprintf(buffer, "%llu KB", size / 1024);
+    else if (size < 1024ull * 1024 * 1024)
+        sprintf(buffer, "%llu MB", size / (1024 * 1024));
+    else if (size < 1024ull * 1024 * 1024 * 1024)
+        sprintf(buffer, "%llu GB", size / (1024 * 1024 * 1024));
+    else
+        sprintf(buffer, "%llu TB", size / (1024ull * 1024 * 1024 * 1024));
+    return buffer;
+}
+
+char* FormatSizeWithPercentDrive(ULONGLONG size, ULONGLONG total)
+{
+    static char buffer[100];
+    sprintf(buffer, "%s (%llu%% of drive)", FormatSize(size), (size * 100) / total);
+    return buffer;
+}
+
+char* FormatNumberEx(ULONGLONG Number, const char* Format)
+{
+    static char buffer[50];
+    sprintf(buffer, Format, Number);
+    return buffer;
+}
+
+char* FormatNumber(ULONGLONG Number)
+{
+    return FormatNumberEx(Number, "%llu");
+}
+
+char* FormatRange(ULONGLONG Number1, ULONGLONG Number2)
+{
+    static char buffer[50];
+    sprintf(buffer, "%llu - %llu", Number1, Number2);
+    return buffer;
+}
+
+void PrintNtfsInformation(PNTFS_INFORMATION NtfsInformation)
+{
+    PrintTableHeader("Volume size");
+    PrintRow("Volume size", FormatSize(NtfsInformation->VolumeSize));
+    PrintRow("Total sectors", FormatNumber(NtfsInformation->SectorsPerCluster * NtfsInformation->TotalClusters));
+    PrintRow("Total clusters", FormatNumber(NtfsInformation->TotalClusters));
+    PrintRow("Free clusters", FormatNumber(NtfsInformation->FreeClusters.QuadPart));
+    PrintRow("Free space", FormatSizeWithPercentDrive(NtfsInformation->FreeClusters.QuadPart
+                                                      * NtfsInformation->BytesPerCluster,
+                                                      NtfsInformation->VolumeSize));
+
+    PrintTableHeader("Allocation size");
+    PrintRow("Bytes per sector", FormatNumber(NtfsInformation->BytesPerSector));
+    PrintRow("Bytes per cluster", FormatNumber(NtfsInformation->BytesPerCluster));
+    ULONG FileRecordSize = NtfsInformation->ClustersPerMftRecord < 0 ?
+                           1 << (-(NtfsInformation->ClustersPerMftRecord))
+                           : NtfsInformation->ClustersPerMftRecord * (NtfsInformation->SectorsPerCluster * NtfsInformation->BytesPerSector);
+    PrintRow("Bytes per MFT record", FormatNumber(FileRecordSize));
+    PrintRow("Clusters per MFT record", FormatNumberEx(NtfsInformation->ClustersPerMftRecord, "%ld"));
+
+    PrintTableHeader("MFT information");
+    PrintRow("MFT size", FormatSizeWithPercentDrive(NtfsInformation->MftSize, NtfsInformation->VolumeSize));
+    PrintRow("MFT start cluster", FormatNumber(NtfsInformation->MftStartCluster));
+    PrintRow("MFT zone clusters", FormatRange(NtfsInformation->MftZoneStartCluster,
+                                              NtfsInformation->MftZoneEndCluster));
+    PrintRow("MFT zone size", FormatSizeWithPercentDrive(NtfsInformation->MftZoneEndCluster - NtfsInformation->MftZoneStartCluster,
+                                                         NtfsInformation->TotalClusters));
+    PrintRow("MFT mirror start", FormatNumber(NtfsInformation->MftMirrorStartCluster));
+
+    PrintTableHeader("Metadata files");
+    PrintRow("$MFT", FormatSize(NtfsInformation->_MftSize));
+    PrintRow("$MFTMirr", FormatSize(NtfsInformation->_MftMirrSize));
+    PrintRow("$LogFile", FormatSize(NtfsInformation->_LogFileSize));
+    PrintRow("$Volume", FormatSize(NtfsInformation->_VolumeSize));
+    PrintRow("$AttrDef", FormatSize(NtfsInformation->_AttrDefSize));
+    PrintRow(".", FormatSize(NtfsInformation->_DotSize));
+    PrintRow("$Bitmap", FormatSize(NtfsInformation->_BitmapSize));
+    PrintRow("$Boot", FormatSize(NtfsInformation->_BootSize));
+    PrintRow("$BadClus", FormatSize(NtfsInformation->_BadClusSize));
+    PrintRow("$UpCase", FormatSize(NtfsInformation->_UpCaseSize));
+}
+
+void PrintLastError(const char* Prefix)
+{
+    DWORD Error = GetLastError();
+    LPSTR MessageBuffer = NULL;
+    FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
+                   NULL,
+                   Error,
+                   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                   (LPSTR)&MessageBuffer,
+                   0,
+                   NULL);
+    printf("%s: %s\n", Prefix, MessageBuffer);
+    LocalFree(MessageBuffer);
+}
+
+HANDLE OpenFromDriveLetter(const WCHAR *DriveLetter)
+{
+    WCHAR path[32];
+
+    swprintf(path, ARRAYSIZE(path), L"\\\\.\\%wC:", DriveLetter[0]);
+    return CreateFileW(path,
+                       GENERIC_READ,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE,
+                       NULL,
+                       OPEN_EXISTING,
+                       FILE_FLAG_NO_BUFFERING | FILE_FLAG_SEQUENTIAL_SCAN,
+                       NULL);
+}
+
+HANDLE OpenFromNtNativePath(const WCHAR *NtPath)
+{
+    WCHAR path[MAX_PATH];
+
+    swprintf(path, ARRAYSIZE(path), L"\\\\?\\GLOBALROOT%wS", NtPath);
+    return CreateFileW(path,
+                       GENERIC_READ,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE,
+                       NULL,
+                       OPEN_EXISTING,
+                       FILE_FLAG_NO_BUFFERING | FILE_FLAG_SEQUENTIAL_SCAN,
+                       NULL);
+}
+
+int wmain(int argc, wchar_t* argv[])
+{
+    NTSTATUS Status;
+    NTFS_INFORMATION NtfsInformation;
+    HANDLE VolumeHandle;
+    const BOOL NoBanner = (argc > 1) && (_wcsicmp(argv[1], L"-nobanner") == 0);
+    ULONG BytesPerSector;
+    PNtfsVolume VolumeObject;
+    PNtfsMasterFileTable Mft;
+    PBootSector BootSector;
+    // TODO: Maybe this should go in NtfsProbePartition?
+    PUCHAR BootSectorData;
+
+    if (!NoBanner)
+        PrintBanner();
+
+    // If no partition was specified, print usage and exit
+    if (argc < (NoBanner ? 3 : 2))
     {
-        TCHAR Letter = argv[1][0];
-
-        if ((Letter >= 'A' && Letter <= 'Z') ||
-            (Letter >= 'a' && Letter <= 'z'))
-        {
-            VolumeName[4] = Letter;
-        }
+        PrintUsage();
+        return 1;
     }
 
-    VolumeHandle = CreateFile(VolumeName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0 );
+    if (iswalpha(argv[NoBanner ? 2 : 1][0]))
+        VolumeHandle = OpenFromDriveLetter(argv[NoBanner ? 2 : 1]);
+
+    else
+        VolumeHandle = OpenFromNtNativePath(argv[NoBanner ? 2 : 1]);
+
     if (VolumeHandle == INVALID_HANDLE_VALUE)
     {
-        _ftprintf(stderr, _T("Failed opening the volume '%s' (%lx)\n"), VolumeName, GetLastError());
+        PrintLastError("Error opening volume");
         return 1;
     }
 
-    if (!DeviceIoControl(VolumeHandle, FSCTL_GET_NTFS_VOLUME_DATA, NULL, 0, &VolumeInfo, sizeof(VolumeInfo), &LengthReturned, NULL))
+    // We now have a file handle to the volume. Let's get the NTFS information.
+    Status = NtfsDiskInitializeUm(VolumeHandle,
+                                  &BytesPerSector);
+    if (!NT_SUCCESS(Status))
     {
-        _ftprintf(stderr, _T("Failed requesting volume '%s' data (%lx)\n"), VolumeName, GetLastError());
-        CloseHandle(VolumeHandle);
+        PrintLastError("Error initializing disk routines");
         return 1;
     }
 
-    if (LengthReturned < sizeof(VolumeInfo))
+    // // Get the boot sector data
+    BootSectorData = (PUCHAR)malloc(BytesPerSector);
+    if (!BootSectorData)
     {
-        _ftprintf(stderr, _T("Failed reading volume '%s' data (%lx)\n"), VolumeName, GetLastError());
-        CloseHandle(VolumeHandle);
+        PrintLastError("Error allocating boot sector data");
         return 1;
     }
 
-    _tprintf(_T("Volume Size\n-----------\n"));
-    VolumeSize = VolumeInfo.TotalClusters.QuadPart * VolumeInfo.BytesPerCluster;
-    _tprintf(_T("Volume size\t\t: %I64u MB\n"), VolumeSize >> 20);
-    _tprintf(_T("Total sectors\t\t: %I64u\n"), VolumeInfo.NumberSectors.QuadPart);
-    _tprintf(_T("Total clusters\t\t: %I64u\n"), VolumeInfo.TotalClusters.QuadPart);
-    _tprintf(_T("Free clusters\t\t: %I64u\n"), VolumeInfo.FreeClusters.QuadPart);
-    _tprintf(_T("Free space\t\t: %I64u MB (%I64u%% of drive)\n"), (VolumeInfo.FreeClusters.QuadPart * VolumeInfo.BytesPerCluster) >> 20, (VolumeInfo.FreeClusters.QuadPart * 100) / VolumeInfo.TotalClusters.QuadPart);
-
-    _tprintf(_T("\nAllocation Size\n---------------\n"));
-    _tprintf(_T("Bytes per sector\t: %lu\n"), VolumeInfo.BytesPerSector);
-    _tprintf(_T("Bytes per cluster\t: %lu\n"), VolumeInfo.BytesPerCluster);
-    _tprintf(_T("Bytes per MFT record:\t: %lu\n"), VolumeInfo.BytesPerFileRecordSegment);
-    _tprintf(_T("Clusters per MFT record\t: %lu\n"), VolumeInfo.ClustersPerFileRecordSegment);
-
-    _tprintf(_T("\nMFT Information\n---------------\n"));
-    _tprintf(_T("MFT size\t\t: %I64u MB (%I64u%% of drive)\n"), VolumeInfo.MftValidDataLength.QuadPart >> 20, (VolumeInfo.MftValidDataLength.QuadPart * 100) / VolumeSize);
-    _tprintf(_T("MFT start cluster\t: %I64u\n"), VolumeInfo.MftStartLcn.QuadPart);
-    _tprintf(_T("MFT zone clusters\t: %I64u - %I64u\n"), VolumeInfo.MftZoneStart.QuadPart, VolumeInfo.MftZoneEnd.QuadPart);
-    MftClusters = VolumeInfo.MftZoneEnd.QuadPart - VolumeInfo.MftZoneStart.QuadPart;
-    _tprintf(_T("MFT zone size\t\t: %I64u MB (%I64u%% of drive)\n"), (MftClusters * VolumeInfo.BytesPerCluster) >> 20, (MftClusters * 100) / VolumeInfo.TotalClusters.QuadPart);
-    _tprintf(_T("MFT mirror start\t: %I64u\n"), VolumeInfo.Mft2StartLcn.QuadPart);
-
-    _tprintf(_T("\nMeta-Data files\n---------------\n"));
-    OutputBuffer = HeapAlloc(GetProcessHeap(), 0, VolumeInfo.BytesPerFileRecordSegment + sizeof(NTFS_FILE_RECORD_OUTPUT_BUFFER));
-    while (MetaDataFiles[File] != NULL)
+    Status = NtfsReadVolume(0, BytesPerSector, BootSectorData);
+    if (!NT_SUCCESS(Status))
     {
-        NTFS_FILE_RECORD_INPUT_BUFFER InputBuffer;
-        PFILE_RECORD_HEADER FileRecord;
-        PNTFS_ATTR_RECORD Attribute;
-        ULONGLONG Size = 0;
-
-        if (File == 5)
-        {
-            ++File;
-            continue;
-        }
-
-        InputBuffer.FileReferenceNumber.QuadPart = File;
-        if (!DeviceIoControl(VolumeHandle, FSCTL_GET_NTFS_FILE_RECORD, &InputBuffer, sizeof(InputBuffer),
-                             OutputBuffer, VolumeInfo.BytesPerFileRecordSegment  + sizeof(NTFS_FILE_RECORD_OUTPUT_BUFFER),
-                             &LengthReturned, NULL))
-        {
-            ++File;
-            continue;
-        }
-
-        if (OutputBuffer->FileReferenceNumber.QuadPart != File)
-        {
-            ++File;
-            continue;
-        }
-
-        FileRecord = (PFILE_RECORD_HEADER)OutputBuffer->FileRecordBuffer;
-        if (FileRecord->Ntfs.Type != NRH_FILE_TYPE)
-        {
-            ++File;
-            continue;
-        }
-
-        Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->AttributeOffset);
-        while (Attribute < (PNTFS_ATTR_RECORD)((ULONG_PTR)FileRecord + FileRecord->BytesInUse) &&
-               Attribute->Type != ATTRIBUTE_TYPE_END)
-        {
-            if (Attribute->Type == ATTRIBUTE_TYPE_DATA)
-            {
-                Size = (Attribute->IsNonResident) ? Attribute->NonResident.AllocatedSize : Attribute->Resident.ValueLength;
-                break;
-            }
-
-            Attribute = (PNTFS_ATTR_RECORD)((ULONG_PTR)Attribute + Attribute->Length);
-        }
-
-        _tprintf(_T("%s%I64u bytes\n"), MetaDataFiles[File], Size);
-
-        ++File;
+        PrintLastError("Error reading boot sector data");
+        free(BootSectorData);
+        return 1;
     }
 
-    HeapFree(GetProcessHeap(), 0, OutputBuffer);
-    CloseHandle(VolumeHandle);
+    Status = NtfsProbePartitionAndOpenVolume(BytesPerSector,
+                                             BootSectorData,
+                                             &VolumeObject);
+
+    // If the specificed volume is not NTFS, print an error and exit.
+    if (!NT_SUCCESS(Status))
+    {
+        PrintLastError("Error obtaining NTFS information");
+        return 1;
+    }
+
+    /* TODO: What we probably want is a couple calls to get this info
+     * Maybe:
+     *    NTSTATUS NtfsVolumeGetInfo(PNtfsVolume, &InfoStruct);
+     *    NTSTATUS NtfsMasterFileTableGetInfo(PNtfsMasterFileTable, &InfoStruct2);
+     *
+     */
+
+    BootSector = (PBootSector)BootSectorData;
+    Mft = NtfsVolumeGetMft(VolumeObject);
+
+    NtfsInformation.VolumeSize = BootSector->SectorsInVolume * BytesPerSector;
+    NtfsInformation.SectorsPerCluster = BootSector->SectorsPerCluster;
+    NtfsInformation.TotalClusters = BootSector->SectorsInVolume / BootSector->SectorsPerCluster;
+    NtfsVolumeGetFreeClusters(VolumeObject, &NtfsInformation.FreeClusters);
+    NtfsInformation.BytesPerSector = BytesPerSector;
+    NtfsInformation.BytesPerCluster = BytesPerSector * BootSector->SectorsPerCluster;
+    NtfsInformation.ClustersPerMftRecord = BootSector->ClustersPerFileRecord;
+    NtfsInformation.MftSize = 0;
+    NtfsInformation.MftStartCluster = 0;
+    NtfsInformation.MftZoneStartCluster = 0;
+    NtfsInformation.MftZoneEndCluster = 0;
+    NtfsInformation.MftMirrorStartCluster = 0;
+    NtfsInformation._MftSize = 0;
+    NtfsInformation._MftMirrSize = 0;
+    NtfsInformation._LogFileSize = 0;
+    NtfsInformation._VolumeSize = 0;
+    NtfsInformation._AttrDefSize = 0;
+    NtfsInformation._DotSize = 0;
+    NtfsInformation._BitmapSize = 0;
+    NtfsInformation._BootSize = 0;
+    NtfsInformation._BadClusSize = 0;
+    NtfsInformation._UpCaseSize = 0;
+    PrintNtfsInformation(&NtfsInformation);
     return 0;
 }
