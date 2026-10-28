@@ -225,30 +225,11 @@ GetGlobalSettingsFromRegistry()
      *     4 - 50.0% of the disk
      *
      *     For Windows 8+:
-     *     0                - 200 MB (default)
-     *     1 - 100          - gMftZoneReservation * 200 MB
-     *     All other values - 200 MB
+     *     if (PartitionSize >= 2GB)
+     *         MftZoneSize = 200MB * gMftZoneReservation;
+     *     else
+     *         MftZoneSize = min(MftZoneReservation * PartitionSize / 8, 2 * PartitionSize / 3);
      *
-     *     MFT Zone size on various partition sizes:
-     *     * Assuming 4096 bytes per cluster
-     *     * MFT zone includes MFT when full size is available, 
-     *     * else MFT starts before MFT zone with varying levels of overlap depending on how small the size is.
-     *     * Note: Windows 8.1 fsutil says:
-     *           "MftZone is a reserved region of the disk used to make the MFT contiguous. The
-     *            200 MB multiplier is only applicable for volumes > 1.5 GB.  Below this threshold
-     *            the multiplier is scaled based on volume size."
-     *       (I think it's probably supposed to be 2GB)
-     *
-     *     8 MB (minimum): 0x100 clusters  (~ 1   MB)
-     *     10 MB:          0x100 clusters  (~ 1   MB)
-     *     50 MB:          0x660 clusters  (~ 6.4 MB)
-     *     100 MB:         0xCA0 clusters  (~ 12  MB)
-     *     500 MB:         0x3EA0 clusters (~ 63  MB)
-     *     1 GB:           0x7D20 clusters (~ 125 MB)
-     *     1.5 GB:         0xBB80 clusters (~ 187 MB or 12.5%), (~374 MB or 25%), (~562 MB or 37.5%), (~750 MB or 50%), (~937 MB or 62.5%), (~1000 MB or 66.7%), (~1000 MB), (~1000 MB)
-     *     1.5 GiB:        0xBFC0 clusters
-     *     slightly more than 1.5 GiB : 0xC060 clusters
-     *     2 GB +:         0xC820 clusters (~ 200 MB)
      */
     gMftZoneReservation = QueryDwordRegistryValueEx(RegistryKey,
                                                     L"NtfsMftZoneReservation",
@@ -257,7 +238,7 @@ GetGlobalSettingsFromRegistry()
     if (InvalidMftZoneReservation(gMftZoneReservation))
     {
         // We don't care if this fails or not, just give it a try.
-        SetDwordRegistryValue(RegistryKey, L"NtfsMftZoneReservation", 2);
+        SetDwordRegistryValue(RegistryKey, L"NtfsMftZoneReservation", 1);
         gMftZoneReservation = 1;
     }
 
