@@ -83,10 +83,10 @@ char* FormatSize(ULONGLONG size)
     return buffer;
 }
 
-char* FormatSizeWithPercentDrive(ULONGLONG size, ULONGLONG total)
+char* FormatSizeWithPercentVolume(ULONGLONG size, ULONGLONG total)
 {
     static char buffer[100];
-    sprintf(buffer, "%s (%llu%% of drive)", FormatSize(size), (size * 100) / total);
+    sprintf(buffer, "%s (%.2f%% of volume)", FormatSize(size), ((double)size / total) * 100.0);
     return buffer;
 }
 
@@ -116,9 +116,9 @@ void PrintNtfsInformation(PNTFS_INFORMATION NtfsInformation)
     PrintRow("Total sectors", FormatNumber(NtfsInformation->SectorsPerCluster * NtfsInformation->TotalClusters));
     PrintRow("Total clusters", FormatNumber(NtfsInformation->TotalClusters));
     PrintRow("Free clusters", FormatNumber(NtfsInformation->FreeClusters.QuadPart));
-    PrintRow("Free space", FormatSizeWithPercentDrive(NtfsInformation->FreeClusters.QuadPart
-                                                      * NtfsInformation->BytesPerCluster,
-                                                      NtfsInformation->VolumeSize));
+    PrintRow("Free space", FormatSizeWithPercentVolume(NtfsInformation->FreeClusters.QuadPart
+                                                       * NtfsInformation->BytesPerCluster,
+                                                       NtfsInformation->VolumeSize));
 
     PrintTableHeader("Allocation size");
     PrintRow("Bytes per sector", FormatNumber(NtfsInformation->BytesPerSector));
@@ -130,12 +130,12 @@ void PrintNtfsInformation(PNTFS_INFORMATION NtfsInformation)
     PrintRow("Clusters per MFT record", FormatNumberEx(NtfsInformation->ClustersPerMftRecord, "%ld"));
 
     PrintTableHeader("MFT information");
-    PrintRow("MFT size", FormatSizeWithPercentDrive(NtfsInformation->MftSize, NtfsInformation->VolumeSize));
+    PrintRow("MFT size", FormatSizeWithPercentVolume(NtfsInformation->MftSize, NtfsInformation->VolumeSize));
     PrintRow("MFT start cluster", FormatNumber(NtfsInformation->MftStartCluster));
     PrintRow("MFT zone clusters", FormatRange(NtfsInformation->MftZoneStartCluster,
                                               NtfsInformation->MftZoneEndCluster));
-    PrintRow("MFT zone size", FormatSizeWithPercentDrive(NtfsInformation->MftZoneEndCluster - NtfsInformation->MftZoneStartCluster,
-                                                         NtfsInformation->TotalClusters));
+    PrintRow("MFT zone size", FormatSizeWithPercentVolume((NtfsInformation->MftZoneEndCluster - NtfsInformation->MftZoneStartCluster) * (NtfsInformation->BytesPerCluster),
+                                                          NtfsInformation->VolumeSize));
     PrintRow("MFT mirror start", FormatNumber(NtfsInformation->MftMirrorStartCluster));
 
     PrintTableHeader("Metadata files");
@@ -194,6 +194,63 @@ HANDLE OpenFromNtNativePath(const WCHAR *NtPath)
                        NULL);
 }
 
+ULONGLONG NtfsInfoGetFileSize(PNtfsMasterFileTable Mft, ULONG Frn)
+{
+    NTSTATUS Status;
+    PNtfsFileRecord FileRecord;
+    PFileNameEx FileNameAttrib;
+    ULONGLONG FileSize;
+
+    Status = NtfsMasterFileTableGetFileRecord(Mft, Frn, &FileRecord);
+    if (!NT_SUCCESS(Status))
+        return 0;
+
+    Status = NtfsFileRecordGetAttributeData(FileRecord, TypeFileName, NULL, (PUCHAR*)(&FileNameAttrib));
+    if (!NT_SUCCESS(Status))
+    {
+        free(FileRecord);
+        return 0;
+    }
+
+    FileSize = FileNameAttrib->AllocatedSize;
+
+    free(FileRecord);
+
+    return FileSize;
+}
+
+void GetNtfsConfiguration(PNtfsConfiguration NtfsConfig)
+{
+    LSTATUS Status;
+    DWORD MftZoneReservationValue, UseLegacyMftZoneScaling, RegSize;
+
+    Status = RegGetValueA(HKEY_LOCAL_MACHINE,
+                          "SYSTEM\\CurrentControlSet\\Control\\FileSystem",
+                          "NtfsMftZoneReservation",
+                          RRF_RT_REG_DWORD,
+                          NULL,
+                          &MftZoneReservationValue,
+                          &RegSize);
+
+    if (Status == ERROR_SUCCESS)
+        NtfsConfig->MftZoneReservation = MftZoneReservationValue;
+    else
+        NtfsConfig->MftZoneReservation = 1;
+
+    Status = RegGetValueA(HKEY_LOCAL_MACHINE,
+                          "SYSTEM\\CurrentControlSet\\Control\\FileSystem",
+                          "NtfsUseLegacyMftZoneScaling",
+                          RRF_RT_REG_DWORD,
+                          NULL,
+                          &UseLegacyMftZoneScaling,
+                          &RegSize);
+
+    if (Status == ERROR_SUCCESS)
+        NtfsConfig->UseLegacyMftZoneScaling = !!(UseLegacyMftZoneScaling);
+    else
+        NtfsConfig->UseLegacyMftZoneScaling = FALSE;
+}
+
 int wmain(int argc, wchar_t* argv[])
 {
     NTSTATUS Status;
@@ -203,7 +260,9 @@ int wmain(int argc, wchar_t* argv[])
     ULONG BytesPerSector;
     PNtfsVolume VolumeObject;
     PNtfsMasterFileTable Mft;
+    NtfsMasterFileTableInfo MftInfo;
     PBootSector BootSector;
+    NtfsConfiguration NtfsConfiguration;
     // TODO: Maybe this should go in NtfsProbePartition?
     PUCHAR BootSectorData;
 
@@ -238,7 +297,7 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
-    // // Get the boot sector data
+    // Get the boot sector data
     BootSectorData = (PUCHAR)malloc(BytesPerSector);
     if (!BootSectorData)
     {
@@ -254,14 +313,19 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
+    // Get NTFS Configuration
+    GetNtfsConfiguration(&NtfsConfiguration);
+
     Status = NtfsProbePartitionAndOpenVolume(BytesPerSector,
                                              BootSectorData,
+                                             &NtfsConfiguration,
                                              &VolumeObject);
 
     // If the specificed volume is not NTFS, print an error and exit.
     if (!NT_SUCCESS(Status))
     {
         PrintLastError("Error obtaining NTFS information");
+        free(BootSectorData);
         return 1;
     }
 
@@ -274,6 +338,13 @@ int wmain(int argc, wchar_t* argv[])
 
     BootSector = (PBootSector)BootSectorData;
     Mft = NtfsVolumeGetMft(VolumeObject);
+    Status = NtfsMasterFileTableGetMftInformation(Mft, &MftInfo);
+    if (!NT_SUCCESS(Status))
+    {
+        PrintLastError("Error obtaining MFT information");
+        free(BootSectorData);
+        return 1;
+    }
 
     NtfsInformation.VolumeSize = BootSector->SectorsInVolume * BytesPerSector;
     NtfsInformation.SectorsPerCluster = BootSector->SectorsPerCluster;
@@ -282,21 +353,25 @@ int wmain(int argc, wchar_t* argv[])
     NtfsInformation.BytesPerSector = BytesPerSector;
     NtfsInformation.BytesPerCluster = BytesPerSector * BootSector->SectorsPerCluster;
     NtfsInformation.ClustersPerMftRecord = BootSector->ClustersPerFileRecord;
-    NtfsInformation.MftSize = 0;
-    NtfsInformation.MftStartCluster = 0;
-    NtfsInformation.MftZoneStartCluster = 0;
-    NtfsInformation.MftZoneEndCluster = 0;
-    NtfsInformation.MftMirrorStartCluster = 0;
-    NtfsInformation._MftSize = 0;
-    NtfsInformation._MftMirrSize = 0;
-    NtfsInformation._LogFileSize = 0;
-    NtfsInformation._VolumeSize = 0;
-    NtfsInformation._AttrDefSize = 0;
-    NtfsInformation._DotSize = 0;
-    NtfsInformation._BitmapSize = 0;
-    NtfsInformation._BootSize = 0;
-    NtfsInformation._BadClusSize = 0;
-    NtfsInformation._UpCaseSize = 0;
+    NtfsInformation.MftSize = NtfsInfoGetFileSize(Mft, _MFT);
+    NtfsInformation.MftStartCluster = MftInfo.MFTLCN;
+    NtfsInformation.MftZoneStartCluster = MftInfo.MFTLCN;
+    NtfsInformation.MftZoneEndCluster = MftInfo.MFTZoneEndLCN;
+    NtfsInformation.MftMirrorStartCluster = MftInfo.MFTMirrLCN;
+    NtfsInformation._MftSize =     NtfsInfoGetFileSize(Mft, _MFT);
+    NtfsInformation._MftMirrSize = NtfsInfoGetFileSize(Mft, _MFTMirr);
+    NtfsInformation._LogFileSize = NtfsInfoGetFileSize(Mft, _LogFile);
+    NtfsInformation._VolumeSize =  NtfsInfoGetFileSize(Mft, _Volume);
+    NtfsInformation._AttrDefSize = NtfsInfoGetFileSize(Mft, _AttrDef);
+    NtfsInformation._DotSize =     NtfsInfoGetFileSize(Mft, _Root);
+    NtfsInformation._BitmapSize =  NtfsInfoGetFileSize(Mft, _Bitmap);
+    NtfsInformation._BootSize =    NtfsInfoGetFileSize(Mft, _Boot);
+    NtfsInformation._BadClusSize = NtfsInfoGetFileSize(Mft, _BadClus);
+    NtfsInformation._UpCaseSize =  NtfsInfoGetFileSize(Mft, _UpCase);
+
     PrintNtfsInformation(&NtfsInformation);
+
+    free(BootSectorData);
+
     return 0;
 }

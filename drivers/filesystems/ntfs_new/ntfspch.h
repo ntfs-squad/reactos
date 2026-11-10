@@ -59,5 +59,6 @@ extern INT gDisableLastAccessUpdate;
 extern BOOLEAN gDisableLfsDowngrade;
 extern BOOLEAN gDisableLfsUpgrade;
 extern INT gMftZoneReservation;
+extern BOOLEAN gUseLegacyMftZoneScaling;
 
 #endif // _NTFSPROCS_
