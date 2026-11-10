@@ -91,6 +91,7 @@ NTSTATUS
 NtfsProbePartitionAndOpenVolume(
     _In_ ULONG BytesPerSector,
     _In_ PUCHAR BootSectorData,
+    _In_opt_ PNtfsConfiguration Configuration,
     _Out_ void** VolumeOut)
 {
     NTSTATUS Status;
@@ -109,7 +110,7 @@ NtfsProbePartitionAndOpenVolume(
     if (!VolumeObject)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    Status = VolumeObject->Initialize(BootSectorData);
+    Status = VolumeObject->Initialize(BootSectorData, Configuration);
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to initialize volume object! (Status %lx)\n", Status);
@@ -128,7 +129,9 @@ Volume::~Volume()
 }
 
 NTSTATUS
-Volume::Initialize(_In_ PUCHAR BootSectorData)
+Volume::Initialize(
+    _In_ PUCHAR BootSectorData,
+    _In_opt_ PNtfsConfiguration Configuration)
 {
     BootSector* PartitionBootSector;
     PVolumeInformationEx VolumeInfo;
@@ -150,7 +153,8 @@ Volume::Initialize(_In_ PUCHAR BootSectorData)
     MFT = new(PagedPool, TAG_MFT) MasterFileTable(this,
                                                   PartitionBootSector->MFTLCN,
                                                   PartitionBootSector->MFTMirrLCN,
-                                                  PartitionBootSector->ClustersPerFileRecord);
+                                                  PartitionBootSector->ClustersPerFileRecord,
+                                                  Configuration);
     if (!MFT)
         return STATUS_INSUFFICIENT_RESOURCES;
 

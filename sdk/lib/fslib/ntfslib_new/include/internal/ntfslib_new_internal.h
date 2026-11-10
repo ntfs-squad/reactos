@@ -301,7 +301,8 @@ public:
                          _Inout_ PUCHAR Buffer);
 
     NTSTATUS
-    Initialize(_In_ PUCHAR BootSectorData);
+    Initialize(_In_ PUCHAR BootSectorData,
+               _In_opt_ PNtfsConfiguration Configuration);
 
     NTSTATUS
     GetADSPreference(_In_  PFILE_OBJECT FileObj,
@@ -469,12 +470,16 @@ typedef class MasterFileTable
 {
 public:
     UINT FileRecordSize;
+    UINT64 MFTLCN;
+    UINT64 MFTMirrLCN;
+    UINT64 MFTZoneEndLCN;
 
     // ./ mft.cpp
     MasterFileTable(_In_ PVolume TargetVolume,
                     _In_ UINT64 MFTLCN,
                     _In_ UINT64 MFTMirrLCN,
-                    _In_ INT8   ClustersPerFileRecord);
+                    _In_ INT8   ClustersPerFileRecord,
+                    _In_opt_ PNtfsConfiguration Configuration);
 
     NTSTATUS
     WriteFileRecordToMFT(_In_ PFileRecord File);
@@ -503,14 +508,11 @@ public:
                                          _Out_ PFileRecord* TargetFile,
                                          _Out_ PAttribute* TargetAttribute);
 
-    // NTSTATUS
-    // GetMftInfo(_In_ );
-
 private:
+    ULONGLONG
+    CalculateMftZoneEndLCN(_In_opt_ PNtfsConfiguration Configuration);
+
     PVolume DiskVolume;
-    UINT64 MFTLCN;
-    UINT64 MFTMirrLCN;
-    INT    MftZoneReservation;
     PFileRecord MFTFile = NULL;
     PFileRecord MFTMirrFile = NULL;
 } *PMasterFileTable;

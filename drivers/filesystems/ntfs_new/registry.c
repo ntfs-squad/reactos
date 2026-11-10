@@ -23,7 +23,7 @@ INT gDisableLastAccessUpdate;
 BOOLEAN gDisableLfsDowngrade;
 BOOLEAN gDisableLfsUpgrade;
 INT gMftZoneReservation;
-INT gMftZoneReservationHdd;
+BOOLEAN gUseLegacyMftZoneScaling;
 
 HANDLE
 OpenRegistryKey()
@@ -189,7 +189,7 @@ GetGlobalSettingsFromRegistry()
     {
         // We don't care if this fails or not, just give it a try.
         SetDwordRegistryValue(RegistryKey, L"NtfsDisableLastAccessUpdate", 2);
-        gMftZoneReservation = 2;
+        gDisableLastAccessUpdate = 2;
     }
 
     /* Disables LFS downgrade when a volume is cleanly unmounted. The LFS
@@ -241,6 +241,11 @@ GetGlobalSettingsFromRegistry()
         SetDwordRegistryValue(RegistryKey, L"NtfsMftZoneReservation", 1);
         gMftZoneReservation = 1;
     }
+
+    /* Use Windows 7 and older Mft Zone scaling */
+    gUseLegacyMftZoneScaling = QueryBooleanRegistryValueEx(RegistryKey,
+                                                           L"NtfsUseLegacyMftZoneScaling",
+                                                           FALSE);
 
     /* *** ReactOS Extended Options *** */
 

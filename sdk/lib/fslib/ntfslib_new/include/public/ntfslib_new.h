@@ -3,9 +3,12 @@
 #include <ntdef.h>
 #endif
 
-// Hack: we shouldn't be defining UINT.
+// Hack: we shouldn't be defining UINT, BOOL.
 #ifndef UINT
 typedef unsigned int UINT;
+#endif
+#ifndef BOOL
+typedef int BOOL;
 #endif
 
 #include "ntfsattribdef.h"
@@ -144,13 +147,19 @@ typedef struct
     IndexNodeHeader IndexHeader;
 } IndexBuffer, *PIndexBuffer;
 
-typedef struct _MasterFileTableInfo
+typedef struct _NtfsMasterFileTableInfo
 {
     UINT64 MFTLCN;
     UINT64 MFTMirrLCN;
+    UINT64 MFTZoneEndLCN;
     UINT8  ZoneReservationMultiplier;
-} MasterFileTableInfo, *PMasterFileTableInfo;
+} NtfsMasterFileTableInfo, *PNtfsMasterFileTableInfo;
 
+typedef struct _NtfsConfiguration
+{
+    INT MftZoneReservation;
+    BOOL UseLegacyMftZoneScaling;
+} NtfsConfiguration, *PNtfsConfiguration;
 
 // =========================
 // NTFS C API
@@ -286,9 +295,20 @@ NtfsLogFileServiceGetClientMinorVersion(
 
 /* MFT functions */
 NTSTATUS
+NtfsMasterFileTableGetMftInformation(
+    _In_ PNtfsMasterFileTable Mft,
+    _Out_ PNtfsMasterFileTableInfo MftInformation);
+
+NTSTATUS
 NtfsMasterFileTableGetFileRecordFromQuery(
     _In_ PNtfsMasterFileTable Mft,
     _In_ PWCHAR Query,
+    _Out_ PNtfsFileRecord* File);
+
+NTSTATUS
+NtfsMasterFileTableGetFileRecord(
+    _In_  PNtfsMasterFileTable Mft,
+    _In_  ULONG FileRecordNumber,
     _Out_ PNtfsFileRecord* File);
 
 /* Probe functions */
@@ -301,6 +321,7 @@ NTSTATUS
 NtfsProbePartitionAndOpenVolume(
     _In_ ULONG BytesPerSector,
     _In_ PUCHAR BootSectorData,
+    _In_opt_ PNtfsConfiguration Configuration,
     _Out_ void** VolumeOut);
 
 /* Volume functions */
