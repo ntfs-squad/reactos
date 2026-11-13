@@ -8,158 +8,157 @@
 
 #include "ntfspch.h"
 
- static
- NTSTATUS
- GetFileBasicInformation(_In_ PFileContextBlock FileCB,
-                         _Out_ PFILE_BASIC_INFORMATION Buffer,
-                         _Inout_ PULONG Length)
- {
-    NTSTATUS Status;
-    PNtfsFileRecord File;
-    PStandardInformationEx StdInfo;
- 
-    if (!FileCB)
-        return STATUS_INVALID_PARAMETER;
- 
-    if (*Length < sizeof(FILE_BASIC_INFORMATION))
-        return STATUS_BUFFER_TOO_SMALL;
- 
-    File = FileCB->FileRec;
- 
-    // From $STANDARD_INFORMATION
-    Status = NtfsFileRecordGetAttributeData(File,
-                                            TypeStandardInformation,
-                                            NULL,
-                                            (PUCHAR*)&StdInfo);
-
-    if (!NT_SUCCESS(Status))
-        return Status;
-     
-    Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
-    Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
-    Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
-    Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
-    Buffer->FileAttributes = StdInfo->FilePermissions;
- 
-    *Length -= sizeof(FILE_BASIC_INFORMATION);
- 
-    return STATUS_SUCCESS;
- }
- 
- static
- NTSTATUS
- GetFileStandardInformation(_In_ PFileContextBlock FileCB,
-                            _Out_ PFILE_STANDARD_INFORMATION Buffer,
-                            _Inout_ PULONG Length)
- {
-     PNtfsFileRecord File;
-     PAttribute DataAttribute;
-     size_t FileInfoSize = sizeof(FILE_STANDARD_INFORMATION);
- 
-     if (*Length < FileInfoSize)
-         return STATUS_BUFFER_TOO_SMALL;
- 
-     if (!FileCB)
-         return STATUS_NOT_FOUND;
- 
-     File = FileCB->FileRec;
- 
-     // Information from $DATA
-     DataAttribute = NtfsFileRecordGetAttribute(File,TypeData, NULL);
- 
-     if (DataAttribute)
-     {
-         if (DataAttribute->IsNonResident)
-         {
-             Buffer->EndOfFile.QuadPart = DataAttribute->NonResident.DataSize;
-             Buffer->AllocationSize.QuadPart = DataAttribute->NonResident.AllocatedSize;
-         }
- 
-         else
-         {
-             Buffer->EndOfFile.QuadPart = DataAttribute->Resident.DataLength;
-             Buffer->AllocationSize.QuadPart = 0;
-         }
-     }
- 
-     else
-     {
-         Buffer->EndOfFile.QuadPart = 0;
-         Buffer->AllocationSize.QuadPart = 0;
-     }
- 
-     // Information from file header
-     Buffer->Directory = !!(NtfsFileRecordGetHeader(File)->Flags & FR_IS_DIRECTORY);
-     Buffer->NumberOfLinks = NtfsFileRecordGetHeader(File)->HardLinkCount;
- 
-     // Information from file context block
-     Buffer->DeletePending = !!(FileCB->CreateOptions & FILE_DELETE_ON_CLOSE);
- 
-     *Length -= FileInfoSize;
- 
-     return STATUS_SUCCESS;
- }
- 
- static
- NTSTATUS
- GetFileNameInformation(_In_ PFileContextBlock FileCB,
-                        _Out_ PFILE_NAME_INFORMATION Buffer,
+static
+NTSTATUS
+GetFileBasicInformation(_In_ PFileContextBlock FileCB,
+                        _Out_ PFILE_BASIC_INFORMATION Buffer,
                         _Inout_ PULONG Length)
- {
-     ULONG BytesToCopy;
-     size_t FileNameInfoSize = sizeof(FILE_NAME_INFORMATION);
- 
-     // If buffer can't hold the File Name Information struct, fail and
-     // report the required size back to caller.
-     if (*Length < FileNameInfoSize)
-     {
-         *Length = (ULONG)(FileNameInfoSize + FileCB->FileName.Length);
-         return STATUS_INFO_LENGTH_MISMATCH;
-     }
- 
-     // Save file name length, and as much file len, as buffer length allows.
-     Buffer->FileNameLength = FileCB->FileName.Length;
-     // Calculate amount of bytes to copy not to overflow the buffer.
-     // TODO: Determine if we need this
-     if (*Length < Buffer->FileNameLength + FileNameInfoSize)
-     {
-         // The buffer isn't big enough. Report required size.
-         *Length = (ULONG)(FileNameInfoSize + Buffer->FileNameLength);
-         return STATUS_BUFFER_OVERFLOW;
-     }
- 
-     else
-     {
-         // The buffer is big enough. Fill with file name.
-         BytesToCopy = Buffer->FileNameLength;
-         RtlCopyMemory(Buffer->FileName, FileCB->FileName.Buffer, BytesToCopy);
-         *Length -= FileNameInfoSize + BytesToCopy;
-         return STATUS_SUCCESS;
-     }
- }
- 
- static
- NTSTATUS
- GetFileInternalInformation(_In_ PFileContextBlock FileCB,
-                            _Out_ PFILE_INTERNAL_INFORMATION Buffer,
-                            _Inout_ PULONG Length)
- {
- 
-     /* From Microsoft Learn:
-      * The FILE_INTERNAL_INFORMATION structure is used to query for the file
-      * system's 8-byte file reference number for a file.
-      */
- 
-     if (*Length < sizeof(FILE_INTERNAL_INFORMATION))
-         return STATUS_BUFFER_TOO_SMALL;
- 
-     Buffer->IndexNumber.QuadPart = NtfsFileRecordGetHeader(FileCB->FileRec)->MFTRecordNumber;
- 
-     *Length -= sizeof(FILE_INTERNAL_INFORMATION);
- 
-     return STATUS_SUCCESS;
- }
- 
+{
+   NTSTATUS Status;
+   PNtfsFileRecord File;
+   PStandardInformationEx StdInfo;
+
+   if (!FileCB)
+       return STATUS_INVALID_PARAMETER;
+
+   if (*Length < sizeof(FILE_BASIC_INFORMATION))
+       return STATUS_BUFFER_TOO_SMALL;
+
+   File = FileCB->FileRec;
+
+   // From $STANDARD_INFORMATION
+   Status = NtfsFileRecordGetAttributeData(File,
+                                           TypeStandardInformation,
+                                           NULL,
+                                           (PUCHAR*)&StdInfo);
+   if (!NT_SUCCESS(Status))
+       return Status;
+    
+   Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
+   Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
+   Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
+   Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
+   Buffer->FileAttributes = StdInfo->FilePermissions;
+
+   *Length -= sizeof(FILE_BASIC_INFORMATION);
+
+   return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+GetFileStandardInformation(_In_ PFileContextBlock FileCB,
+                           _Out_ PFILE_STANDARD_INFORMATION Buffer,
+                           _Inout_ PULONG Length)
+{
+    PNtfsFileRecord File;
+    PAttribute DataAttribute;
+    size_t FileInfoSize = sizeof(FILE_STANDARD_INFORMATION);
+
+    if (*Length < FileInfoSize)
+        return STATUS_BUFFER_TOO_SMALL;
+
+    if (!FileCB)
+        return STATUS_NOT_FOUND;
+
+    File = FileCB->FileRec;
+
+    // Information from $DATA
+    DataAttribute = NtfsFileRecordGetAttribute(File,TypeData, NULL);
+
+    if (DataAttribute)
+    {
+        if (DataAttribute->IsNonResident)
+        {
+            Buffer->EndOfFile.QuadPart = DataAttribute->NonResident.DataSize;
+            Buffer->AllocationSize.QuadPart = DataAttribute->NonResident.AllocatedSize;
+        }
+
+        else
+        {
+            Buffer->EndOfFile.QuadPart = DataAttribute->Resident.DataLength;
+            Buffer->AllocationSize.QuadPart = 0;
+        }
+    }
+
+    else
+    {
+        Buffer->EndOfFile.QuadPart = 0;
+        Buffer->AllocationSize.QuadPart = 0;
+    }
+
+    // Information from file header
+    Buffer->Directory = !!(NtfsFileRecordGetHeader(File)->Flags & FR_IS_DIRECTORY);
+    Buffer->NumberOfLinks = NtfsFileRecordGetHeader(File)->HardLinkCount;
+
+    // Information from file context block
+    Buffer->DeletePending = !!(FileCB->CreateOptions & FILE_DELETE_ON_CLOSE);
+
+    *Length -= FileInfoSize;
+
+    return STATUS_SUCCESS;
+}
+
+static
+NTSTATUS
+GetFileNameInformation(_In_ PFileContextBlock FileCB,
+                       _Out_ PFILE_NAME_INFORMATION Buffer,
+                       _Inout_ PULONG Length)
+{
+    ULONG BytesToCopy;
+    size_t FileNameInfoSize = sizeof(FILE_NAME_INFORMATION);
+
+    // If buffer can't hold the File Name Information struct, fail and
+    // report the required size back to caller.
+    if (*Length < FileNameInfoSize)
+    {
+        *Length = (ULONG)(FileNameInfoSize + FileCB->FileName.Length);
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    // Save file name length, and as much file len, as buffer length allows.
+    Buffer->FileNameLength = FileCB->FileName.Length;
+    // Calculate amount of bytes to copy not to overflow the buffer.
+    // TODO: Determine if we need this
+    if (*Length < Buffer->FileNameLength + FileNameInfoSize)
+    {
+        // The buffer isn't big enough. Report required size.
+        *Length = (ULONG)(FileNameInfoSize + Buffer->FileNameLength);
+        return STATUS_BUFFER_OVERFLOW;
+    }
+
+    else
+    {
+        // The buffer is big enough. Fill with file name.
+        BytesToCopy = Buffer->FileNameLength;
+        RtlCopyMemory(Buffer->FileName, FileCB->FileName.Buffer, BytesToCopy);
+        *Length -= FileNameInfoSize + BytesToCopy;
+        return STATUS_SUCCESS;
+    }
+}
+
+static
+NTSTATUS
+GetFileInternalInformation(_In_ PFileContextBlock FileCB,
+                           _Out_ PFILE_INTERNAL_INFORMATION Buffer,
+                           _Inout_ PULONG Length)
+{
+
+    /* From Microsoft Learn:
+     * The FILE_INTERNAL_INFORMATION structure is used to query for the file
+     * system's 8-byte file reference number for a file.
+     */
+
+    if (*Length < sizeof(FILE_INTERNAL_INFORMATION))
+        return STATUS_BUFFER_TOO_SMALL;
+
+    Buffer->IndexNumber.QuadPart = NtfsFileRecordGetHeader(FileCB->FileRec)->MFTRecordNumber;
+
+    *Length -= sizeof(FILE_INTERNAL_INFORMATION);
+
+    return STATUS_SUCCESS;
+}
+
 static
 NTSTATUS
 GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
@@ -308,20 +307,16 @@ NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/irp-mj-query-information
      */
 
-    PIO_STACK_LOCATION IoStack;
-    FILE_INFORMATION_CLASS FileInfoRequest;
-    PVolumeContextBlock VolCB;
-    PFileContextBlock FileCB;
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    FILE_INFORMATION_CLASS FileInfoRequest = IoStack->Parameters.QueryFile.FileInformationClass;
+    PFILE_OBJECT FileObject = IoStack->FileObject;
+    PVolumeContextBlock VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
+    PFileContextBlock FileCB = (PFileContextBlock)FileObject->FsContext;
     NTSTATUS Status;
+    ULONG Information = 0;
     PVOID SystemBuffer;
-    PFILE_OBJECT FileObject;
     ULONG BufferLength;
 
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
-    FileInfoRequest = IoStack->Parameters.QueryFile.FileInformationClass;
-    FileObject = IoStack->FileObject;
-    VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
-    FileCB = (PFileContextBlock)FileObject->FsContext;
     if (!FileCB)
     {
         DPRINT1("NtfsFsdQueryInformation() called with NULL file context block!\n");
@@ -329,9 +324,50 @@ NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
         goto Done;
     }
 
-    FileObject->SectionObjectPointer = &(FileCB->StreamCB->SectionObjectPointers);
     SystemBuffer = GetBuffer(Irp);
     BufferLength = IoStack->Parameters.QueryFile.Length;
+
+    if (FileInfoRequest == FilePositionInformation)
+    {
+        if (BufferLength < sizeof(FILE_POSITION_INFORMATION))
+        {
+            Status = STATUS_BUFFER_TOO_SMALL;
+            goto Done;
+        }
+
+        ((PFILE_POSITION_INFORMATION)SystemBuffer)->CurrentByteOffset = FileObject->CurrentByteOffset;
+        BufferLength -= sizeof(FILE_POSITION_INFORMATION);
+        Status = STATUS_SUCCESS;
+        goto Done;
+    }
+
+    if (FileCB->IsVolume)
+    {
+        if (FileInfoRequest != FileStandardInformation)
+        {
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+            goto Done;
+        }
+
+        if (BufferLength < sizeof(FILE_STANDARD_INFORMATION))
+        {
+            Status = STATUS_BUFFER_TOO_SMALL;
+            goto Done;
+        }
+
+        LARGE_INTEGER VolumeSize;
+        VolumeSize.QuadPart = NtfsVolumeGetSize(VolCB->DiskVolume);
+        PFILE_STANDARD_INFORMATION Info = SystemBuffer;
+        RtlZeroMemory(Info, sizeof(*Info));
+        Info->AllocationSize = VolumeSize;
+        Info->EndOfFile = VolumeSize;
+        Info->NumberOfLinks = 1;
+        BufferLength -= sizeof(*Info);
+        Status = STATUS_SUCCESS;
+        goto Done;
+    }
+
+    FileObject->SectionObjectPointer = &(FileCB->StreamCB->SectionObjectPointers);
 
     switch (FileInfoRequest)
     {
@@ -368,21 +404,10 @@ NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
 
 Done:
     if (NT_SUCCESS(Status))
-    {
-        Irp->IoStatus.Status = STATUS_SUCCESS;
-        Irp->IoStatus.Information = IoStack->Parameters.QueryFile.Length - BufferLength;
+        Information = IoStack->Parameters.QueryFile.Length - BufferLength;
 
-#ifdef __REACTOS__
-        // HACK!!! Driver should not have to edit UserIosb.
-        Irp->UserIosb->Status = Irp->IoStatus.Status;
-        Irp->UserIosb->Information = Irp->IoStatus.Information;
-#endif
-    }
-    else
-    {
-        Irp->IoStatus.Information = 0;
-    }
-
+    Irp->IoStatus.Status = Status;
+    Irp->IoStatus.Information = Information;
     IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return Status;
 }
@@ -400,8 +425,44 @@ NtfsFsdSetInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      *
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-set-information
      */
-    DPRINT1("NtfsFsdSetInformation Called!\n");
-    return 0;
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PFILE_OBJECT FileObject = IrpSp->FileObject;
+    PVolumeContextBlock VolCB = VolumeDeviceObject->DeviceExtension;
+    PFILE_POSITION_INFORMATION Position = Irp->AssociatedIrp.SystemBuffer;
+    ULONG BytesPerSector;
+    NTSTATUS Status;
+
+    if (!FileObject->FsContext ||
+        IrpSp->Parameters.SetFile.FileInformationClass != FilePositionInformation)
+    {
+        Status = STATUS_INVALID_DEVICE_REQUEST;
+        goto Done;
+    }
+
+    if (IrpSp->Parameters.SetFile.Length < sizeof(*Position))
+    {
+        Status = STATUS_BUFFER_TOO_SMALL;
+        goto Done;
+    }
+
+    BytesPerSector = NtfsVolumeGetBytesPerSector(VolCB->DiskVolume);
+
+    if (Position->CurrentByteOffset.QuadPart < 0 ||
+        ((FileObject->Flags & FO_NO_INTERMEDIATE_BUFFERING) &&
+         (!BytesPerSector || Position->CurrentByteOffset.QuadPart % BytesPerSector)))
+    {
+        Status = STATUS_INVALID_PARAMETER;
+        goto Done;
+    }
+
+    FileObject->CurrentByteOffset = Position->CurrentByteOffset;
+    Status = STATUS_SUCCESS;
+
+Done:
+    Irp->IoStatus.Status = Status;
+    Irp->IoStatus.Information = 0;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return Status;
 }
 
 _Function_class_(IRP_MJ_DIRECTORY_CONTROL)
@@ -415,27 +476,19 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-directory-control
      */
 
-    PIO_STACK_LOCATION IrpSp;
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
+    ULONG Information = 0;
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     FILE_INFORMATION_CLASS FileInformationRequest;
-    PVolumeContextBlock VolCB;
-    PFileContextBlock FileCB;
-    PVOID SystemBuffer;
-    ULONG BufferLength;
-
-    IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    FileCB = (PFileContextBlock)(IrpSp->FileObject->FsContext);
-    VolCB = (PVolumeContextBlock)(VolumeDeviceObject->DeviceExtension);
-    SystemBuffer = GetBuffer(Irp);
-    BufferLength = IrpSp->Parameters.QueryDirectory.Length;
+    PVolumeContextBlock VolCB = (PVolumeContextBlock)(VolumeDeviceObject->DeviceExtension);
+    PFileContextBlock FileCB = (PFileContextBlock)(IrpSp->FileObject->FsContext);
+    PVOID SystemBuffer = GetBuffer(Irp);
+    ULONG BufferLength = IrpSp->Parameters.QueryDirectory.Length;
 
     if (!SystemBuffer)
     {
         Status = STATUS_INVALID_USER_BUFFER;
-        Irp->IoStatus.Information = 0;
-        Irp->IoStatus.Status = Status;
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-        return Status;
+        goto Done;
     }
 
     if (IrpSp->MinorFunction == IRP_MN_QUERY_DIRECTORY)
@@ -492,17 +545,12 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         }
     }
 
+Done:
     // Set to number of bytes written
     if (NT_SUCCESS(Status))
-    {
-        Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - BufferLength;
-    }
-    else
-    {
-        Irp->IoStatus.Information = 0;
-    }
-
+        Information = IrpSp->Parameters.QueryDirectory.Length - BufferLength;
     Irp->IoStatus.Status = Status;
+    Irp->IoStatus.Information = Information;
     IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return Status;
 }

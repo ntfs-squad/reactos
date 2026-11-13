@@ -293,7 +293,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     DISK_GEOMETRY DiskGeometry;
     ULONG Size;
     PUCHAR PartitionBootSector;
-    PNtfsConfiguration Configuration;
+    NtfsConfiguration Configuration;
 
     // Get disk geometry.
     Size = sizeof(DISK_GEOMETRY);
@@ -334,8 +334,8 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
         goto Cleanup;
 
     // Populate NTFS configuration settings
-    Configuration->MftZoneReservation = gMftZoneReservation;
-    Configuration->UseLegacyMftZoneScaling = gUseLegacyMftZoneScaling;
+    Configuration.MftZoneReservation = gMftZoneReservation;
+    Configuration.UseLegacyMftZoneScaling = gUseLegacyMftZoneScaling;
 
     /* Check if we're really NTFS. It's OK if we're not.
      * We're a boot driver, NT will try every possible filesystem.
