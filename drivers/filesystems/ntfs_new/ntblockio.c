@@ -16,7 +16,7 @@ ByPasscompletion (
     PIRP Irp,
     PVOID Context
     )
-{ 
+{
     if (!NT_SUCCESS( Irp->IoStatus.Status )) {
 
         Irp->IoStatus.Information = 0;

@@ -24,24 +24,25 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-write
      */
     NTSTATUS Status;
-    PIO_STACK_LOCATION IrpSp;
-    PUCHAR Buffer;
-    LARGE_INTEGER ByteOffset;
-    ULONG Length;
-    PFileContextBlock FileCB;
-    PFILE_OBJECT FileObj;
+    ULONG Information = 0;
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PUCHAR Buffer = (PUCHAR)(GetBuffer(Irp));
+    LARGE_INTEGER ByteOffset = IrpSp->Parameters.Write.ByteOffset;
+    ULONG Length = IrpSp->Parameters.Write.Length;
+    PFILE_OBJECT FileObj = IrpSp->FileObject;
+    PFileContextBlock FileCB = (PFileContextBlock)FileObj->FsContext;
     PNtfsVolume DiskVolume;
     PNtfsFileRecord FileRec;
     PNtfsMasterFileTable Mft;
     AttributeType RequestedType;
     PWSTR RequestedStream;
 
-    IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    Buffer = (PUCHAR)(GetBuffer(Irp));
-    ByteOffset = IrpSp->Parameters.Write.ByteOffset;
-    Length = IrpSp->Parameters.Write.Length;
-    FileObj = IrpSp->FileObject;
-    FileCB = (PFileContextBlock)FileObj->FsContext;
+    if (FileCB && FileCB->IsVolume)
+    {
+        Status = STATUS_INVALID_DEVICE_REQUEST;
+        goto Done;
+    }
+
     DiskVolume = ((PVolumeContextBlock)VolumeDeviceObject->DeviceExtension)->DiskVolume;
     Mft = NtfsVolumeGetMft(DiskVolume);
 
@@ -50,11 +51,8 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (NtfsVolumeIsReadOnly(DiskVolume))
     {
         // Disk is read-only. Don't try to write anything.
-        Irp->IoStatus.Information = 0;
         Status = STATUS_INVALID_DEVICE_REQUEST;
-        Irp->IoStatus.Status = Status;
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-        return Status;
+        goto Done;
     }
 
     // Sometimes the file context block is still available, and sometimes it's not.
@@ -81,10 +79,8 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("Unable to find file record!\n");
-            Irp->IoStatus.Information = 0;
-            Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-            return STATUS_INVALID_PARAMETER;
+            Status = STATUS_INVALID_PARAMETER;
+            goto Done;
         }
 
         Status = NtfsVolumeGetADSPreference(DiskVolume,
@@ -96,10 +92,8 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         {
             DPRINT1("Unable to find ADS preferences!\n");
             ExFreePool(FileRec);
-            Irp->IoStatus.Information = 0;
-            Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-            IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-            return STATUS_INVALID_PARAMETER;
+            Status = STATUS_INVALID_PARAMETER;
+            goto Done;
         }
     }
 
@@ -118,14 +112,12 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
             IrpSp->FileObject->CurrentByteOffset.QuadPart = ByteOffset.QuadPart + Length;
         }
 
-        Irp->IoStatus.Information = Length;
-    }
-    else
-    {
-        Irp->IoStatus.Information = 0;
+        Information = Length;
     }
 
+Done:
     Irp->IoStatus.Status = Status;
+    Irp->IoStatus.Information = Information;
     IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return Status;
 }

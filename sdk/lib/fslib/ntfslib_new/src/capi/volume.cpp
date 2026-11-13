@@ -24,7 +24,7 @@ NtfsVolumeGetADSPreference(
                                                                    RequestedStream);
 }
 
-UINT8
+ULONG
 NtfsVolumeGetBytesPerSector(
     _In_ PNtfsVolume DiskVolume)
 {
@@ -36,6 +36,15 @@ NtfsVolumeGetClustersInVolume(
     _In_ PNtfsVolume DiskVolume)
 {
     return reinterpret_cast<PVolume>(DiskVolume)->ClustersInVolume;
+}
+
+ULONGLONG
+NtfsVolumeGetSize(
+    _In_ PNtfsVolume DiskVolume)
+{
+    return (ULONGLONG)NtfsVolumeGetBytesPerSector(DiskVolume) *
+           (ULONGLONG)NtfsVolumeGetSectorsPerCluster(DiskVolume) *
+           (ULONGLONG)NtfsVolumeGetClustersInVolume(DiskVolume);
 }
 
 NTSTATUS

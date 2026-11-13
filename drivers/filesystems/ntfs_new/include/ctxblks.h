@@ -41,6 +41,7 @@ typedef struct _FCB
     PNtfsFileRecord FileRec;
     ULONG CreateOptions;
     ACCESS_MASK DesiredAccess;
+    BOOLEAN IsVolume;
 
     // Used for file name information;
     UNICODE_STRING FileName;

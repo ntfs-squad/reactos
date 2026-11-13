@@ -22,29 +22,121 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * Handles read requests.
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-read
      */
-    UNREFERENCED_PARAMETER(VolumeDeviceObject);
 
-    PIO_STACK_LOCATION IrpSp;
     NTSTATUS Status;
+    ULONG Information = 0;
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     PUCHAR Buffer;
-    LARGE_INTEGER ReadOffset;
-    ULONG RequestedLength;
-    PFileContextBlock FileCB;
+    LARGE_INTEGER ReadOffset = IrpSp->Parameters.Read.ByteOffset;
+    ULONG RequestedLength = IrpSp->Parameters.Read.Length;
+    PFileContextBlock FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
+    PVolumeContextBlock VolCB = VolumeDeviceObject->DeviceExtension;
     PStandardInformationEx StdInfo;
-
-    IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    Buffer = (PUCHAR)(GetBuffer(Irp));
-    ReadOffset = IrpSp->Parameters.Read.ByteOffset;
-    RequestedLength = IrpSp->Parameters.Read.Length;
-    FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
 
     if (!FileCB)
     {
         DPRINT1("INVESTIGATE ME: NtfsFsdRead() called with NULL FileCB!\n");
-        Irp->IoStatus.Information = 0;
-        Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-        return STATUS_INVALID_PARAMETER;
+        Status = STATUS_INVALID_PARAMETER;
+        goto Done;
+    }
+
+    if (FileCB->IsVolume)
+    {
+        ULONG BytesPerSector = NtfsVolumeGetBytesPerSector(VolCB->DiskVolume);
+
+        if (ReadOffset.QuadPart < 0 || !BytesPerSector ||
+            ReadOffset.QuadPart % BytesPerSector || RequestedLength % BytesPerSector)
+        {
+            Status = STATUS_INVALID_PARAMETER;
+            goto Done;
+        }
+
+        if (!RequestedLength)
+        {
+            Status = STATUS_SUCCESS;
+            goto Done;
+        }
+
+        ULONGLONG VolumeSize = NtfsVolumeGetSize(VolCB->DiskVolume);
+
+        if (ReadOffset.QuadPart >= VolumeSize)
+        {
+            Status = STATUS_END_OF_FILE;
+            goto Done;
+        }
+
+        /* Subtract before comparing to avoid overflowing ReadOffset + RequestedLength. */
+        if ((ULONGLONG)RequestedLength > (ULONGLONG)(VolumeSize - ReadOffset.QuadPart))
+            RequestedLength = (ULONG)(VolumeSize - ReadOffset.QuadPart);
+
+        /* The volume device uses neither I/O. Lock the caller's pages before
+         * handing a system mapping to the storage stack's synchronous IRP. */
+        if (!Irp->MdlAddress && !Irp->AssociatedIrp.SystemBuffer)
+        {
+            if (!IoAllocateMdl(Irp->UserBuffer, RequestedLength, FALSE, FALSE, Irp))
+            {
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+                goto Done;
+            }
+
+            Status = STATUS_SUCCESS;
+            _SEH2_TRY
+            {
+                MmProbeAndLockPages(Irp->MdlAddress, Irp->RequestorMode, IoWriteAccess);
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+
+            if (!NT_SUCCESS(Status))
+            {
+                IoFreeMdl(Irp->MdlAddress);
+                Irp->MdlAddress = NULL;
+                goto Done;
+            }
+            /* The I/O manager unlocks and frees this MDL when Irp completes. */
+        }
+    }
+
+    Buffer = (PUCHAR)(GetBuffer(Irp));
+    if (FileCB->IsVolume && !Buffer)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Done;
+    }
+
+    if (FileCB->IsVolume)
+    {
+        IO_STATUS_BLOCK IoStatus;
+        KEVENT Event;
+        PIRP ReadIrp;
+
+        KeInitializeEvent(&Event, NotificationEvent, FALSE);
+        ReadIrp = IoBuildSynchronousFsdRequest(IRP_MJ_READ,
+                                              VolCB->StorageDevice,
+                                              Buffer,
+                                              RequestedLength,
+                                              &ReadOffset,
+                                              &Event,
+                                              &IoStatus);
+        if (!ReadIrp)
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto Done;
+        }
+
+        Status = IoCallDriver(VolCB->StorageDevice, ReadIrp);
+        if (Status == STATUS_PENDING)
+        {
+            KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+            Status = IoStatus.Status;
+        }
+
+        if (NT_SUCCESS(Status))
+            Information = IoStatus.Information;
+        goto CompleteRead;
     }
 
     ASSERT(FileCB->FileRec);
@@ -58,10 +150,7 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("NtfsFsdRead(): Missing or corrupt $STANDARD_INFORMATION attribute!\n");
-        Irp->IoStatus.Information = 0;
-        Irp->IoStatus.Status = Status;
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-        return Status;
+        goto Done;
     }
 
     ASSERT(!(StdInfo->FilePermissions & FILE_PERM_COMPRESSED));
@@ -86,26 +175,18 @@ NtfsFsdRead(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     {
         // If we aren't reading anything, don't read anything.
         Status = STATUS_SUCCESS;
-        
     }
 
     if (NT_SUCCESS(Status))
-    {
-        if (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO)
-        {
-            IrpSp->FileObject->CurrentByteOffset.QuadPart =
-                ReadOffset.QuadPart + IrpSp->Parameters.Read.Length - RequestedLength;
-        }
+        Information = IrpSp->Parameters.Read.Length - RequestedLength;
 
-        Irp->IoStatus.Information = IrpSp->Parameters.Read.Length - RequestedLength;
-    }
+CompleteRead:
+    if (NT_SUCCESS(Status) && (IrpSp->FileObject->Flags & FO_SYNCHRONOUS_IO))
+        IrpSp->FileObject->CurrentByteOffset.QuadPart = ReadOffset.QuadPart + Information;
 
-    else
-    {
-        Irp->IoStatus.Information = 0;
-    }
-
+Done:
     Irp->IoStatus.Status = Status;
+    Irp->IoStatus.Information = Information;
     IoCompleteRequest(Irp, IO_DISK_INCREMENT);
     return Status;
 }

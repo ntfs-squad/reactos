@@ -135,11 +135,17 @@ NtfsFsdDeviceControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-device-control
      */
 
-    // Shamelessly ripped from the old driver.
-
-    DPRINT1("NtfsFsdDeviceControl called which is a STUB!\n");
-
     PVolumeContextBlock DeviceExt;
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PFileContextBlock FileCB = IrpSp->FileObject ? IrpSp->FileObject->FsContext : NULL;
+
+    if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject || !FileCB || !FileCB->IsVolume)
+    {
+        Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+        Irp->IoStatus.Information = 0;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+        return STATUS_INVALID_DEVICE_REQUEST;
+    }
 
     DeviceExt = (PVolumeContextBlock)(VolumeDeviceObject->DeviceExtension);
     IoSkipCurrentIrpStackLocation(Irp);
@@ -210,7 +216,8 @@ NtfsFsdCleanup(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     // TODO: How do we determine when the volume needs to get cleaned up?
 
-    Irp->IoStatus.Information = STATUS_SUCCESS;
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    Irp->IoStatus.Information = 0;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     return STATUS_SUCCESS;
 }

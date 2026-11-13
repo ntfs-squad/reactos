@@ -325,12 +325,20 @@ NtfsProbePartitionAndOpenVolume(
     _Out_ void** VolumeOut);
 
 /* Volume functions */
-UINT8
+ULONG
 NtfsVolumeGetBytesPerSector(
+    _In_ PNtfsVolume DiskVolume);
+
+UINT8
+NtfsVolumeGetSectorsPerCluster(
     _In_ PNtfsVolume DiskVolume);
 
 ULONG
 NtfsVolumeGetClustersInVolume(
+    _In_ PNtfsVolume DiskVolume);
+
+ULONGLONG
+NtfsVolumeGetSize(
     _In_ PNtfsVolume DiskVolume);
 
 NTSTATUS
