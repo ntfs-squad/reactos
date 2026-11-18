@@ -33,13 +33,12 @@ GetFileBasicInformation(_In_ PFileContextBlock FileCB,
                                            (PUCHAR*)&StdInfo);
    if (!NT_SUCCESS(Status))
        return Status;
-    
+
    Buffer->CreationTime.QuadPart = StdInfo->CreationTime;
    Buffer->LastAccessTime.QuadPart = StdInfo->LastAccessTime;
    Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
    Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
    Buffer->FileAttributes = StdInfo->FilePermissions;
-
    *Length -= sizeof(FILE_BASIC_INFORMATION);
 
    return STATUS_SUCCESS;
@@ -87,13 +86,9 @@ GetFileStandardInformation(_In_ PFileContextBlock FileCB,
         Buffer->AllocationSize.QuadPart = 0;
     }
 
-    // Information from file header
     Buffer->Directory = !!(NtfsFileRecordGetHeader(File)->Flags & FR_IS_DIRECTORY);
     Buffer->NumberOfLinks = NtfsFileRecordGetHeader(File)->HardLinkCount;
-
-    // Information from file context block
     Buffer->DeletePending = !!(FileCB->CreateOptions & FILE_DELETE_ON_CLOSE);
-
     *Length -= FileInfoSize;
 
     return STATUS_SUCCESS;
@@ -135,7 +130,6 @@ GetFileInternalInformation(_In_ PFileContextBlock FileCB,
         return STATUS_BUFFER_TOO_SMALL;
 
     Buffer->IndexNumber.QuadPart = NtfsFileRecordGetHeader(FileCB->FileRec)->MFTRecordNumber;
-
     *Length -= sizeof(FILE_INTERNAL_INFORMATION);
 
     return STATUS_SUCCESS;
@@ -197,7 +191,6 @@ GetFileNetworkOpenInformation(_In_ PFileContextBlock FileCB,
     Buffer->LastWriteTime.QuadPart = StdInfo->LastWriteTime;
     Buffer->ChangeTime.QuadPart = StdInfo->ChangeTime;
     Buffer->FileAttributes = StdInfo->FilePermissions;
-
     *Length -= (sizeof(PFILE_NETWORK_OPEN_INFORMATION));
 
     return STATUS_SUCCESS;

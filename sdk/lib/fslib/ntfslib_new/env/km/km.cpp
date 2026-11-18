@@ -92,7 +92,6 @@ BypassCompletion(_In_ PDEVICE_OBJECT DeviceObject,
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-static
 NTSTATUS
 AccessDisk(_In_ ULONG MajorFunction,
            _In_ PDEVICE_OBJECT DeviceObject,
@@ -178,7 +177,6 @@ Cleanup:
     return STATUS_SUCCESS;
 }
 
-static
 NTSTATUS
 AccessVolume(_In_ ULONG MajorFunction,
              _In_ ULONGLONG Offset,

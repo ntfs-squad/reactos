@@ -360,14 +360,14 @@ NtfsFastIoAcquireFileForNtCreateSection(
     _In_ PFILE_OBJECT FileObject)
 {
     PFileContextBlock FileCB;
-    
+
     if (!FileObject)
         return FALSE;
-        
+
     FileCB = (PFileContextBlock)FileObject->FsContext;
     if (!FileCB)
         return FALSE;
-        
+
     // Acquire the main resource exclusively
     return ExAcquireResourceExclusiveLite(&FileCB->MainResource, TRUE);
 }
@@ -378,17 +378,15 @@ NtfsFastIoReleaseFileForNtCreateSection(
     _In_ PFILE_OBJECT FileObject)
 {
     PFileContextBlock FileCB;
-    
+
     if (!FileObject)
         return FALSE;
-        
+
     FileCB = (PFileContextBlock)FileObject->FsContext;
     if (!FileCB)
         return FALSE;
-        
+
     // Release the main resource
     ExReleaseResourceLite(&FileCB->MainResource);
     return TRUE;
 }
-
-/* EOF */ 

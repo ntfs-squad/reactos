@@ -310,6 +310,13 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
         __debugbreak(); //ASSERT?
     }
 
+    // Set up NTFS library to use disk routines.
+    Status = NtfsDiskInitializeKm(TargetDeviceObject,
+                                  DiskGeometry.BytesPerSector);
+
+    if (!NT_SUCCESS(Status))
+        goto Cleanup;
+
     // Get boot sector.
     PartitionBootSector = ExAllocatePoolWithTag(NonPagedPool, sizeof(BootSector), TAG_NTFS);
     if (!PartitionBootSector)
@@ -318,17 +325,10 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    Status = ReadDisk(TargetDeviceObject,
-                      0,
-                      DiskGeometry.BytesPerSector,
-                      PartitionBootSector);
-
-    if (!NT_SUCCESS(Status))
-        goto Cleanup;
-
-    // Set up NTFS library to use disk routines.
-    Status = NtfsDiskInitializeKm(TargetDeviceObject,
-                                  DiskGeometry.BytesPerSector);
+    Status = AccessVolume(IRP_MJ_READ,
+                          0,
+                          DiskGeometry.BytesPerSector,
+                          PartitionBootSector);
 
     if (!NT_SUCCESS(Status))
         goto Cleanup;
@@ -366,7 +366,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
         __debugbreak();
 
     // Do not set DO_BUFFERED_IO and DO_DIRECT_IO as a FS; leave to I/O manager/CC
-    
+
     // Set up FastIo dispatch table for this volume
     FSDeviceObject->DriverObject->FastIoDispatch = &FastIoDispatch;
 
@@ -413,6 +413,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
 Cleanup:
     if (PartitionBootSector)
         ExFreePool(PartitionBootSector);
-    
+
     return Status;
 }
