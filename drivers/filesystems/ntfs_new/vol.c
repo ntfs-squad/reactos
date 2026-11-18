@@ -72,17 +72,20 @@ NtfsGetAttributeInfo(PNtfsVolume DiskVolume,
 {
     NTSTATUS Status;
     size_t BytesToWrite;
-    LPCWSTR NTFSVerFormat;
-    UNICODE_STRING NTFSVer;
-    PNtfsLogFileService LFS;
 
     if (gShowVersionInfo)
     {
         // Report "NTFS x.x, Client x.x"
+        NtfsVersion Version;
+        NtfsLfsClientVersion LfsClientVersion;
+        PNtfsLogFileService Lfs = NtfsVolumeGetLFS(DiskVolume);
+        LPCWSTR NTFSVerFormat;
+        UNICODE_STRING NTFSVer;
         BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 38;
         if (*Length < BytesToWrite)
             goto fallback;
-        LFS = NtfsVolumeGetLFS(DiskVolume);
+        NtfsVolumeGetVersion(DiskVolume, &Version);
+        NtfsLogFileServiceGetClientVersion(Lfs, &LfsClientVersion);
         Buffer->FileSystemNameLength = 40;
         NTFSVerFormat = L"NTFS %1ld.%1ld, Client %1ld.%1ld";
         RtlInitEmptyUnicodeString(&NTFSVer,
@@ -90,10 +93,10 @@ NtfsGetAttributeInfo(PNtfsVolume DiskVolume,
                                   40);
         Status = RtlUnicodeStringPrintf(&NTFSVer,
                                         NTFSVerFormat,
-                                        NtfsVolumeGetMajorVersion(DiskVolume),
-                                        NtfsVolumeGetMinorVersion(DiskVolume),
-                                        NtfsLogFileServiceGetClientMajorVersion(LFS),
-                                        NtfsLogFileServiceGetClientMinorVersion(LFS));
+                                        Version.MajorVersion,
+                                        Version.MinorVersion,
+                                        LfsClientVersion.MajorVersion,
+                                        LfsClientVersion.MinorVersion);
         if (!NT_SUCCESS(Status))
             goto fallback;
     }

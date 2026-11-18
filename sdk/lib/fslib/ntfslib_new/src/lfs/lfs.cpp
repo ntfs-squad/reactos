@@ -67,12 +67,12 @@ LogFileService::InitializeLFS()
     RestartPage2 = (PLfsRestartPage)(LogFileData + RESTART_PAGE_2_OFFSET);
 
     // TODO: Pick a best restart page based on corruption and recency.
-    ClientMajorVersion = RestartPage1->MajorVersion;
-    ClientMinorVersion = RestartPage1->MinorVersion;
+    ClientVersion.MajorVersion = RestartPage1->MajorVersion;
+    ClientVersion.MinorVersion = RestartPage1->MinorVersion;
 
     if (!IsSupportedClientVersion())
     {
-        DPRINT1("Client version not supported! (%ld.%ld)\n", ClientMajorVersion, ClientMinorVersion);
+        DPRINT1("Client version not supported! (%ld.%ld)\n", ClientVersion.MajorVersion, ClientVersion.MinorVersion);
         RestartPage1 = NULL;
         RestartPage2 = NULL;
         delete LogFileData;

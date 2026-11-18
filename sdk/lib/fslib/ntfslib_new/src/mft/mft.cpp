@@ -15,8 +15,7 @@ MasterFileTable::MasterFileTable(
     _In_ PVolume TargetVolume,
     _In_ UINT64 MFTLCN,
     _In_ UINT64 MFTMirrLCN,
-    _In_ INT8 ClustersPerFileRecord,
-    _In_opt_ PNtfsConfiguration Configuration)
+    _In_ INT8 ClustersPerFileRecord)
 {
     NTSTATUS Status;
 
@@ -42,13 +41,11 @@ MasterFileTable::MasterFileTable(
     if (!NT_SUCCESS(Status))
         DPRINT1("Failed to get $MFTMirr!\n");
 
-    MFTZoneEndLCN = CalculateMftZoneEndLCN(Configuration);
+    MFTZoneEndLCN = CalculateMftZoneEndLCN();
 }
 
 ULONGLONG
-MasterFileTable::CalculateMftZoneEndLCN(
-    _In_opt_ PNtfsConfiguration Configuration
-)
+MasterFileTable::CalculateMftZoneEndLCN()
 {
     /* Calculate MFTZoneEndLCN
      *
@@ -74,33 +71,24 @@ MasterFileTable::CalculateMftZoneEndLCN(
     ULONGLONG RequestedMftZoneEndLCN;
     ULONGLONG VolumeSize = DiskVolume->ClustersInVolume * DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector;
 
-    if (!Configuration)
-    {
-        NtfsConfiguration DefaultConfig= { 0 };
-
-        DefaultConfig.MftZoneReservation = 1;
-        DefaultConfig.UseLegacyMftZoneScaling = FALSE;
-        return CalculateMftZoneEndLCN(&DefaultConfig);
-    }
-
     // MftZoneReservation values are limited to 1-100
-    Configuration->MftZoneReservation = clamp(Configuration->MftZoneReservation, 1, 100);
+    DiskVolume->Configuration.MftZoneReservation = clamp(DiskVolume->Configuration.MftZoneReservation, 1, 100);
 
     // Calculate MFT Zone size, in clusters
     if (VolumeSize < (1ULL << 31 /* 2GB */) ||
-        Configuration->UseLegacyMftZoneScaling)
+        DiskVolume->Configuration.UseLegacyMftZoneScaling)
     {
         /* Technically, MFTZoneReservation values greater than 4 are ignored
          * for legacy MFT zone scaling. I don't think that's worth preserving.
          */
-        RequestedMftZoneEndLCN = min((DiskVolume->ClustersInVolume * Configuration->MftZoneReservation) >> 3 /* 1/8 * MftZoneReservation of volume */,
+        RequestedMftZoneEndLCN = min((DiskVolume->ClustersInVolume * DiskVolume->Configuration.MftZoneReservation) >> 3 /* 1/8 * MftZoneReservation of volume */,
                                       (DiskVolume->ClustersInVolume << 1) / 3 /* 2/3 of volume */);
     }
 
     else
     {
         /* RequestedMftZoneEndLCN = (200MB * MftZoneReservation) / BytesPerCluster */
-        RequestedMftZoneEndLCN = ((100ULL << 21) * Configuration->MftZoneReservation) / (DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector);
+        RequestedMftZoneEndLCN = ((100ULL << 21) * DiskVolume->Configuration.MftZoneReservation) / (DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector);
     }
 
     // MFT Zone starts at MFTLCN

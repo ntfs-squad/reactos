@@ -157,10 +157,19 @@ typedef struct _NtfsMasterFileTableInfo
 
 typedef struct _NtfsConfiguration
 {
-    INT MftZoneReservation;
-    BOOL UseLegacyMftZoneScaling;
+    BOOL IsReadOnly;
+    INT  MftZoneReservation;
     BOOL ShowHiddenMetadataFiles;
+    BOOL UseLegacyMftZoneScaling;
 } NtfsConfiguration, *PNtfsConfiguration;
+
+typedef struct _NtfsVersion
+{
+    ULONG MajorVersion;
+    ULONG MinorVersion;
+} NtfsVersion, *PNtfsVersion;
+
+typedef NtfsVersion NtfsLfsClientVersion, *PNtfsLfsClientVersion;
 
 // =========================
 // NTFS C API
@@ -286,13 +295,10 @@ NtfsFileRecordApplyFixup(
     _In_ NtfsFileRecord *FileRecord);
 
 /* LFS functions */
-NTSTATUS
-NtfsLogFileServiceGetClientMajorVersion(
-    _In_ PNtfsLogFileService LFS);
-
-NTSTATUS
-NtfsLogFileServiceGetClientMinorVersion(
-    _In_ PNtfsLogFileService LFS);
+VOID
+NtfsLogFileServiceGetClientVersion(
+    _In_ PNtfsLogFileService Lfs,
+    _Out_ PNtfsLfsClientVersion ClientVersion);
 
 /* MFT functions */
 NTSTATUS
@@ -355,13 +361,10 @@ PNtfsMasterFileTable
 NtfsVolumeGetMft(
     _In_ PNtfsVolume DiskVolume);
 
-USHORT
-NtfsVolumeGetMajorVersion(
-    _In_ PNtfsVolume DiskVolume);
-
-USHORT
-NtfsVolumeGetMinorVersion(
-    _In_ PNtfsVolume DiskVolume);
+VOID
+NtfsVolumeGetVersion(
+    _In_ PNtfsVolume DiskVolume,
+    _Out_ PNtfsVersion NtfsVersion);
 
 UINT8
 NtfsVolumeGetSectorsPerCluster(

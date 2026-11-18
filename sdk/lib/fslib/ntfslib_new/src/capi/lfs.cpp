@@ -12,18 +12,14 @@
 extern "C" {
 #endif
 
-NTSTATUS
-NtfsLogFileServiceGetClientMajorVersion(
-    _In_ PNtfsLogFileService LFS)
+VOID
+NtfsLogFileServiceGetClientVersion(
+    _In_ PNtfsLogFileService Lfs,
+    _Out_ PNtfsLfsClientVersion ClientVersion)
 {
-    return reinterpret_cast<PLogFileService>(LFS)->ClientMajorVersion;
-}
-
-NTSTATUS
-NtfsLogFileServiceGetClientMinorVersion(
-    _In_ PNtfsLogFileService LFS)
-{
-    return reinterpret_cast<PLogFileService>(LFS)->ClientMinorVersion;
+    // Don't return a pointer to the real client version struct, use a copy instead.
+    ClientVersion->MajorVersion = reinterpret_cast<PLogFileService>(Lfs)->ClientVersion.MajorVersion;
+    ClientVersion->MinorVersion = reinterpret_cast<PLogFileService>(Lfs)->ClientVersion.MinorVersion;
 }
 
 #ifdef __cplusplus

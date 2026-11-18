@@ -181,13 +181,12 @@ NtfsWriteVolume(_In_    ULONGLONG Offset,
 typedef class Volume
 {
 public:
+    NtfsVersion Version;
     ULONG  BytesPerSector;
     UINT8  SectorsPerCluster;
     UINT32 ClustersInVolume;
     INT8   ClustersPerIndexRecord;
     UINT64 SerialNumber;
-    USHORT NtfsMajorVersion;
-    USHORT NtfsMinorVersion;
     ULONG Flags;
     ULONG OpenHandleCount;
     PDEVICE_OBJECT StorageDevice;
@@ -197,8 +196,7 @@ public:
     PDEVICE_OBJECT PartDeviceObj;
     class MasterFileTable* MFT;
     class LogFileService* LFS;
-    BOOLEAN IsReadOnly = FALSE;
-    BOOLEAN ShowHiddenMetadataFiles;
+    NtfsConfiguration Configuration;
 
     ~Volume();
 
@@ -473,10 +471,9 @@ public:
 
     // ./ mft.cpp
     MasterFileTable(_In_ PVolume TargetVolume,
-                    _In_ UINT64 MFTLCN,
-                    _In_ UINT64 MFTMirrLCN,
-                    _In_ INT8   ClustersPerFileRecord,
-                    _In_opt_ PNtfsConfiguration Configuration);
+                    _In_ UINT64  MFTLCN,
+                    _In_ UINT64  MFTMirrLCN,
+                    _In_ INT8    ClustersPerFileRecord);
 
     NTSTATUS
     WriteFileRecordToMFT(_In_ PFileRecord File);
@@ -507,7 +504,7 @@ public:
 
 private:
     ULONGLONG
-    CalculateMftZoneEndLCN(_In_opt_ PNtfsConfiguration Configuration);
+    CalculateMftZoneEndLCN();
 
     PVolume DiskVolume;
     PFileRecord MFTFile = NULL;
@@ -859,11 +856,13 @@ typedef class RestartPage
     PLfsClientRecord ClientArrayHead;
 } *PRestartPage;
 
+// Supported versions currently include: 0.0, 1.0, 1.1
+const NtfsLfsClientVersion SupportedLfsClientVersions[] = {{0, 0}, {1, 0}, {1, 1}};
+
 typedef class LogFileService
 {
 public:
-    ULONG ClientMajorVersion;
-    ULONG ClientMinorVersion;
+    NtfsLfsClientVersion ClientVersion;
 
     LogFileService(_In_ PVolume TargetVolume);
     ~LogFileService();
@@ -887,16 +886,11 @@ private:
 
     BOOLEAN IsSupportedClientVersion()
     {
-        // Supported versions currently include: 0.0, 1.0, 1.1
-        if (ClientMajorVersion == 1)
+        for (NtfsLfsClientVersion SupportedLfsClientVer : SupportedLfsClientVersions)
         {
-            return ClientMinorVersion == 0
-                   || ClientMinorVersion == 1;
-        }
-
-        else if (ClientMajorVersion = 0)
-        {
-            return ClientMinorVersion == 0;
+            if (ClientVersion.MajorVersion == SupportedLfsClientVer.MajorVersion
+                && ClientVersion.MinorVersion == SupportedLfsClientVer.MinorVersion)
+                return TRUE;
         }
 
         return FALSE;

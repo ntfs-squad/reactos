@@ -102,7 +102,7 @@ Directory::IsEligibleForFileDir(PBTreeKey Key,
 
     // Is this a super hidden metadata file (MFT file records 0-26)?
     if (GetFRNFromFileRef(FileRef(Key)) <= 26
-        && !DiskVolume->ShowHiddenMetadataFiles)
+        && !DiskVolume->Configuration.ShowHiddenMetadataFiles)
         return FALSE;
 
     return TRUE;

@@ -133,14 +133,25 @@ Volume::Initialize(
     _In_ PUCHAR BootSectorData,
     _In_opt_ PNtfsConfiguration Configuration)
 {
-    BootSector* PartitionBootSector;
+    NTSTATUS Status;
     PVolumeInformationEx VolumeInfo;
     PAttribute VolumeInfoAttribute;
-    PFileRecord VolumeFile;
-    NTSTATUS Status;
+    PFileRecord VolumeFile = NULL;
+    BootSector* PartitionBootSector = (BootSector*)BootSectorData;
 
-    PartitionBootSector = (BootSector*)BootSectorData;
-    VolumeFile = NULL;
+    if (Configuration)
+    {
+        // Copy the configuration into the Volume object.
+        this->Configuration = *Configuration;
+    }
+    else
+    {
+        // Set default configuration
+        this->Configuration.IsReadOnly = TRUE;
+        this->Configuration.MftZoneReservation = 1;
+        this->Configuration.ShowHiddenMetadataFiles = FALSE;
+        this->Configuration.UseLegacyMftZoneScaling = FALSE;
+    }
 
     // Pull in relevant information from the boot sector.
     BytesPerSector = PartitionBootSector->BytesPerSector;
@@ -153,8 +164,7 @@ Volume::Initialize(
     MFT = new(PagedPool, TAG_MFT) MasterFileTable(this,
                                                   PartitionBootSector->MFTLCN,
                                                   PartitionBootSector->MFTMirrLCN,
-                                                  PartitionBootSector->ClustersPerFileRecord,
-                                                  Configuration);
+                                                  PartitionBootSector->ClustersPerFileRecord);
     if (!MFT)
         return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -168,14 +178,11 @@ Volume::Initialize(
     if (!NT_SUCCESS(Status))
         return Status;
 
+    // Get version information
     VolumeInfo = (PVolumeInformationEx)GetResidentDataPointer(VolumeInfoAttribute);
-
-    NtfsMajorVersion = VolumeInfo->MajorVersion;
-    NtfsMinorVersion = VolumeInfo->MinorVersion;
-    DPRINT1("NTFS Version %ld.%ld\n", VolumeInfo->MajorVersion, VolumeInfo->MinorVersion);
-
-    // Set if we can show super hidden metadata files in directory listings
-    ShowHiddenMetadataFiles = Configuration->ShowHiddenMetadataFiles;
+    Version.MajorVersion = VolumeInfo->MajorVersion;
+    Version.MinorVersion = VolumeInfo->MinorVersion;
+    DPRINT1("NTFS Version %ld.%ld\n", Version.MajorVersion, Version.MinorVersion);
 
     // Initialize Log File Service
     LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
@@ -191,7 +198,7 @@ Volume::Initialize(
         * Open volume as readonly.
         */
         DPRINT1("LFS version is incompatible. Opening disk as readonly.\n");
-        IsReadOnly = TRUE;
+        this->Configuration.IsReadOnly = TRUE;
         Status = STATUS_SUCCESS;
     }
 

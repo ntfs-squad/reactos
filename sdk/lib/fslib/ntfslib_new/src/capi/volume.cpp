@@ -71,18 +71,14 @@ NtfsVolumeGetMft(
         reinterpret_cast<PVolume>(DiskVolume)->MFT);
 }
 
-USHORT
-NtfsVolumeGetMajorVersion(
-    _In_ PNtfsVolume DiskVolume)
+VOID
+NtfsVolumeGetVersion(
+    _In_ PNtfsVolume DiskVolume,
+    _Out_ PNtfsVersion Version)
 {
-    return reinterpret_cast<PVolume>(DiskVolume)->NtfsMajorVersion;
-}
-
-USHORT
-NtfsVolumeGetMinorVersion(
-    _In_ PNtfsVolume DiskVolume)
-{
-    return reinterpret_cast<PVolume>(DiskVolume)->NtfsMinorVersion;
+    // Do not return raw pointer to our version struct, return a copy
+    Version->MajorVersion = reinterpret_cast<PVolume>(DiskVolume)->Version.MajorVersion;
+    Version->MinorVersion = reinterpret_cast<PVolume>(DiskVolume)->Version.MinorVersion;
 }
 
 UINT8
@@ -112,7 +108,7 @@ BOOLEAN
 NtfsVolumeIsReadOnly(
     _In_ PNtfsVolume DiskVolume)
 {
-    return reinterpret_cast<PVolume>(DiskVolume)->IsReadOnly;
+    return reinterpret_cast<PVolume>(DiskVolume)->Configuration.IsReadOnly;
 }
 
 NTSTATUS
