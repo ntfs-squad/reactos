@@ -49,11 +49,18 @@ LogFileService::InitializeLFS()
 
     LogFileSize = GetAttributeDataSize(FileDataAttr);
     LogFileData = new(PagedPool) UCHAR[LogFileSize];
+    if (!LogFileData)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Done;
+    }
 
     // Copy the data from the log file
     Status = LogFile->CopyData(FileDataAttr,
                                LogFileData,
                                &LogFileSize);
+    if (!NT_SUCCESS(Status))
+        goto Done;
 
     // Set the restart page pointers.
     RestartPage1 = (PLfsRestartPage)LogFileData;

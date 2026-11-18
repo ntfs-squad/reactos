@@ -38,6 +38,14 @@ typedef struct _SCB
 
 typedef struct _FCB
 {
+    // NT Required FCB Header - needed for proper resource management
+    FSRTL_ADVANCED_FCB_HEADER CommonFCBHeader;
+    SECTION_OBJECT_POINTERS SectionObjectPointers;
+    FILE_LOCK FileLock;
+    ERESOURCE MainResource;
+    ERESOURCE PagingIoResource;
+    FAST_MUTEX HeaderMutex;
+
     PNtfsFileRecord FileRec;
     ULONG CreateOptions;
     ACCESS_MASK DesiredAccess;
@@ -55,13 +63,7 @@ typedef struct _FCB
 
     // Consider moving, multiple files can point to the same stream in NTFS.
     PStreamContextBlock StreamCB;
-
-    // NT Required FCB Header - needed for proper resource management
-    FSRTL_COMMON_FCB_HEADER CommonFCBHeader;
-    SECTION_OBJECT_POINTERS SectionObjectPointers;
-    FILE_LOCK FileLock;
-    ERESOURCE MainResource;
-    ERESOURCE PagingIoResource;
-    FAST_MUTEX HeaderMutex;
-
 } FileContextBlock, *PFileContextBlock;
+
+// CommonFCBHeader must be the first object in the FCB, breaks launching executables
+C_ASSERT(FIELD_OFFSET(FileContextBlock, CommonFCBHeader) == 0);

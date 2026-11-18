@@ -23,6 +23,13 @@ extern "C" {
 #define TAG_NTFS 'NTFS'
 #endif
 
+/* Space available for MDL payload */
+#define MDL_MAX_PAYLOAD_SIZE (MAXUSHORT - sizeof(MDL))
+/* MDL payload is an array of PFN_NUMBER */
+#define MDL_MAX_PAGES (MDL_MAX_PAYLOAD_SIZE / sizeof(PFN_NUMBER))
+/* Max space that can be represented per MDL, assuming the buffer is page aligned */
+#define MAX_BYTES_PER_MDL ((ULONG)(MDL_MAX_PAGES * PAGE_SIZE))
+
 PDEVICE_OBJECT PartDeviceObj = NULL;
 ULONG BytesPerSector = 0;
 
@@ -68,160 +75,192 @@ NtfsDiskInitializeKm(
     return STATUS_SUCCESS;
 }
 
-//TODO: This shouldn't really be needed. Honestly there's something wrong with this.
+static
 NTSTATUS
 NTAPI
-ByPasscompletion (
-    PDEVICE_OBJECT DeviceObject,
-    PIRP Irp,
-    PVOID Context
-    )
-{ 
-    if (!NT_SUCCESS( Irp->IoStatus.Status )) {
+BypassCompletion(_In_ PDEVICE_OBJECT DeviceObject,
+                 _In_ PIRP Irp,
+                 _In_ PVOID Context)
+{
+    UNREFERENCED_PARAMETER(DeviceObject);
+    UNREFERENCED_PARAMETER(Irp);
 
-        Irp->IoStatus.Information = 0;
-    }
-
-    KeSetEvent( (KEVENT*)Context, 0, FALSE );
-    Irp->IoStatus.Status = STATUS_SUCCESS;
+    /* Paging reads can wait at APC_LEVEL, where completion APCs cannot run.
+     * Bypass the completion APC to avoid deadlock.
+     */
+    KeSetEvent((PKEVENT)Context, IO_NO_INCREMENT, FALSE);
     return STATUS_MORE_PROCESSING_REQUIRED;
-
-    UNREFERENCED_PARAMETER( DeviceObject );
-    UNREFERENCED_PARAMETER( Irp );
 }
 
+static
 NTSTATUS
-ReadDisk(_In_ PDEVICE_OBJECT DeviceObject,
-         _In_ ULONGLONG Offset,
-         _In_ ULONG Length,
-         _Out_ PUCHAR Buffer)
+AccessDisk(_In_ ULONG MajorFunction,
+           _In_ PDEVICE_OBJECT DeviceObject,
+           _In_ ULONGLONG Offset,
+           _In_ ULONG Length,
+           _Inout_ PUCHAR Buffer)
 {
-    KEVENT Event;
-    PIRP Irp;
-    NTSTATUS Status;
-    IO_STATUS_BLOCK Iosb;
-
     PAGED_CODE();
+    ASSERT(Offset % BytesPerSector == 0); /* Offset is sector aligned */
+    ASSERT(Length % BytesPerSector == 0); /* Length is sector aligned */
+    ASSERT(BYTE_OFFSET(Buffer) == 0);     /* Buffer is page aligned */
+    ASSERT(MajorFunction == IRP_MJ_READ || MajorFunction == IRP_MJ_WRITE);
 
-    //  Initialize the event we're going to use
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
-
-    //  Build the IRP for the operation
-    Irp = IoBuildSynchronousFsdRequest(IRP_MJ_READ,
-                                       DeviceObject,
-                                       Buffer,
-                                       Length,
-                                       (PLARGE_INTEGER) &Offset,
-                                       &Event,
-                                       &Iosb);
-
-    ASSERT(Irp);
-    SetFlag(IoGetNextIrpStackLocation(Irp)->Flags, SL_OVERRIDE_VERIFY_VOLUME);
-
-
-    //TODO: There's something SERIOUSLY wrong with completetion.
-    IoSetCompletionRoutine( Irp,
-                            ByPasscompletion,
-                            &Event,
-                            TRUE,
-                            TRUE,
-                            TRUE );
-
-    //  Call the device to do the read and wait for it to finish.
-    Status = IoCallDriver(DeviceObject, Irp);
-
-    if (Status == STATUS_PENDING)
+    while (Length)
     {
-        KeWaitForSingleObject(&Event,
-                              Executive,
-                              KernelMode,
-                              FALSE,
-                              NULL);
-        // Status = Iosb.Status; ???
+        KEVENT Event;
+        IO_STATUS_BLOCK Iosb;
+        LARGE_INTEGER ByteOffset;
+        ULONG RequestedLength = min(Length, MAX_BYTES_PER_MDL);
+        NTSTATUS Status;
+        ULONG Information;
+        PIRP Irp;
+
+        ByteOffset.QuadPart = Offset;
+        KeInitializeEvent(&Event, NotificationEvent, FALSE);
+
+        Irp = IoBuildAsynchronousFsdRequest(MajorFunction,
+                                            DeviceObject,
+                                            Buffer,
+                                            RequestedLength,
+                                            &ByteOffset,
+                                            &Iosb);
+        if (!Irp)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        SetFlag(IoGetNextIrpStackLocation(Irp)->Flags, SL_OVERRIDE_VERIFY_VOLUME);
+        IoSetCompletionRoutine(Irp, BypassCompletion, &Event, TRUE, TRUE, TRUE);
+
+        Status = IoCallDriver(DeviceObject, Irp);
+        if (Status == STATUS_PENDING)
+            KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+
+        Iosb = Irp->IoStatus;
+        Status = Iosb.Status;
+        Information = Iosb.Information;
+
+        if (!NT_SUCCESS(Status))
+            goto Cleanup;
+
+        if (Information != RequestedLength)
+        {
+            Status = STATUS_DEVICE_DATA_ERROR;
+            goto Cleanup;
+        }
+
+        /* Buffered reads return data to the IRP system buffer instead of our own.
+         * Copy the IRP system buffer into our buffer before freeing the IRP.
+         */
+        if ((Irp->Flags & IRP_BUFFERED_IO) && (Irp->Flags & IRP_INPUT_OPERATION))
+            RtlCopyMemory(Buffer, Irp->AssociatedIrp.SystemBuffer, Information);
+
+Cleanup:
+        // Free IRP buffer, MDLs, and the IRP
+        if (Irp->Flags & IRP_DEALLOCATE_BUFFER)
+            ExFreePool(Irp->AssociatedIrp.SystemBuffer);
+        while (Irp->MdlAddress)
+        {
+            PMDL Mdl = Irp->MdlAddress;
+            Irp->MdlAddress = Mdl->Next;
+            MmUnlockPages(Mdl);
+            IoFreeMdl(Mdl);
+        }
+        IoFreeIrp(Irp);
+
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        Offset += RequestedLength;
+        Buffer += RequestedLength;
+        Length -= RequestedLength;
     }
 
-    NT_ASSERT(Status != STATUS_VERIFY_REQUIRED);
-
-    /*  Special case this error code because this probably means we used
-     *  the wrong sector size and we want to reject STATUS_WRONG_VOLUME.
-     */
-    if (Status == STATUS_INVALID_PARAMETER)
-        return Status;
-
-    //  If it doesn't succeed then either return or raise the error.
-    if (!NT_SUCCESS(Status))
-    {
-        __debugbreak();
-    }
-
-    //  And return to our caller.
-    return Status;
+    return STATUS_SUCCESS;
 }
 
+static
 NTSTATUS
-WriteDisk(_In_ PDEVICE_OBJECT DeviceObject,
-          _In_ ULONGLONG Offset,
-          _In_ ULONG Length,
-          _In_ PUCHAR Buffer)
+AccessVolume(_In_ ULONG MajorFunction,
+             _In_ ULONGLONG Offset,
+             _In_ ULONG Length,
+             _Inout_ PUCHAR Buffer)
 {
-    KEVENT Event;
-    PIRP Irp;
     NTSTATUS Status;
-    IO_STATUS_BLOCK Iosb;
+    PUCHAR TemporaryBuffer;
+    ULONGLONG AlignedOffset, AlignedLength;
 
-    //This code can be paged, required for pretty much everything in this driver.
-    PAGED_CODE();
+    ASSERT(MajorFunction == IRP_MJ_READ || MajorFunction == IRP_MJ_WRITE);
 
-    //  Initialize an event which will be used to STALL THE OS UNTIL THE OPERATION COMPLETES
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    if (!Length)
+        return STATUS_SUCCESS;
 
-    /* let's build an IO request, the Irp Representing the request buffer. */
-    Irp = IoBuildSynchronousFsdRequest(IRP_MJ_WRITE, //we ARE writing
-                                       DeviceObject, // this IS the devce
-                                       Buffer, // This is the bufffer
-                                       Length, /// how many bytes
-                                       (PLARGE_INTEGER) &Offset, //offset on disk
-                                       &Event, //event in question
-                                       &Iosb); //status check
+    AlignedOffset = Offset - (Offset % BytesPerSector);
+    AlignedLength = ALIGN_UP_BY((ULONGLONG)(Offset % BytesPerSector) + Length,
+                                BytesPerSector);
 
-    if (Irp == NULL) //if an IO request cant be allocated
+    // Optimization: if the read/write is already page and sector aligned, do it directly.
+    if (AlignedOffset == Offset
+        && AlignedLength == Length
+        && BYTE_OFFSET(Buffer) == 0)
     {
-        __debugbreak(); // LOL LMAO
-        //FatRaiseStatus( IrpContext, STATUS_INSUFFICIENT_RESOURCES );
+        return AccessDisk(MajorFunction,
+                          PartDeviceObj,
+                          AlignedOffset,
+                          AlignedLength,
+                          Buffer);
     }
 
-    SetFlag(IoGetNextIrpStackLocation( Irp )->Flags, SL_OVERRIDE_VERIFY_VOLUME); // override this because it causes problems
-    //TODO: There's something SERIOUSLY wrong with completetion.
-    IoSetCompletionRoutine( Irp,
-                            ByPasscompletion,
-                            &Event,
-                            TRUE,
-                            TRUE,
-                            TRUE );
-
-    //  Call the device to do the write and wait for it to finish.
-    Status = IoCallDriver(DeviceObject, Irp); // DO DE WRITE
-
-    if (Status == STATUS_PENDING)
-    {
-        // Infinitely stall the OS until this kernel mode executive event completes
-        (VOID)KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, (PLARGE_INTEGER)NULL);
-       // Status = Iosb.Status; ???
-    }
-
-    NT_ASSERT(Status != STATUS_VERIFY_REQUIRED);
-
-    /*  Special case this error code because this probably means we used
-     *  the wrong sector size and we want to reject STATUS_WRONG_VOLUME.
+    /* Allocations of at least PAGE_SIZE are page-aligned.
+     * Ensure the temporary buffer is page aligned by allocating at least a page.
      */
-    if (Status == STATUS_INVALID_PARAMETER)
-        return Status;
+    TemporaryBuffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool,
+                                                    max((SIZE_T)AlignedLength,
+                                                        (SIZE_T)PAGE_SIZE),
+                                                    TAG_NTFS);
+    if (!TemporaryBuffer)
+        return STATUS_INSUFFICIENT_RESOURCES;
 
-    //  If it doesn't succeed then either return or raise the error.
+    // Optimization: If we are writing to an already sector aligned region, we can skip the disk read.
+    if (MajorFunction == IRP_MJ_WRITE
+        && AlignedOffset == Offset
+        && AlignedLength == Length)
+    {
+        goto Complete;
+    }
+
+    // Fill the temporary buffer with an aligned read.
+    Status = AccessDisk(IRP_MJ_READ,
+                        PartDeviceObj,
+                        AlignedOffset,
+                        AlignedLength,
+                        TemporaryBuffer);
+
     if (!NT_SUCCESS(Status))
-        __debugbreak();
+        goto Done;
 
-    //  And return to our caller.
+Complete:
+    if (MajorFunction == IRP_MJ_READ)
+    {
+        RtlCopyMemory(Buffer,
+                      TemporaryBuffer + (Offset % BytesPerSector),
+                      Length);
+    }
+
+    else /* MajorFunction == IRP_MJ_WRITE */
+    {
+        RtlCopyMemory(TemporaryBuffer + (Offset % BytesPerSector),
+                      Buffer,
+                      Length);
+
+        Status = AccessDisk(MajorFunction,
+                            PartDeviceObj,
+                            AlignedOffset,
+                            AlignedLength,
+                            TemporaryBuffer);
+    }
+
+Done:
+    ExFreePool(TemporaryBuffer);
     return Status;
 }
 
@@ -234,54 +273,7 @@ NtfsReadVolume(_In_    ULONGLONG Offset,
                _In_    ULONG Length,
                _Inout_ PUCHAR Buffer)
 {
-    NTSTATUS Status;
-    PUCHAR ReadBuffer;
-    ULONGLONG SectorAlignedOffset;
-    ULONG SectorAlignedLength;
-
-    ASSERT(Length);
-
-    SectorAlignedOffset = Offset - (Offset % BytesPerSector);
-    SectorAlignedLength = ALIGN_UP_BY(Length, BytesPerSector);
-
-    if (SectorAlignedOffset == Offset
-        && SectorAlignedLength == Length)
-    {
-        // Read directly to the supplied buffer.
-        Status = ReadDisk(PartDeviceObj,
-                          SectorAlignedOffset,
-                          SectorAlignedLength,
-                          Buffer);
-    }
-
-    else
-    {
-        // Read an extra sector if needed.
-        if (SectorAlignedOffset != Offset)
-            SectorAlignedLength += BytesPerSector;
-
-        // Create the read buffer
-        ReadBuffer = new(NonPagedPool) UCHAR[SectorAlignedLength];
-
-        // Fill the read buffer.
-        Status = ReadDisk(PartDeviceObj,
-                          SectorAlignedOffset,
-                          SectorAlignedLength,
-                          ReadBuffer);
-
-        if (NT_SUCCESS(Status))
-        {
-            // Copy the contents we need into the supplied buffer.
-            RtlCopyMemory(Buffer,
-                          ReadBuffer + (Offset % BytesPerSector),
-                          Length);
-        }
-
-        // Free read buffer
-        delete ReadBuffer;
-    }
-
-    return Status;
+    return AccessVolume(IRP_MJ_READ, Offset, Length, Buffer);
 }
 
 NTSTATUS
@@ -289,58 +281,7 @@ NtfsWriteVolume(_In_    ULONGLONG Offset,
                 _In_    ULONG Length,
                 _Inout_ PUCHAR Buffer)
 {
-    NTSTATUS Status;
-    PUCHAR WriteBuffer;
-    ULONGLONG SectorAlignedOffset;
-    ULONG SectorAlignedLength;
-
-    SectorAlignedOffset = Offset - (Offset % BytesPerSector);
-    SectorAlignedLength = ALIGN_UP_BY(Length, BytesPerSector);
-
-    if (SectorAlignedOffset == Offset
-        && SectorAlignedLength == Length)
-    {
-        // Write directly to the disk using the supplied buffer.
-        Status = WriteDisk(PartDeviceObj,
-                           SectorAlignedOffset,
-                           SectorAlignedLength,
-                           Buffer);
-    }
-
-    else
-    {
-        // Write an extra sector if needed.
-        if (SectorAlignedOffset != Offset)
-            SectorAlignedLength += BytesPerSector;
-
-        // Create the write buffer
-        WriteBuffer = new(NonPagedPool) UCHAR[SectorAlignedLength];
-
-        // Fill the write buffer with what's on disk.
-        Status = ReadDisk(PartDeviceObj,
-                          SectorAlignedOffset,
-                          SectorAlignedLength,
-                          WriteBuffer);
-
-        if (NT_SUCCESS(Status))
-        {
-            // Copy the buffer contents we want to write into the write buffer.
-            RtlCopyMemory(WriteBuffer + (Offset % BytesPerSector),
-                          Buffer,
-                          Length);
-
-            // Write to the disk.
-            Status = WriteDisk(PartDeviceObj,
-                               SectorAlignedOffset,
-                               SectorAlignedLength,
-                               WriteBuffer);
-        }
-
-        // Free write buffer
-        delete WriteBuffer;
-    }
-
-    return Status;
+    return AccessVolume(IRP_MJ_WRITE, Offset, Length, Buffer);
 }
 
 BOOLEAN

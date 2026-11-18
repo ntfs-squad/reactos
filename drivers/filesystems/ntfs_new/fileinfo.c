@@ -106,35 +106,17 @@ GetFileNameInformation(_In_ PFileContextBlock FileCB,
                        _Inout_ PULONG Length)
 {
     ULONG BytesToCopy;
-    size_t FileNameInfoSize = sizeof(FILE_NAME_INFORMATION);
+    ULONG FileNameInfoSize = FIELD_OFFSET(FILE_NAME_INFORMATION, FileName);
 
-    // If buffer can't hold the File Name Information struct, fail and
-    // report the required size back to caller.
     if (*Length < FileNameInfoSize)
-    {
-        *Length = (ULONG)(FileNameInfoSize + FileCB->FileName.Length);
-        return STATUS_INFO_LENGTH_MISMATCH;
-    }
+        return STATUS_BUFFER_TOO_SMALL;
 
-    // Save file name length, and as much file len, as buffer length allows.
     Buffer->FileNameLength = FileCB->FileName.Length;
-    // Calculate amount of bytes to copy not to overflow the buffer.
-    // TODO: Determine if we need this
-    if (*Length < Buffer->FileNameLength + FileNameInfoSize)
-    {
-        // The buffer isn't big enough. Report required size.
-        *Length = (ULONG)(FileNameInfoSize + Buffer->FileNameLength);
-        return STATUS_BUFFER_OVERFLOW;
-    }
+    BytesToCopy = min(Buffer->FileNameLength, *Length - FileNameInfoSize);
+    RtlCopyMemory(Buffer->FileName, FileCB->FileName.Buffer, BytesToCopy);
+    *Length -= FileNameInfoSize + BytesToCopy;
 
-    else
-    {
-        // The buffer is big enough. Fill with file name.
-        BytesToCopy = Buffer->FileNameLength;
-        RtlCopyMemory(Buffer->FileName, FileCB->FileName.Buffer, BytesToCopy);
-        *Length -= FileNameInfoSize + BytesToCopy;
-        return STATUS_SUCCESS;
-    }
+    return BytesToCopy < Buffer->FileNameLength ? STATUS_BUFFER_OVERFLOW : STATUS_SUCCESS;
 }
 
 static
@@ -366,8 +348,6 @@ NtfsFsdQueryInformation(_In_    PDEVICE_OBJECT VolumeDeviceObject,
         Status = STATUS_SUCCESS;
         goto Done;
     }
-
-    FileObject->SectionObjectPointer = &(FileCB->StreamCB->SectionObjectPointers);
 
     switch (FileInfoRequest)
     {

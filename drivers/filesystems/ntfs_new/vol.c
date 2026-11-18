@@ -365,7 +365,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     if (!NT_SUCCESS(Status))
         __debugbreak();
 
-    // Do not force buffered or direct I/O at FS level; leave to I/O manager/CC
+    // Do not set DO_BUFFERED_IO and DO_DIRECT_IO as a FS; leave to I/O manager/CC
     
     // Set up FastIo dispatch table for this volume
     FSDeviceObject->DriverObject->FastIoDispatch = &FastIoDispatch;
