@@ -51,7 +51,7 @@ extern PDRIVER_OBJECT NtfsDriverObject;
 extern FAST_IO_DISPATCH FastIoDispatch;
 
 extern BOOLEAN gAllowExtChar8dot3;
-extern BOOLEAN gShowMetadataFiles;
+extern BOOLEAN gShowHiddenMetadataFiles;
 extern BOOLEAN gShowVersionInfo;
 extern BOOLEAN gBugCheckOnCorrupt;
 extern BOOLEAN gDisable8dot3NameCreation;

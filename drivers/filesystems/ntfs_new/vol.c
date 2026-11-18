@@ -336,6 +336,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     // Populate NTFS configuration settings
     Configuration.MftZoneReservation = gMftZoneReservation;
     Configuration.UseLegacyMftZoneScaling = gUseLegacyMftZoneScaling;
+    Configuration.ShowHiddenMetadataFiles = gShowHiddenMetadataFiles;
 
     /* Check if we're really NTFS. It's OK if we're not.
      * We're a boot driver, NT will try every possible filesystem.

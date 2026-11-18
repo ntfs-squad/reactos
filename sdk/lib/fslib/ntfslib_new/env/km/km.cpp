@@ -13,10 +13,6 @@ void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
 void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
-extern "C" {
-    // Hack: This is a driver-specific setting. Our lib should not care.
-    extern BOOLEAN gShowMetadataFiles;
-}
 #endif
 
 #ifndef TAG_NTFS

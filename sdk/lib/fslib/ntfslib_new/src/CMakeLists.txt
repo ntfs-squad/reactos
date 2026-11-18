@@ -6,7 +6,7 @@ target_sources(ntfslib_new PRIVATE
     btree/directory/get.cpp
     btree/directory/util.cpp
     btree/btree.cpp
-    capi/btree.cpp
+    capi/directory.cpp
     capi/filerecord.cpp
     capi/lfs.cpp
     capi/mft.cpp

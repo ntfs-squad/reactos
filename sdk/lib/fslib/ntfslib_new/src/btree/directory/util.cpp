@@ -97,9 +97,7 @@ Directory::IsLegal8Dot3ShortName(_In_ PWSTR Buffer,
 
     // If a file name has an extension, it must at least be 1 character long.
     if (ReachedDot && !LengthAfterDot)
-    {
         return FALSE;
-    }
 
     // We passed all tests.
     return TRUE;

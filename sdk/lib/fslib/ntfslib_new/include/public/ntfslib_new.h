@@ -159,6 +159,7 @@ typedef struct _NtfsConfiguration
 {
     INT MftZoneReservation;
     BOOL UseLegacyMftZoneScaling;
+    BOOL ShowHiddenMetadataFiles;
 } NtfsConfiguration, *PNtfsConfiguration;
 
 // =========================

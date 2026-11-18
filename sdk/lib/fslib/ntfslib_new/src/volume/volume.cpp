@@ -174,6 +174,9 @@ Volume::Initialize(
     NtfsMinorVersion = VolumeInfo->MinorVersion;
     DPRINT1("NTFS Version %ld.%ld\n", VolumeInfo->MajorVersion, VolumeInfo->MinorVersion);
 
+    // Set if we can show super hidden metadata files in directory listings
+    ShowHiddenMetadataFiles = Configuration->ShowHiddenMetadataFiles;
+
     // Initialize Log File Service
     LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
 

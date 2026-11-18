@@ -15,7 +15,7 @@
 #define KEYVAL_BUFFER_SIZE ROUND_UP(sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG), 0x10)
 
 BOOLEAN gAllowExtChar8dot3;
-BOOLEAN gShowMetadataFiles;
+BOOLEAN gShowHiddenMetadataFiles;
 BOOLEAN gShowVersionInfo;
 BOOLEAN gBugCheckOnCorrupt;
 BOOLEAN gDisable8dot3NameCreation;
@@ -252,9 +252,9 @@ GetGlobalSettingsFromRegistry()
     /* Shows the super hidden NTFS metadata files, including $MFT and $LogFile.
      * Default is OFF (0).
      */
-    gShowMetadataFiles = QueryBooleanRegistryValueEx(RegistryKey,
-                                                     L"NtfsShowMetadataFiles",
-                                                     FALSE);
+    gShowHiddenMetadataFiles = QueryBooleanRegistryValueEx(RegistryKey,
+                                                           L"NtfsShowHiddenMetadataFiles",
+                                                           FALSE);
 
     /* Shows the NTFS version information, including the LFS Client version,
      * in the properties window for each NTFS volume. Default is OFF (0).

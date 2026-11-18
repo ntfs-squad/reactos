@@ -96,13 +96,13 @@ Directory::IsEligibleForFileDir(PBTreeKey Key,
         && !DoesFileNameMatch(FileNameFilter, Key))
         return FALSE;
 
-    // Is this a super hidden metadata file (MFT file records 0-26)?
-    if (GetFRNFromFileRef(FileRef(Key)) <= 26
-        && !gShowMetadataFiles)
-        return FALSE;
-
     // Is this a duplicated short name?
     if (Key->Flags & DIR_KEY_8DOT3)
+        return FALSE;
+
+    // Is this a super hidden metadata file (MFT file records 0-26)?
+    if (GetFRNFromFileRef(FileRef(Key)) <= 26
+        && !DiskVolume->ShowHiddenMetadataFiles)
         return FALSE;
 
     return TRUE;
