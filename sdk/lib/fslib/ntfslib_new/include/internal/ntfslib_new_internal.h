@@ -134,6 +134,9 @@ Attribute1->IsNonResident ? Attribute1->NonResident.DataSize : Attribute1->Resid
 extern "C" {
 #endif
 
+ULONG
+NtfsGetBytesPerSector(VOID);
+
 NTSTATUS
 NtfsReadVolume(_In_    ULONGLONG Offset,
                _In_    ULONG Length,
@@ -296,7 +299,7 @@ public:
                          _Inout_ PUCHAR Buffer);
 
     NTSTATUS
-    Initialize(_In_ PUCHAR BootSectorData,
+    Initialize(_In_ const BootSector* PartitionBootSector,
                _In_opt_ PNtfsConfiguration Configuration);
 
     NTSTATUS

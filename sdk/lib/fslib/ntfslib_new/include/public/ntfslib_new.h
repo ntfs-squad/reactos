@@ -321,15 +321,9 @@ NtfsMasterFileTableGetFileRecord(
 /* Probe functions */
 NTSTATUS
 NtfsProbePartition(
-    _In_ ULONG BytesPerSector,
-    _In_ PUCHAR BootSectorData);
-
-NTSTATUS
-NtfsProbePartitionAndOpenVolume(
-    _In_ ULONG BytesPerSector,
-    _In_ PUCHAR BootSectorData,
     _In_opt_ PNtfsConfiguration Configuration,
-    _Out_ void** VolumeOut);
+    _Out_opt_ void** VolumeOut,
+    _Out_opt_ PBootSector BootSectorOut);
 
 /* Volume functions */
 ULONG

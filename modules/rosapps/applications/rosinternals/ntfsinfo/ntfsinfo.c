@@ -261,10 +261,8 @@ int wmain(int argc, wchar_t* argv[])
     PNtfsVolume VolumeObject;
     PNtfsMasterFileTable Mft;
     NtfsMasterFileTableInfo MftInfo;
-    PBootSector BootSector;
+    BootSector PartitionBootSector;
     NtfsConfiguration NtfsConfiguration;
-    // TODO: Maybe this should go in NtfsProbePartition?
-    PUCHAR BootSectorData;
 
     if (!NoBanner)
         PrintBanner();
@@ -297,35 +295,17 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
-    // Get the boot sector data
-    BootSectorData = (PUCHAR)malloc(BytesPerSector);
-    if (!BootSectorData)
-    {
-        PrintLastError("Error allocating boot sector data");
-        return 1;
-    }
-
-    Status = NtfsReadVolume(0, BytesPerSector, BootSectorData);
-    if (!NT_SUCCESS(Status))
-    {
-        PrintLastError("Error reading boot sector data");
-        free(BootSectorData);
-        return 1;
-    }
-
     // Get NTFS Configuration
     GetNtfsConfiguration(&NtfsConfiguration);
 
-    Status = NtfsProbePartitionAndOpenVolume(BytesPerSector,
-                                             BootSectorData,
-                                             &NtfsConfiguration,
-                                             &VolumeObject);
+    Status = NtfsProbePartition(&NtfsConfiguration,
+                                &VolumeObject,
+                                &PartitionBootSector);
 
     // If the specificed volume is not NTFS, print an error and exit.
     if (!NT_SUCCESS(Status))
     {
         PrintLastError("Error obtaining NTFS information");
-        free(BootSectorData);
         return 1;
     }
 
@@ -336,23 +316,21 @@ int wmain(int argc, wchar_t* argv[])
      *
      */
 
-    BootSector = (PBootSector)BootSectorData;
     Mft = NtfsVolumeGetMft(VolumeObject);
     Status = NtfsMasterFileTableGetMftInformation(Mft, &MftInfo);
     if (!NT_SUCCESS(Status))
     {
         PrintLastError("Error obtaining MFT information");
-        free(BootSectorData);
         return 1;
     }
 
-    NtfsInformation.VolumeSize = BootSector->SectorsInVolume * BytesPerSector;
-    NtfsInformation.SectorsPerCluster = BootSector->SectorsPerCluster;
-    NtfsInformation.TotalClusters = BootSector->SectorsInVolume / BootSector->SectorsPerCluster;
+    NtfsInformation.VolumeSize = PartitionBootSector.SectorsInVolume * BytesPerSector;
+    NtfsInformation.SectorsPerCluster = PartitionBootSector.SectorsPerCluster;
+    NtfsInformation.TotalClusters = PartitionBootSector.SectorsInVolume / PartitionBootSector.SectorsPerCluster;
     NtfsVolumeGetFreeClusters(VolumeObject, &NtfsInformation.FreeClusters);
     NtfsInformation.BytesPerSector = BytesPerSector;
-    NtfsInformation.BytesPerCluster = BytesPerSector * BootSector->SectorsPerCluster;
-    NtfsInformation.ClustersPerMftRecord = BootSector->ClustersPerFileRecord;
+    NtfsInformation.BytesPerCluster = BytesPerSector * PartitionBootSector.SectorsPerCluster;
+    NtfsInformation.ClustersPerMftRecord = PartitionBootSector.ClustersPerFileRecord;
     NtfsInformation.MftSize = NtfsInfoGetFileSize(Mft, _MFT);
     NtfsInformation.MftStartCluster = MftInfo.MFTLCN;
     NtfsInformation.MftZoneStartCluster = MftInfo.MFTLCN;
@@ -370,8 +348,6 @@ int wmain(int argc, wchar_t* argv[])
     NtfsInformation._UpCaseSize =  NtfsInfoGetFileSize(Mft, _UpCase);
 
     PrintNtfsInformation(&NtfsInformation);
-
-    free(BootSectorData);
 
     return 0;
 }

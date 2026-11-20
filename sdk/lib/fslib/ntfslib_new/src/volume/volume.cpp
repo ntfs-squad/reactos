@@ -12,113 +12,99 @@
 EXTERN_C
 NTSTATUS
 NtfsProbePartition(
-    _In_ ULONG BytesPerSector,
-    _In_ PUCHAR BootSectorData)
+    _In_opt_ PNtfsConfiguration Configuration,
+    _Out_opt_ void** VolumeOut,
+    _Out_opt_ PBootSector BootSectorOut)
 {
-    BootSector* PartitionBootSector;
-    ULONG ClusterSize;
-    USHORT i;
+    NTSTATUS Status;
+    BootSector PartitionBootSector;
+    ULONG BytesPerSector = NtfsGetBytesPerSector();
+    PVolume VolumeObject = NULL;
 
     // Check bytes per sector.
-    if (BytesPerSector != 512
-        && BytesPerSector != 4096)
+    if (BytesPerSector != 512 && BytesPerSector != 4096)
     {
-        /* NOTE:
-         * Per Microsoft's documentation, bytes per sector can either be
-         * 4096 bytes or 512 bytes.
-         *
+        /* NOTE: Per Microsoft's documentation, bytes per sector can either be 4096 bytes or 512 bytes.
          * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iobuildsynchronousfsdrequest
          */
         DPRINT1("Volume has invalid sector size! (%ld bytes)\n", BytesPerSector);
         return STATUS_UNRECOGNIZED_VOLUME;
     }
 
-    PartitionBootSector = (BootSector*)BootSectorData;
+    // Get partition boot sector
+    Status = NtfsReadVolume(0, sizeof(PartitionBootSector), (PUCHAR)&PartitionBootSector);
+    if (!NT_SUCCESS(Status))
+        return Status;
 
     // Check if OEM_ID is "NTFS    ".
-    if (RtlCompareMemory(PartitionBootSector->OEM_ID, "NTFS    ", 8) != 8)
+    if (RtlCompareMemory(PartitionBootSector.OEM_ID, "NTFS    ", 8) != 8)
     {
-        DPRINT1("Failed with NTFS identifier: [%.8s]\n", PartitionBootSector->OEM_ID);
+        DPRINT1("Failed with NTFS identifier: [%.8s]\n", PartitionBootSector.OEM_ID);
         return STATUS_UNRECOGNIZED_VOLUME;
     }
 
     // Check if Reserved0 is NULL.
-    for (i = 0; i < 7; i++)
+    for (INT i = 0; i < 7; i++)
     {
-        if (PartitionBootSector->Reserved0[i] != 0)
+        if (PartitionBootSector.Reserved0[i] != 0)
         {
-            DPRINT1("Failed in field Reserved0: [%.7s]\n", PartitionBootSector->Reserved0);
+            DPRINT1("Failed in field Reserved0: [%.7s]\n", PartitionBootSector.Reserved0);
             return STATUS_UNRECOGNIZED_VOLUME;
         }
     }
 
-    // Check if Reserved3 is NULL.
-    // TODO: Why doesn't this check work?
-    /*for (i = 0; i < 7; i++)
+#if 0
+    // Check if Reserved3 is NULL. TODO: Why doesn't this check work?
+    for (i = 0; i < 7; i++)
     {
         if (PartitionBootSector->Reserved3[i] != 0)
         {
             DPRINT1("Failed in field Reserved3: [%.7s]\n", PartitionBootSector->Reserved3);
             return STATUS_UNRECOGNIZED_VOLUME;
         }
-    }*/
+    }
+#endif
 
     // Check cluster size.
-    ClusterSize = PartitionBootSector->BytesPerSector
-                * PartitionBootSector->SectorsPerCluster;
-
+    ULONG ClusterSize = PartitionBootSector.BytesPerSector * PartitionBootSector.SectorsPerCluster;
     if (ClusterSize != 512 && ClusterSize != 1024 &&
         ClusterSize != 2048 && ClusterSize != 4096 &&
         ClusterSize != 8192 && ClusterSize != 16384 &&
         ClusterSize != 32768 && ClusterSize != 65536)
     {
         DPRINT1("Cluster size failed: %hu, %hu, %hu\n",
-                PartitionBootSector->BytesPerSector,
-                PartitionBootSector->SectorsPerCluster,
+                PartitionBootSector.BytesPerSector,
+                PartitionBootSector.SectorsPerCluster,
                 ClusterSize);
         return STATUS_UNRECOGNIZED_VOLUME;
     }
 
-    // We are NTFS.
+    /* We are NTFS. */
+    Status = STATUS_SUCCESS;
 #ifdef NTFS_DEBUG
-    PrintNTFSBootSector(PartitionBootSector);
+    PrintNTFSBootSector(&PartitionBootSector);
 #endif
-    return STATUS_SUCCESS;
-}
 
-EXTERN_C
-NTSTATUS
-NtfsProbePartitionAndOpenVolume(
-    _In_ ULONG BytesPerSector,
-    _In_ PUCHAR BootSectorData,
-    _In_opt_ PNtfsConfiguration Configuration,
-    _Out_ void** VolumeOut)
-{
-    NTSTATUS Status;
-    PVolume VolumeObject;
-
-    // Make sure volume pointer is null if we fail for any reason.
-    *VolumeOut = NULL;
-    VolumeObject = NULL;
-
-    Status = NtfsProbePartition(BytesPerSector, BootSectorData);
-    if (!NT_SUCCESS(Status))
-        return Status;
-
-    // Initialize the volume object.
-    VolumeObject = new(NonPagedPool) Volume();
-    if (!VolumeObject)
-        return STATUS_INSUFFICIENT_RESOURCES;
-
-    Status = VolumeObject->Initialize(BootSectorData, Configuration);
-    if (!NT_SUCCESS(Status))
+    if (VolumeOut)
     {
-        DPRINT1("Failed to initialize volume object! (Status %lx)\n", Status);
-        delete VolumeObject;
-        return Status;
+        VolumeObject = new(NonPagedPool) Volume();
+        if (!VolumeObject)
+            return STATUS_INSUFFICIENT_RESOURCES;
+
+        Status = VolumeObject->Initialize(&PartitionBootSector, Configuration);
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failed to initialize volume object! (Status %lx)\n", Status);
+            delete VolumeObject;
+            return Status;
+        }
+
+        *VolumeOut = VolumeObject;
     }
 
-    *VolumeOut = VolumeObject;
+    if (BootSectorOut)
+        *BootSectorOut = PartitionBootSector;
+
     return Status;
 }
 
@@ -130,14 +116,13 @@ Volume::~Volume()
 
 NTSTATUS
 Volume::Initialize(
-    _In_ PUCHAR BootSectorData,
+    _In_ const BootSector* PartitionBootSector,
     _In_opt_ PNtfsConfiguration Configuration)
 {
     NTSTATUS Status;
     PVolumeInformationEx VolumeInfo;
     PAttribute VolumeInfoAttribute;
     PFileRecord VolumeFile = NULL;
-    BootSector* PartitionBootSector = (BootSector*)BootSectorData;
 
     if (Configuration)
     {

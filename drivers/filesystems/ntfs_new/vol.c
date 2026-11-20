@@ -295,7 +295,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     LARGE_INTEGER FilesystemSize;
     DISK_GEOMETRY DiskGeometry;
     ULONG Size;
-    PUCHAR PartitionBootSector;
     NtfsConfiguration Configuration;
 
     // Get disk geometry.
@@ -310,7 +309,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("NtfsDeviceIoControl() failed (Status %lx)\n", Status);
-        __debugbreak(); //ASSERT?
+        return Status;
     }
 
     // Set up NTFS library to use disk routines.
@@ -318,23 +317,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                                   DiskGeometry.BytesPerSector);
 
     if (!NT_SUCCESS(Status))
-        goto Cleanup;
-
-    // Get boot sector.
-    PartitionBootSector = ExAllocatePoolWithTag(NonPagedPool, sizeof(BootSector), TAG_NTFS);
-    if (!PartitionBootSector)
-    {
-        DPRINT1("Failed to allocate memory for boot sector!\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    Status = AccessVolume(IRP_MJ_READ,
-                          0,
-                          DiskGeometry.BytesPerSector,
-                          PartitionBootSector);
-
-    if (!NT_SUCCESS(Status))
-        goto Cleanup;
+        return Status;
 
     // Populate NTFS configuration settings
     Configuration.MftZoneReservation = gMftZoneReservation;
@@ -344,15 +327,14 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     /* Check if we're really NTFS. It's OK if we're not.
      * We're a boot driver, NT will try every possible filesystem.
      */
-    Status = NtfsProbePartitionAndOpenVolume(DiskGeometry.BytesPerSector,
-                                             PartitionBootSector,
-                                             &Configuration,
-                                             &DiskVolume);
+    Status = NtfsProbePartition(&Configuration,
+                                &DiskVolume,
+                                NULL);
 
     DPRINT1("LoadNTFSDevice() returned %lx\n", Status);
 
     if (!NT_SUCCESS(Status))
-        goto Cleanup;
+        return Status;
 
     // Currently used for debugging output.
     // DiskVolume->RunSanityChecks();
@@ -412,11 +394,5 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     // Mount volume.
     FsRtlNotifyVolumeEvent(VolCB->StreamFileObject, FSRTL_VOLUME_MOUNT);
 
-    Status = STATUS_SUCCESS;
-
-Cleanup:
-    if (PartitionBootSector)
-        ExFreePool(PartitionBootSector);
-
-    return Status;
+    return STATUS_SUCCESS;
 }

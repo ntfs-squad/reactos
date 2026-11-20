@@ -14,7 +14,6 @@
 #ifndef STATUS_SUCCESS
 #define STATUS_SUCCESS                   1
 #endif
-#define STATUS_NOT_IMPLEMENTED           ((NTSTATUS)0xC0000002L)
 #define STATUS_UNSUCCESSFUL              ((NTSTATUS)0xC0000001L)
 #ifndef STATUS_INVALID_PARAMETER
 #define STATUS_INVALID_PARAMETER         ((NTSTATUS)0xC000000DL)
@@ -65,13 +64,12 @@ NtfsDiskInitializeUm(
 {
     BOOL Result;
     DISK_GEOMETRY DiskGeometry;
-    VolumeHandle = FileHandle;
     ULONG BytesReturned;
 
-    if (!VolumeHandle || VolumeHandle == INVALID_HANDLE_VALUE)
+    if (!FileHandle || FileHandle == INVALID_HANDLE_VALUE)
         return STATUS_INVALID_PARAMETER;
     
-    Result = DeviceIoControl(VolumeHandle,
+    Result = DeviceIoControl(FileHandle,
                              IOCTL_DISK_GET_DRIVE_GEOMETRY,
                              NULL,
                              0,
@@ -83,6 +81,7 @@ NtfsDiskInitializeUm(
     if (!Result)
         return STATUS_INVALID_DEVICE_REQUEST;
 
+    VolumeHandle = FileHandle;
     SectorSize = DiskGeometry.BytesPerSector;
 
     if (BytesPerSector)
@@ -128,74 +127,29 @@ NtfsFillMemory(_In_ PVOID Buffer,
     FillMemory(Buffer, Size, Value);
 }
 
-#ifndef ALIGN_UP_BY
-#define ALIGN_UP_BY(size, align) (((size) + ((align) - 1)) / (align) * (align))
-#endif
+ULONG
+NtfsGetBytesPerSector(VOID)
+{
+    return SectorSize;
+}
 
+// Use explicit offsets on the synchronous handle. Callers supply any required alignment.
 NTSTATUS
 NtfsReadVolume(_In_    ULONGLONG Offset,
                _In_    ULONG Length,
                _Inout_ PUCHAR Buffer)
 {
-    LARGE_INTEGER FileOffset;
-    ULONGLONG SectorAlignedOffset;
-    ULONG SectorAlignedLength;
-    PUCHAR ReadBuffer;
+    OVERLAPPED Position = {};
     DWORD BytesRead;
-    BOOL Result;
 
-    if (!Length || !VolumeHandle || SectorSize == 0 || !Buffer)
+    if (!VolumeHandle || !Buffer || !Length || Offset > MAXLONGLONG)
         return STATUS_INVALID_PARAMETER;
 
-    SectorAlignedOffset = Offset - (Offset % SectorSize);
-    SectorAlignedLength = ALIGN_UP_BY((ULONG)((Offset - SectorAlignedOffset) + Length), SectorSize);
-
-    if (SectorAlignedOffset == Offset && (Length % SectorSize) == 0)
-    {
-        FileOffset.QuadPart = Offset;
-        if (!SetFilePointerEx(VolumeHandle, FileOffset, NULL, FILE_BEGIN))
-            return STATUS_UNSUCCESSFUL;
-
-        Result = ReadFile(VolumeHandle,
-                          Buffer,
-                          Length,
-                          &BytesRead,
-                          NULL);
-
-        if (!Result || BytesRead != Length)
-            return STATUS_UNSUCCESSFUL;
-
-        return STATUS_SUCCESS;
-    }
-
-    ReadBuffer = (PUCHAR)HeapAlloc(GetProcessHeap(), 0, SectorAlignedLength);
-    if (!ReadBuffer)
+    Position.Offset = (DWORD)Offset;
+    Position.OffsetHigh = (DWORD)(Offset >> 32);
+    if (!ReadFile(VolumeHandle, Buffer, Length, &BytesRead, &Position) || BytesRead != Length)
         return STATUS_UNSUCCESSFUL;
 
-    FileOffset.QuadPart = SectorAlignedOffset;
-    if (!SetFilePointerEx(VolumeHandle, FileOffset, NULL, FILE_BEGIN))
-    {
-        HeapFree(GetProcessHeap(), 0, ReadBuffer);
-        return STATUS_UNSUCCESSFUL;
-    }
-
-    Result = ReadFile(VolumeHandle,
-                      ReadBuffer,
-                      SectorAlignedLength,
-                      &BytesRead,
-                      NULL);
-
-    if (!Result || BytesRead != SectorAlignedLength)
-    {
-        HeapFree(GetProcessHeap(), 0, ReadBuffer);
-        return STATUS_UNSUCCESSFUL;
-    }
-
-    CopyMemory(Buffer,
-               ReadBuffer + (ULONG)(Offset - SectorAlignedOffset),
-               Length);
-
-    HeapFree(GetProcessHeap(), 0, ReadBuffer);
     return STATUS_SUCCESS;
 }
 
@@ -204,11 +158,18 @@ NtfsWriteVolume(_In_    ULONGLONG Offset,
                 _In_    ULONG Length,
                 _Inout_ PUCHAR Buffer)
 {
-    UNREFERENCED_PARAMETER(Offset);
-    UNREFERENCED_PARAMETER(Length);
-    UNREFERENCED_PARAMETER(Buffer);
+    OVERLAPPED Position = {};
+    DWORD BytesWritten;
 
-    return STATUS_NOT_IMPLEMENTED;
+    if (!VolumeHandle || !Buffer || !Length || Offset > MAXLONGLONG)
+        return STATUS_INVALID_PARAMETER;
+
+    Position.Offset = (DWORD)Offset;
+    Position.OffsetHigh = (DWORD)(Offset >> 32);
+    if (!WriteFile(VolumeHandle, Buffer, Length, &BytesWritten, &Position) || BytesWritten != Length)
+        return STATUS_UNSUCCESSFUL;
+
+    return STATUS_SUCCESS;
 }
 
 BOOLEAN

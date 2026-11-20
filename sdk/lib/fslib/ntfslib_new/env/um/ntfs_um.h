@@ -2,16 +2,11 @@
 extern "C" {
 #endif
 
+/* FileHandle must be opened for synchronous I/O. */
 NTSTATUS
 NtfsDiskInitializeUm(
     _In_      HANDLE FileHandle,
     _Out_opt_ ULONG* BytesPerSector);
-
-/* HACK: Don't expose this */
-NTSTATUS
-NtfsReadVolume(_In_    ULONGLONG Offset,
-               _In_    ULONG Length,
-               _Inout_ PUCHAR Buffer);
 
 #ifdef __cplusplus
 }
