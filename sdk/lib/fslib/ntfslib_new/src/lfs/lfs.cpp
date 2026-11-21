@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 #define RESTART_PAGE_2_OFFSET 4096
@@ -48,7 +47,7 @@ LogFileService::InitializeLFS()
     }
 
     LogFileSize = GetAttributeDataSize(FileDataAttr);
-    LogFileData = new(PagedPool) UCHAR[LogFileSize];
+    LogFileData = new(NtfsPagedPool) UCHAR[LogFileSize];
     if (!LogFileData)
     {
         Status = STATUS_INSUFFICIENT_RESOURCES;

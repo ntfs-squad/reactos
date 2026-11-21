@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 EXTERN_C
@@ -87,7 +86,7 @@ NtfsProbePartition(
 
     if (VolumeOut)
     {
-        VolumeObject = new(NonPagedPool) Volume();
+        VolumeObject = new(NtfsNonPagedPool) Volume();
         if (!VolumeObject)
             return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -146,7 +145,7 @@ Volume::Initialize(
     SerialNumber = PartitionBootSector->SerialNumber;
 
     // Initialize Master File Table
-    MFT = new(PagedPool, TAG_MFT) MasterFileTable(this,
+    MFT = new(NtfsPagedPool, TAG_MFT) MasterFileTable(this,
                                                   PartitionBootSector->MFTLCN,
                                                   PartitionBootSector->MFTMirrLCN,
                                                   PartitionBootSector->ClustersPerFileRecord);
@@ -170,7 +169,7 @@ Volume::Initialize(
     DPRINT1("NTFS Version %ld.%ld\n", Version.MajorVersion, Version.MinorVersion);
 
     // Initialize Log File Service
-    LFS = new(PagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
+    LFS = new(NtfsPagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
 
     if (!LFS)
         return STATUS_INSUFFICIENT_RESOURCES;

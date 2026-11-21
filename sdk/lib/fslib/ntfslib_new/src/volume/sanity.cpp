@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 void
@@ -58,9 +57,7 @@ Volume::SanityCheckBlockIO()
 void
 Volume::RunSanityChecks()
 {
-#ifdef NTFS_KERNEL_MODE
-    PAGED_CODE();
-#endif
+    NtfsAssertPagedCode();
 
     DPRINT1("RunSanityChecks() called\n");
     // SanityCheckBlockIO();

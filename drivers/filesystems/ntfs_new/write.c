@@ -84,7 +84,7 @@ NtfsFsdWrite(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         }
 
         Status = NtfsVolumeGetADSPreference(DiskVolume,
-                                            FileObj,
+                                            FileObj->FileName.Buffer,
                                             &RequestedType,
                                             &RequestedStream);
 

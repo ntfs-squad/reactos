@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 // Macros for GetFreeClusters
@@ -41,7 +40,7 @@ Volume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     BytesToRead = GetAttributeDataSize(BitmapData);
 
     // Initialize bitmap buffer
-    BitmapBuffer = new(NonPagedPool) UCHAR[BytesToRead];
+    BitmapBuffer = new(NtfsNonPagedPool) UCHAR[BytesToRead];
 
     // Copy attribute data into this buffer.
     BitmapFile->CopyData(BitmapData,

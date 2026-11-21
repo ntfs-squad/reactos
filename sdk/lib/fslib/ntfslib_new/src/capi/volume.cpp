@@ -5,7 +5,6 @@
  * COPYRIGHT:   Copyright 2026 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 #ifdef __cplusplus
@@ -15,11 +14,11 @@ extern "C" {
 NTSTATUS
 NtfsVolumeGetADSPreference(
     _In_ PNtfsVolume DiskVolume,
-    _In_ PFILE_OBJECT FileObject,
+    _In_opt_ PWSTR FileName,
     _Out_ AttributeType* RequestedType,
     _Out_ PWSTR* RequestedStream)
 {
-    return reinterpret_cast<PVolume>(DiskVolume)->GetADSPreference(reinterpret_cast<PFILE_OBJECT>(FileObject),
+    return reinterpret_cast<PVolume>(DiskVolume)->GetADSPreference(FileName,
                                                                    RequestedType,
                                                                    RequestedStream);
 }

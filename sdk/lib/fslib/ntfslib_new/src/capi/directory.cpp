@@ -5,7 +5,6 @@
  * COPYRIGHT:   Copyright 2026 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 #ifdef __cplusplus
@@ -16,7 +15,7 @@ PNtfsDirectory
 NtfsDirectoryCreate(
     _In_ PNtfsVolume DiskVolume)
 {
-    return reinterpret_cast<PNtfsDirectory>(new(NonPagedPool) Directory(reinterpret_cast<PVolume>(DiskVolume)));
+    return reinterpret_cast<PNtfsDirectory>(new(NtfsNonPagedPool) Directory(reinterpret_cast<PVolume>(DiskVolume)));
 }
 
 PNtfsDirectory
@@ -24,8 +23,8 @@ NtfsDirectoryCreateEx(
     _In_ PNtfsVolume DiskVolume,
     _In_ PNtfsFileRecord File)
 {
-    return reinterpret_cast<PNtfsDirectory>(new(NonPagedPool) Directory(reinterpret_cast<PVolume>(DiskVolume),
-                                                                        reinterpret_cast<PFileRecord>(File)));
+    return reinterpret_cast<PNtfsDirectory>(new(NtfsNonPagedPool) Directory(reinterpret_cast<PVolume>(DiskVolume),
+                                                                            reinterpret_cast<PFileRecord>(File)));
 }
 
 NTSTATUS

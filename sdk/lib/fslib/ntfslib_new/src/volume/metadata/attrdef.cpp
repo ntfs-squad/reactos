@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 NTSTATUS
@@ -38,7 +37,7 @@ Volume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
         goto Done;
 
     AttrDefDataSize = DataAttr->NonResident.DataSize;
-    Buffer = new(NonPagedPool) UCHAR[DataAttr->NonResident.DataSize];
+    Buffer = new(NtfsNonPagedPool) UCHAR[DataAttr->NonResident.DataSize];
     AttrDefFile->CopyData(DataAttr,
                           Buffer,
                           &AttrDefDataSize,
@@ -76,17 +75,13 @@ Done:
 }
 
 NTSTATUS
-Volume::GetADSPreference(_In_  PFILE_OBJECT FileObj,
+Volume::GetADSPreference(_In_opt_ PWSTR FileNameQuery,
                          _Out_ AttributeType* RequestedType,
                          _Out_ PWSTR* RequestedStream)
 {
     NTSTATUS Status;
-    PWSTR FileNameQuery, ADSPtr, ADSTypePtr;
+    PWSTR ADSPtr, ADSTypePtr;
     ULONG StreamNameLength;
-
-    ASSERT(FileObj);
-
-    FileNameQuery = FileObj->FileName.Buffer;
 
     if (!FileNameQuery)
     {
@@ -127,7 +122,7 @@ Volume::GetADSPreference(_In_  PFILE_OBJECT FileObj,
             {
                 // Copy the requested stream name.
                 StreamNameLength = ADSTypePtr - ADSPtr - 1;
-                *RequestedStream = new(NonPagedPool) WCHAR[StreamNameLength + 1];
+                *RequestedStream = new(NtfsNonPagedPool) WCHAR[StreamNameLength + 1];
                 RtlCopyMemory(*RequestedStream,
                               ADSPtr,
                               StreamNameLength * sizeof(WCHAR));
@@ -150,7 +145,7 @@ Volume::GetADSPreference(_In_  PFILE_OBJECT FileObj,
         {
             // Copy the stream name
             StreamNameLength = wcslen(ADSPtr);
-            *RequestedStream = new(NonPagedPool) WCHAR[StreamNameLength + 1];
+            *RequestedStream = new(NtfsNonPagedPool) WCHAR[StreamNameLength + 1];
             RtlCopyMemory(*RequestedStream,
                           ADSPtr,
                           wcslen(ADSPtr) * sizeof(WCHAR));

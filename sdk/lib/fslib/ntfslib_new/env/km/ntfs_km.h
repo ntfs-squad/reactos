@@ -57,7 +57,7 @@ NtfsDirectoryGetFileBothDirInfo(
 NTSTATUS
 NtfsVolumeGetADSPreference(
     _In_ PNtfsVolume DiskVolume,
-    _In_ PFILE_OBJECT FileObject,
+    _In_opt_ PWSTR FileName,
     _Out_ AttributeType* RequestedType,
     _Out_ PWSTR* RequestedStream);
 

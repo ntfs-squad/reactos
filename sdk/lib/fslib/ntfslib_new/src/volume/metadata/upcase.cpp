@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 NTSTATUS
@@ -30,7 +29,7 @@ Volume::UpcaseWideString(_Inout_ PWSTR WideString,
 
     // Get $DATA attribute contents from $UpCase
     UpCaseDataLength = GetAttributeDataSize(UpCaseData);
-    UpCaseBuffer = new(NonPagedPool) WCHAR[UpCaseDataLength / sizeof(WCHAR)];
+    UpCaseBuffer = new(NtfsNonPagedPool) WCHAR[UpCaseDataLength / sizeof(WCHAR)];
     Status = UpCaseFile->CopyData(UpCaseData,
                                   (PUCHAR)UpCaseBuffer,
                                   &UpCaseDataLength);

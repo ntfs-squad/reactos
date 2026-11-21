@@ -6,11 +6,10 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
-#define IsOffsetEndOfFile(Offset) \
-Offset->HighPart == -1 && Offset->LowPart == FILE_WRITE_TO_END_OF_FILE
+/* This is equivalent to: HighPart == -1 && LowPart == FILE_WRITE_TO_END_OF_FILE */
+#define IsOffsetEndOfFile(Offset) Offset->QuadPart == -1
 
 NTSTATUS
 FileRecord::WriteFileData(_In_     AttributeType AttrType,

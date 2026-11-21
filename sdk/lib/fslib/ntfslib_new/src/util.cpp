@@ -1,7 +1,6 @@
-#include <ntfslib_new.h>
 #include <ntfslib_new_internal.h>
 
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType)
+void* __cdecl operator new(size_t Size, NTFS_POOL PoolType)
 {
 
     Size = (Size != 0) ? Size : 1;
@@ -15,7 +14,7 @@ void* __cdecl operator new(size_t Size, POOL_TYPE PoolType)
     return pObject;
 }
 
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType)
+void* __cdecl operator new[](size_t Size, NTFS_POOL PoolType)
 {
 
     Size = (Size != 0) ? Size : 1;
@@ -30,7 +29,7 @@ void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType)
     return pObject;
 }
 
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag)
+void* __cdecl operator new(size_t Size, NTFS_POOL PoolType, ULONG Tag)
 {
 
     Size = (Size != 0) ? Size : 1;
@@ -44,7 +43,7 @@ void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag)
     return pObject;
 }
 
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag)
+void* __cdecl operator new[](size_t Size, NTFS_POOL PoolType, ULONG Tag)
 {
 
     Size = (Size != 0) ? Size : 1;

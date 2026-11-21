@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 NTSTATUS
@@ -58,10 +57,10 @@ Directory::CreateNode(_In_    PFileRecord File,
     IndexBufferSize = BytesPerIndexRecord(DiskVolume);
 
     // Create the new node and first key.
-    NewNode = new(PagedPool, TAG_BTREE) BTreeNode();
-    CurrentKey = new(PagedPool, TAG_BTREE) BTreeKey();
+    NewNode = new(NtfsPagedPool, TAG_BTREE) BTreeNode();
+    CurrentKey = new(NtfsPagedPool, TAG_BTREE) BTreeKey();
     NewNode->FirstKey = CurrentKey;
-    NodeBuffer = (PIndexBuffer)NtfsAllocatePoolWithTag(PagedPool,
+    NodeBuffer = (PIndexBuffer)NtfsAllocatePoolWithTag(NtfsPagedPool,
                                                        IndexBufferSize,
                                                        TAG_NTFS);
 
@@ -94,7 +93,7 @@ Directory::CreateNode(_In_    PFileRecord File,
     while ((ULONG_PTR)CurrentEntry < EndOfIndexBuffer)
     {
         // Allocate memory for the current entry
-        CurrentKey->Entry = (PIndexEntry)NtfsAllocatePoolWithTag(PagedPool,
+        CurrentKey->Entry = (PIndexEntry)NtfsAllocatePoolWithTag(NtfsPagedPool,
                                                                  CurrentEntry->EntryLength,
                                                                  TAG_NTFS);
         // Add the parent node
@@ -122,7 +121,7 @@ Directory::CreateNode(_In_    PFileRecord File,
         if (!(CurrentEntry->Flags & INDEX_ENTRY_END))
         {
             // Create the next key
-            NextKey = new(PagedPool, TAG_BTREE) BTreeKey();
+            NextKey = new(NtfsPagedPool, TAG_BTREE) BTreeKey();
             CurrentKey->NextKey = NextKey;
 
             // Advance to next entry
@@ -180,8 +179,8 @@ Directory::CreateRootNode(_In_  PFileRecord File,
     }
 
     // Initialize variables
-    RootNode = new(PagedPool, TAG_BTREE) BTreeNode();
-    CurrentKey = new(PagedPool, TAG_BTREE) BTreeKey();
+    RootNode = new(NtfsPagedPool, TAG_BTREE) BTreeNode();
+    CurrentKey = new(NtfsPagedPool, TAG_BTREE) BTreeKey();
     RootNode->FirstKey = CurrentKey;
 
     CurrentEntry = (PIndexEntry)(((ULONG_PTR)IndexRootData) +
@@ -193,7 +192,7 @@ Directory::CreateRootNode(_In_  PFileRecord File,
         ASSERT(CurrentEntry->EntryLength);
 
         // Create current entry
-        CurrentKey->Entry = (PIndexEntry)NtfsAllocatePoolWithTag(NonPagedPool,
+        CurrentKey->Entry = (PIndexEntry)NtfsAllocatePoolWithTag(NtfsNonPagedPool,
                                                                  CurrentEntry->EntryLength,
                                                                  TAG_NTFS);
 
@@ -222,7 +221,7 @@ Directory::CreateRootNode(_In_  PFileRecord File,
         if (!(CurrentEntry->Flags & INDEX_ENTRY_END))
         {
             // Create next key
-            NextKey = new(PagedPool, TAG_BTREE) BTreeKey();
+            NextKey = new(NtfsPagedPool, TAG_BTREE) BTreeKey();
             CurrentKey->NextKey = NextKey;
 
             // Advance to the next entry

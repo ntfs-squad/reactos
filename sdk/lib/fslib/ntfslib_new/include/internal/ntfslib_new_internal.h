@@ -1,40 +1,9 @@
+#include <ndk/iotypes.h>
+#include <ndk/rtlfuncs.h>
+#include <debug.h>
 
-//Hack: Bad! Km only!
-#include <ntifs.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void*
-NtfsAllocatePoolWithTag(_In_ POOL_TYPE PoolType,
-                        _In_ size_t Size,
-                        _In_ ULONG Tag);
-
-void
-NtfsFreePool(_In_ void* pObject);
-
-void
-NtfsFillMemory(_In_ PVOID Buffer,
-               _In_ size_t Size,
-               _In_ UCHAR Value);
-
-BOOLEAN
-NtfsIsNameInExpression(_In_     PUNICODE_STRING Expression,
-                       _In_     PUNICODE_STRING Name,
-                       _In_     BOOLEAN IgnoreCase,
-                       _In_opt_ PWCHAR UpcaseTable);
-
-#ifdef __cplusplus
-}
-#endif
-
-#ifdef __cplusplus
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
-#endif
+#include "ntfslib_new.h"
+#include "ntfslib_new_internal_alloc.h"
 
 /* Private macros */
 #define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
@@ -134,6 +103,9 @@ Attribute1->IsNonResident ? Attribute1->NonResident.DataSize : Attribute1->Resid
 extern "C" {
 #endif
 
+VOID
+NtfsAssertPagedCode(VOID);
+
 ULONG
 NtfsGetBytesPerSector(VOID);
 
@@ -192,11 +164,6 @@ public:
     UINT64 SerialNumber;
     ULONG Flags;
     ULONG OpenHandleCount;
-    PDEVICE_OBJECT StorageDevice;
-    PFILE_OBJECT StreamFileObject;
-    PVPB VolParamBlock;
-    PFILE_OBJECT PubFileObject;
-    PDEVICE_OBJECT PartDeviceObj;
     class MasterFileTable* MFT;
     class LogFileService* LFS;
     NtfsConfiguration Configuration;
@@ -303,7 +270,7 @@ public:
                _In_opt_ PNtfsConfiguration Configuration);
 
     NTSTATUS
-    GetADSPreference(_In_  PFILE_OBJECT FileObj,
+    GetADSPreference(_In_opt_ PWSTR FileNameQuery,
                      _Out_ AttributeType* RequestedType,
                      _Out_ PWSTR* RequestedStream);
 
@@ -948,7 +915,7 @@ static inline void PrintAttrDefTable(PNtfsFileRecord AttrDef)
 
     DataAttr = AttrDef->GetAttribute(TypeData, NULL);
     AttrDefDataSize = DataAttr->NonResident.DataSize;
-    Buffer = new(NonPagedPool) UCHAR[DataAttr->NonResident.DataSize];
+    Buffer = new(NtfsNonPagedPool) UCHAR[DataAttr->NonResident.DataSize];
     AttrDef->CopyData(DataAttr,
                       Buffer,
                       &AttrDefDataSize,

@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 
@@ -174,7 +173,7 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
     DataRunPtr = (PUCHAR)DataAttr + DataAttr->NonResident.DataRunsOffset;
 
     // Populate Head.
-    Head = new(PagedPool, TAG_DATA_RUN) DataRun();
+    Head = new(NtfsPagedPool, TAG_DATA_RUN) DataRun();
     Head->NextRun = NULL;
 
     // Length size is LSB, Offset size is MSB.
@@ -199,7 +198,7 @@ FileRecord::FindNonResidentData(_In_ PAttribute DataAttr)
     while (*DataRunPtr != '\0')
     {
         // Initialize next item in linked list.
-        Temp->NextRun = new(PagedPool, TAG_DATA_RUN) DataRun();
+        Temp->NextRun = new(NtfsPagedPool, TAG_DATA_RUN) DataRun();
         Temp = Temp->NextRun;
 
         // Get length and offset sizes for current data run.

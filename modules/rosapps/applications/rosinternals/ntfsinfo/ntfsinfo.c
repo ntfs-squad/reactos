@@ -1,14 +1,12 @@
 
 
+#define WIN32_NO_STATUS
 #include <windows.h>
+#include <ndk/umtypes.h>
 #include <stdio.h>
 #include <wchar.h>
 #include <ntfs_um.h>
 #include <ntfslib_new.h>
-// Hack: We shouldn't be defining this here.
-#ifndef NT_SUCCESS
-#define NT_SUCCESS(Status) ((Status) >= 0)
-#endif
 
 typedef struct _NTFS_INFORMATION
 {

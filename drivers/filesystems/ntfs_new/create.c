@@ -217,7 +217,7 @@ InitializeFcb:
 
     // Get ADS Preferences for the file.
     Status = NtfsVolumeGetADSPreference(DiskVolume,
-                                        FileObject,
+                                        FileObject->FileName.Buffer,
                                         &FileCB->RequestedType,
                                         &FileCB->RequestedStream);
 

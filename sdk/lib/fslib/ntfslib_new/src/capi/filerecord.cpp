@@ -5,7 +5,6 @@
  * COPYRIGHT:   Copyright 2026 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 #ifdef __cplusplus
@@ -23,9 +22,9 @@ NtfsFileRecordCreate(
         return nullptr;
 
     if (FileRecordSize == 0)
-        return reinterpret_cast<PNtfsFileRecord>(new(NonPagedPool, TAG_FILE_RECORD) FileRecord(Vol));
+        return reinterpret_cast<PNtfsFileRecord>(new(NtfsNonPagedPool, TAG_FILE_RECORD) FileRecord(Vol));
 
-    return reinterpret_cast<PNtfsFileRecord>(new(NonPagedPool, TAG_FILE_RECORD) FileRecord(Vol, FileRecordSize));
+    return reinterpret_cast<PNtfsFileRecord>(new(NtfsNonPagedPool, TAG_FILE_RECORD) FileRecord(Vol, FileRecordSize));
 }
 
 void

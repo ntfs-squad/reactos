@@ -5,46 +5,12 @@
  * COPYRIGHT:   Copyright 2026 Carl Bialorucki <carl.bialorucki@reactos.org>
  */
 
+#define WIN32_NO_STATUS
 #include <windows.h>
-#include <subauth.h>
+#include <ndk/umtypes.h>
 #include <ntfs_um.h>
 #include <debug.h>
-
-// Hack: we shouldn't be defining these status codes.
-#ifndef STATUS_SUCCESS
-#define STATUS_SUCCESS                   1
-#endif
-#define STATUS_UNSUCCESSFUL              ((NTSTATUS)0xC0000001L)
-#ifndef STATUS_INVALID_PARAMETER
-#define STATUS_INVALID_PARAMETER         ((NTSTATUS)0xC000000DL)
-#endif
-#define STATUS_INVALID_DEVICE_REQUEST    ((NTSTATUS)0xC0000010L)
-
-// Hack: We shouldn't be using these pools in UM at all.
-typedef enum _POOL_TYPE
-{
-    NonPagedPool,
-    PagedPool,
-    NonPagedPoolMustSucceed,
-    DontUseThisType,
-    NonPagedPoolCacheAligned,
-    PagedPoolCacheAligned,
-    NonPagedPoolCacheAlignedMustS,
-    MaxPoolType,
-
-    NonPagedPoolBase = 0,
-    NonPagedPoolBaseMustSucceed = NonPagedPoolBase + 2,
-    NonPagedPoolBaseCacheAligned = NonPagedPoolBase + 4,
-    NonPagedPoolBaseCacheAlignedMustS = NonPagedPoolBase + 6,
-
-    NonPagedPoolSession = 32,
-    PagedPoolSession,
-    NonPagedPoolMustSucceedSession,
-    DontUseThisTypeSession,
-    NonPagedPoolCacheAlignedSession,
-    PagedPoolCacheAlignedSession,
-    NonPagedPoolCacheAlignedMustSSession
-} POOL_TYPE;
+#include "../../include/internal/ntfslib_new_internal_alloc.h"
 
 typedef BOOLEAN (NTAPI *PRtlIsNameInExpression)(
     _In_     PUNICODE_STRING Expression,
@@ -98,6 +64,7 @@ NtfsDiskInitializeUm(
                            "RtlIsNameInExpression"));
     }
 
+    ASSERT(pRtlIsNameInExpression);
     return STATUS_SUCCESS;
 }
 
@@ -106,7 +73,7 @@ extern "C" {
 #endif
 
 void*
-NtfsAllocatePoolWithTag(POOL_TYPE PoolType, size_t Size, ULONG Tag)
+NtfsAllocatePoolWithTag(NTFS_POOL PoolType, size_t Size, ULONG Tag)
 {
     UNREFERENCED_PARAMETER(PoolType);
     UNREFERENCED_PARAMETER(Tag);
@@ -125,6 +92,11 @@ NtfsFillMemory(_In_ PVOID Buffer,
                _In_ UCHAR Value)
 {
     FillMemory(Buffer, Size, Value);
+}
+
+VOID
+NtfsAssertPagedCode(VOID)
+{
 }
 
 ULONG
@@ -178,7 +150,6 @@ NtfsIsNameInExpression(_In_     PUNICODE_STRING Expression,
                        _In_     BOOLEAN IgnoreCase,
                        _In_opt_ PWCHAR UpcaseTable)
 {
-    ASSERT(pRtlIsNameInExpression);
     return pRtlIsNameInExpression(Expression,
                                   Name,
                                   IgnoreCase,

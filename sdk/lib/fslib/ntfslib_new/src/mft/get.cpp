@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 // NOTE: This function will search $MFTMirr automatically if needed.
@@ -14,14 +13,12 @@ NTSTATUS
 MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
                                _Out_  PFileRecord* File)
 {
-#ifdef NTFS_KERNEL_MODE
-    PAGED_CODE();
-#endif
     NTSTATUS Status;
     ULONG BytesToRead;
     BOOLEAN IsRecordInUse;
 
-    *File = new(PagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
+    NtfsAssertPagedCode();
+    *File = new(NtfsPagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
     BytesToRead = FileRecordSize;
 
     if (FileRecordNumber == _MFT)
@@ -138,7 +135,7 @@ MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
     }
 
     // File is in MFTMirr. Let's try to get it from there.
-    *File = new(PagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
+    *File = new(NtfsPagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
     BytesToRead = FileRecordSize;
 
     // Grab file from $MFTMirr
@@ -242,7 +239,7 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
         return STATUS_NOT_FOUND;
     }
 
-    CurrentDirectory = new(PagedPool, TAG_MFT) Directory(DiskVolume);
+    CurrentDirectory = new(NtfsPagedPool, TAG_MFT) Directory(DiskVolume);
 
     Status = CurrentDirectory->LoadDirectory(CurrentFile);
     if(!NT_SUCCESS(Status))
@@ -286,7 +283,7 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
         if (wcschr(QueryElementPtr, L'\\') &&
             wcschr(QueryElementPtr, L'\\')[1] != L'\0')
         {
-            CurrentDirectory = new(PagedPool, TAG_MFT) Directory(DiskVolume);
+            CurrentDirectory = new(NtfsPagedPool, TAG_MFT) Directory(DiskVolume);
             Status = CurrentDirectory->LoadDirectory(CurrentFile);
             if (!NT_SUCCESS(Status))
             {

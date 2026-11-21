@@ -6,7 +6,6 @@
  *              Copyright 2024 Justin Miller <justin.miller@reactos.org>
  */
 
-#include "ntfslib_new.h"
 #include "ntfslib_new_internal.h"
 
 FileRecord::FileRecord(_In_ PVolume DiskVolume,
@@ -16,7 +15,7 @@ FileRecord::FileRecord(_In_ PVolume DiskVolume,
     this->DiskVolume = DiskVolume;
 
     // Initialize data buffer and header pointer.
-    Data = new(PagedPool, TAG_FILE_RECORD) UCHAR[FileRecordSize];
+    Data = new(NtfsPagedPool, TAG_FILE_RECORD) UCHAR[FileRecordSize];
     Header = (PFileRecordHeader)Data;
 }
 

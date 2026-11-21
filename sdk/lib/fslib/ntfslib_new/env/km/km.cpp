@@ -8,12 +8,7 @@
 
 #include <ntifs.h>
 #include <ntfs_km.h>
-#ifdef __cplusplus
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType);
-void* __cdecl operator new(size_t Size, POOL_TYPE PoolType, ULONG Tag);
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType);
-void* __cdecl operator new[](size_t Size, POOL_TYPE PoolType, ULONG Tag);
-#endif
+#include "../../include/internal/ntfslib_new_internal_alloc.h"
 
 #ifndef TAG_NTFS
 #define TAG_NTFS 'NTFS'
@@ -34,9 +29,9 @@ extern "C" {
 #endif
 
 void*
-NtfsAllocatePoolWithTag(POOL_TYPE PoolType, size_t Size, ULONG Tag)
+NtfsAllocatePoolWithTag(NTFS_POOL PoolType, size_t Size, ULONG Tag)
 {
-    return ExAllocatePoolWithTag(PoolType, Size, Tag);
+    return ExAllocatePoolWithTag((POOL_TYPE)PoolType, Size, Tag);
 }
 
 void NtfsFreePool(void* pObject)
@@ -260,6 +255,12 @@ Done:
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+VOID
+NtfsAssertPagedCode(VOID)
+{
+    PAGED_CODE();
+}
 
 ULONG
 NtfsGetBytesPerSector(VOID)
