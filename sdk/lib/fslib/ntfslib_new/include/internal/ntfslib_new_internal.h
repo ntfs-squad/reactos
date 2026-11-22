@@ -6,42 +6,32 @@
 #include "ntfslib_new_internal_alloc.h"
 
 /* Private macros */
-#define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
-
-#define FileRef(Key) ((Key)->Entry->Data.Directory.IndexedFile)
-
 #define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
+#define ULONG_ROUND_UP(x) ROUND_UP((x), (sizeof(ULONG)))
 
+#define BytesPerCluster(Volume) (Volume->BytesPerSector * Volume->SectorsPerCluster)
+#define FileRef(Key) ((Key)->Entry->Data.Directory.IndexedFile)
 #define FileRecordIsDirectory(_File) \
     (!!(_File->Header->Flags & FR_IS_DIRECTORY))
-
 #define IsFileRecordInMFTMirr(FileRecordNumber) \
-((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) > (FileRecordSize << 2)) ? \
-((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) / FileRecordSize) < FileRecordNumber \
-: FileRecordNumber < 4
-
+    ((FileRecordNumber) < max(4u, BytesPerCluster(DiskVolume) / FileRecordSize))
 #define LONGLONG_SIGN_EXTEND(Number, Bytes) \
-(Number << ((sizeof(LONGLONG) - Bytes) * 8)) >> ((sizeof(LONGLONG) - Bytes) * 8)
-
+    (Number << ((sizeof(LONGLONG) - Bytes) * 8)) >> ((sizeof(LONGLONG) - Bytes) * 8)
 #define BytesPerIndexRecord(DiskVolume) \
-(BytesPerCluster(DiskVolume) * DiskVolume->ClustersPerIndexRecord)
-
-// Used for LoadDirectory()
+    (BytesPerCluster(DiskVolume) * DiskVolume->ClustersPerIndexRecord)
 #define IsRootFile(Path) \
-Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
+    Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 
 #define MFTDiskOffset (MFTLCN * BytesPerCluster(DiskVolume))
 #define MFTMirrDiskOffset (MFTMirrLCN * BytesPerCluster(DiskVolume))
 #define FileRecordOffset(FileRecordNumber) (FileRecordNumber * FileRecordSize)
-
 #define GetOffset(LCN) (LCN * BytesPerCluster(DiskVolume))
 #define GetRunSize(Run) (Run->Length * BytesPerCluster(DiskVolume))
 
 #define GetFileName(Key) \
-((PFileNameEx)((Key)->Entry->IndexStream))
-
+    ((PFileNameEx)((Key)->Entry->IndexStream))
 #define GetVCN(NodeKey) \
-(PULONGLONG)(NodeKey->Entry + NodeKey->Entry->EntryLength - sizeof(ULONGLONG))
+    (PULONGLONG)(NodeKey->Entry + NodeKey->Entry->EntryLength - sizeof(ULONGLONG))
 
 // Hack for now so I know what maps to what
 #define GetIndexEntryVCN(IndexEntry) *GetVCN(IndexEntry)
@@ -55,17 +45,14 @@ Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 #define IsLowercaseCharacterW(wchar) wchar >= L'a' && wchar <= L'z'
 
 #define IsDotOrDotDotDirW(Buffer, Length) \
-Buffer[0] == L'.' \
-? Length == sizeof(WCHAR) || (Buffer[1] == L'.' && Length == 2 * sizeof(WCHAR)) \
-: FALSE
+    Buffer[0] == L'.' \
+    ? Length == sizeof(WCHAR) || (Buffer[1] == L'.' && Length == 2 * sizeof(WCHAR)) \
+    : FALSE
 
 #define DIR_KEY_8DOT3 1
 
 #define GetWStrLength(x) ((x) * sizeof(WCHAR))
 #define MAX_SHORTNAME_LENGTH 12
-// #define ROUND_DOWN(N, S) ((N) - ((N) % (S)))
-#define ULONG_ROUND_UP(x) ROUND_UP((x), (sizeof(ULONG)))
-
 #define GetSubnodeVCN(Entry) (PULONGLONG)((ULONG_PTR)Entry + Entry->EntryLength - 8)
 
 // Macro to get data pointer from a resident attribute pointer.
