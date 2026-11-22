@@ -109,6 +109,7 @@ NtfsProbePartition(
 
 Volume::~Volume()
 {
+    delete[] UpcaseTable;
     delete MFT;
     delete LFS;
 }
@@ -185,6 +186,9 @@ Volume::Initialize(
         this->Configuration.IsReadOnly = TRUE;
         Status = STATUS_SUCCESS;
     }
+
+    // Attempt to load the Upcase Table
+    UpcaseStatus = LoadUpcaseTable();
 
     return Status;
 }

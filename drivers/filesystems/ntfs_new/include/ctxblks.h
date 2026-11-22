@@ -67,3 +67,6 @@ typedef struct _FCB
 
 // CommonFCBHeader must be the first object in the FCB, breaks launching executables
 C_ASSERT(FIELD_OFFSET(FileContextBlock, CommonFCBHeader) == 0);
+
+NTSTATUS
+NtfsDestroyFileContextBlock(_In_ PIRP Irp);

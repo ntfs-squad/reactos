@@ -12,10 +12,52 @@
 /* GLOBALS *****************************************************************/
 
 #ifdef ALLOC_PRAGMA
+#pragma alloc_text(PAGE, NtfsDestroyFileContextBlock)
 #pragma alloc_text(PAGE, NtfsFsdClose)
 #endif
 
 /* FUNCTIONS ****************************************************************/
+NTSTATUS
+NtfsDestroyFileContextBlock(_In_ PIRP Irp)
+{
+    PFILE_OBJECT FileObject;
+    PFileContextBlock FileCB;
+
+    PAGED_CODE();
+
+    FileObject = IoGetCurrentIrpStackLocation(Irp)->FileObject;
+    if (!FileObject)
+        return STATUS_INVALID_PARAMETER;
+
+    FileCB = FileObject->FsContext;
+    if (!FileCB)
+        return STATUS_INVALID_PARAMETER;
+
+    if (FileObject->SectionObjectPointer == &FileCB->SectionObjectPointers)
+    {
+        if (FileObject->PrivateCacheMap)
+            CcUninitializeCacheMap(FileObject, NULL, NULL);
+        FileObject->SectionObjectPointer = NULL;
+    }
+    FileObject->FsContext = NULL;
+
+    NtfsDirectoryDestroy(FileCB->FileDir);
+    NtfsFileRecordDestroy(FileCB->FileRec);
+    if (FileCB->StreamCB)
+        ExFreePool(FileCB->StreamCB);
+    if (FileCB->FileName.Buffer)
+        ExFreePool(FileCB->FileName.Buffer);
+    if (FileCB->RequestedStream)
+        ExFreePool(FileCB->RequestedStream);
+    FsRtlUninitializeFileLock(&FileCB->FileLock);
+    if (FileCB->CommonFCBHeader.PagingIoResource)
+        ExDeleteResourceLite(FileCB->CommonFCBHeader.PagingIoResource);
+    if (FileCB->CommonFCBHeader.Resource)
+        ExDeleteResourceLite(FileCB->CommonFCBHeader.Resource);
+    ExFreePool(FileCB);
+
+    return STATUS_SUCCESS;
+}
 
 _Function_class_(IRP_MJ_CLOSE)
 _Function_class_(DRIVER_DISPATCH)
@@ -39,41 +81,10 @@ NtfsFsdClose(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         return STATUS_SUCCESS;
     }
 
-    /* Perform final teardown of the file object's context. */
-    {
-        PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
-        PFileContextBlock FileCB = (PFileContextBlock)IrpSp->FileObject->FsContext;
-        if (FileCB)
-        {
-            // Uninitialize cache map if present
-            if (IrpSp->FileObject->PrivateCacheMap)
-            {
-                CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);
-            }
+    NTSTATUS Status = NtfsDestroyFileContextBlock(Irp);
 
-            ExDeleteResourceLite(&FileCB->MainResource);
-            ExDeleteResourceLite(&FileCB->PagingIoResource);
-            FsRtlUninitializeFileLock(&FileCB->FileLock);
-
-            if (FileCB->FileDir)
-                ExFreePool(FileCB->FileDir);
-
-            if (FileCB->FileRec)
-                ExFreePool(FileCB->FileRec);
-
-            if (FileCB->StreamCB)
-                ExFreePool(FileCB->StreamCB);
-
-            if (FileCB->FileName.Buffer)
-                ExFreePool(FileCB->FileName.Buffer);
-
-            ExFreePool(FileCB);
-            IrpSp->FileObject->FsContext = NULL;
-        }
-    }
-
-    Irp->IoStatus.Status = STATUS_SUCCESS;
+    Irp->IoStatus.Status = Status;
     Irp->IoStatus.Information = 0;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+    return Status;
 }

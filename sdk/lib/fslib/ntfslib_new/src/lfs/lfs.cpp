@@ -30,7 +30,6 @@ LogFileService::InitializeLFS()
 
     // Find the Log File.
     Status = DiskVolume->MFT->GetFileRecord(_LogFile, &LogFile);
-
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to find $LogFile!\n");

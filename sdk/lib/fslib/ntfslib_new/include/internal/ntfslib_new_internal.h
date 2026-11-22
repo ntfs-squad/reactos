@@ -12,6 +12,9 @@
 
 #define ROUND_UP(N, S) ((((N) + (S) - 1) / (S)) * (S))
 
+#define FileRecordIsDirectory(_File) \
+    (!!(_File->Header->Flags & FR_IS_DIRECTORY))
+
 #define IsFileRecordInMFTMirr(FileRecordNumber) \
 ((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) > (FileRecordSize << 2)) ? \
 ((DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector) / FileRecordSize) < FileRecordNumber \
@@ -24,10 +27,6 @@
 (BytesPerCluster(DiskVolume) * DiskVolume->ClustersPerIndexRecord)
 
 // Used for LoadDirectory()
-#define MayHaveShortKey(SearchKey) \
-!(SearchKey->Flags & DIR_KEY_8DOT3) \
-&& !(SearchKey->Entry->Flags & INDEX_ENTRY_END)
-
 #define IsRootFile(Path) \
 Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 
@@ -52,16 +51,6 @@ Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 (BytesPerIndexRecord(DiskVolume) < BytesPerCluster(DiskVolume)) ? \
 (VCN * (DiskVolume->BytesPerSector)) : \
 (VCN * BytesPerCluster(DiskVolume))
-
-#define IsLastEntry(Key) !!((Key)->Entry->Flags & INDEX_ENTRY_END)
-
-#define IsIndexNode(Key) !!((Key)->Entry->Flags & INDEX_ENTRY_NODE)
-
-#define IsEndOfNode(Key) IsLastEntry(Key) && !IsIndexNode(Key)
-
-#define GetNextKey(Key) \
-IsIndexNode(Key) ? (Key)->ChildNode->FirstKey : IsEndOfNode(Key) ? \
-(Key)->ParentNodeKey ? (Key)->ParentNodeKey->NextKey : NULL : (Key)->NextKey
 
 #define IsLowercaseCharacterW(wchar) wchar >= L'a' && wchar <= L'z'
 
@@ -98,6 +87,8 @@ Buffer[0] == L'.' \
 
 #define GetAttributeDataSize(Attribute1) \
 Attribute1->IsNonResident ? Attribute1->NonResident.DataSize : Attribute1->Resident.DataLength
+
+#define NUMBER_OF_UPCASE_ENTRIES 0x10000
 
 #ifdef __cplusplus
 extern "C" {
@@ -192,16 +183,23 @@ public:
     GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters);
 
     /**
-     * Converts a null-terminated 16-bit string to uppercase using the
-     * code page stored on the volume. This reads from the $UpCase metadata
-     * file on the volume.
+     * Converts a UNICODE_STRING to uppercase using the code page stored on the volume.
      *
      * @return
      * STATUS_SUCCESS if successful.
      */
     NTSTATUS
-    UpcaseWideString(_Inout_ PWSTR WideString,
-                     _In_    ULONG Length);
+    Volume::UpcaseUnicodeString(_Inout_ PUNICODE_STRING String);
+
+    /**
+     * Converts a 16-bit string to uppercase using the code page stored on the volume.
+     *
+     * @return
+     * STATUS_SUCCESS if successful.
+     */
+    NTSTATUS
+    UpcaseWideString(_Inout_updates_(CharacterCount) PWSTR WideString,
+                     _In_ ULONG CharacterCount);
 
     /**
      * Gets the volume label as a 16-bit string and its length in bytes.
@@ -279,6 +277,11 @@ public:
     void RunSanityChecks();
     void SanityCheckBlockIO();
 
+private:
+    NTSTATUS UpcaseStatus = STATUS_NOT_FOUND;
+    NTSTATUS LoadUpcaseTable();
+    PWCHAR UpcaseTable = NULL;
+
 } *PVolume;
 
 typedef class FileRecord
@@ -346,25 +349,42 @@ private:
                           _In_ ULONGLONG Offset = 0);
 } *PFileRecord;
 
-typedef class BTree
-{
-public:
-    NTSTATUS ResetCurrentKey();
-    // Hack:
-    // TODO: Make private when we abandon oldbtreefuncs
-    PBTreeNode RootNode;
-protected:
-    ~BTree();
-    PBTreeKey CurrentKey;
-} *PBTree;
+#define INDEX_ENTRY_NODE 1
+#define INDEX_ENTRY_END  2
 
-typedef class Directory : BTree
+struct BTreeKey;
+
+typedef struct BTreeNode
+{
+    ULONGLONG VCN = 0;
+    BTreeKey* FirstKey = NULL;
+
+    ~BTreeNode();
+} *PBTreeNode;
+
+typedef struct BTreeKey
+{
+    /* In theory, a key does not have a link to parent node
+     * In practice, we want to be able to jump back to the parent
+     */
+    BTreeKey* ParentNodeKey = NULL;
+    PBTreeNode ChildNode = NULL;
+    BTreeKey* NextKey = NULL;
+    PIndexEntry Entry = NULL;
+    ULONG Flags = 0;
+
+    ~BTreeKey();
+
+    bool IsLastEntry() const { return (Entry->Flags & INDEX_ENTRY_END) != 0; }
+    bool IsEndOfNode() const { return IsLastEntry() && !ChildNode; }
+    BTreeKey* NextInTree() const;
+} *PBTreeKey;
+
+typedef class Directory
 {
 public:
     // ./directory.cpp
     Directory(_In_ PVolume DiskVolume);
-    Directory(_In_ PVolume DiskVolume,
-              _In_ PFileRecord File);
     NTSTATUS
     LoadDirectory(_In_ PFileRecord File);
 
@@ -394,6 +414,8 @@ public:
 
 private:
     PVolume DiskVolume;
+    BTreeNode RootNode;
+    PBTreeKey CurrentKey = NULL;
 
     // ./directory.cpp
     NTSTATUS
@@ -403,8 +425,15 @@ private:
                _In_    PAttribute  IndexAllocationAttribute,
                _Inout_ PBTreeKey   ParentNodeKey);
     NTSTATUS
-    CreateRootNode(_In_  PFileRecord File,
-                   _Out_ PBTreeNode *NewRootNode);
+    LoadRootNode(_In_ PFileRecord File,
+                 _Inout_ PBTreeNode Node);
+    NTSTATUS
+    LoadNodeEntries(_In_ PFileRecord File,
+                    _In_opt_ PAttribute IndexAllocation,
+                    _In_ const IndexNodeHeader* Header,
+                    _In_ ULONG HeaderBytes,
+                    _Inout_ PBTreeNode Node,
+                    _In_opt_ PBTreeKey ParentKey);
     BOOLEAN
     DoesFileNameMatch(PUNICODE_STRING NameFilter,
                       PBTreeKey Key,

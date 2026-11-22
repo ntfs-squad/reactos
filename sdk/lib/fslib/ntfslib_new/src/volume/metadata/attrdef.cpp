@@ -115,7 +115,7 @@ Volume::GetADSPreference(_In_opt_ PWSTR FileNameQuery,
                  *     filename.ext::$ATTRIBUTE_NAME
                  * Requested stream is NULL.
                  */
-                RequestedStream = NULL;
+                *RequestedStream = NULL;
             }
 
             else
@@ -136,7 +136,8 @@ Volume::GetADSPreference(_In_opt_ PWSTR FileNameQuery,
             {
                 // If we fail to find the attribute type, the name was invalid.
                 DPRINT1("Failed to find ADS attribute type!\n");
-                delete *RequestedStream;
+                delete[] *RequestedStream;
+                *RequestedStream = NULL;
                 return STATUS_OBJECT_NAME_INVALID;
             }
         }

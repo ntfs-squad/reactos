@@ -28,27 +28,26 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-create
      */
 
-    PIO_STACK_LOCATION IrpSp;
-    PFileContextBlock FileCB;
     NTSTATUS Status;
+    ULONG Information = 0;
+    PIO_STACK_LOCATION IrpSp;
     PFILE_OBJECT FileObject;
     BOOLEAN PerformAccessChecks;
-    PNtfsFileRecord CurrentFile;
     UINT8 Disposition;
-    PNtfsVolume DiskVolume;
-    PNtfsMasterFileTable Mft;
     USHORT FileNameLength;
     BOOLEAN IsVolume;
-    ULONG Information = 0;
+    PFileContextBlock FileCB;
+    PNtfsVolume DiskVolume;
+    PNtfsMasterFileTable Mft;
+    PNtfsFileRecord CurrentFile = NULL;
 
     if (VolumeDeviceObject == NtfsDiskFileSystemDeviceObject)
     {
         /* DeviceObject represents FileSystem instead of logical volume */
         DPRINT1("Opening file system\n");
-        Irp->IoStatus.Status = STATUS_SUCCESS;
-        Irp->IoStatus.Information = FILE_OPENED;
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-        return STATUS_SUCCESS;
+        Status = STATUS_SUCCESS;
+        Information = FILE_OPENED;
+        goto Done;
     }
 
     // Investigate file request
@@ -104,8 +103,10 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
         // In this case, return an error.
         if (Disposition == FILE_CREATE)
         {
-            Irp->IoStatus.Information = FILE_EXISTS;
-            return STATUS_INVALID_PARAMETER;
+            Status = STATUS_INVALID_PARAMETER;
+            Information = FILE_EXISTS;
+            NtfsFileRecordDestroy(CurrentFile);
+            goto Done;
         }
 
         // In every other case, we should continue to open the file.
@@ -130,20 +131,16 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
                  */
                 DPRINT1("File creation not implemented! File: \"%S\"\n",
                         FileObject->FileName.Buffer);
-                Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
-                Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-                IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-                return STATUS_NOT_IMPLEMENTED;
-                break;
+                Status = STATUS_NOT_IMPLEMENTED;
+                Information = FILE_DOES_NOT_EXIST;
+                goto Done;
             case FILE_OPEN:
             case FILE_OVERWRITE:
             default:
                 // In these cases, return an error.
-                Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-                Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-                IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-                return STATUS_INVALID_PARAMETER;
-                break;
+                Status = STATUS_INVALID_PARAMETER;
+                Information = FILE_DOES_NOT_EXIST;
+                goto Done;
         }
 
     }
@@ -156,30 +153,32 @@ InitializeFcb:
     if (!FileCB)
     {
         Status = STATUS_INSUFFICIENT_RESOURCES;
+        NtfsFileRecordDestroy(CurrentFile);
         goto Done;
     }
 
-    // Initialize the NT required FCB header and resources
+    FileObject->FsContext = FileCB;
+    FileCB->FileRec = CurrentFile;
+    FsRtlInitializeFileLock(&FileCB->FileLock, NULL, NULL);
+
     Status = ExInitializeResourceLite(&FileCB->MainResource);
     if (!NT_SUCCESS(Status))
     {
-        ExFreePool(FileCB);
+        NtfsDestroyFileContextBlock(Irp);
         goto Done;
     }
+    FileCB->CommonFCBHeader.Resource = &FileCB->MainResource;
 
     Status = ExInitializeResourceLite(&FileCB->PagingIoResource);
     if (!NT_SUCCESS(Status))
     {
-        ExDeleteResourceLite(&FileCB->MainResource);
-        ExFreePool(FileCB);
+        NtfsDestroyFileContextBlock(Irp);
         goto Done;
     }
+    FileCB->CommonFCBHeader.PagingIoResource = &FileCB->PagingIoResource;
 
-    FsRtlInitializeFileLock(&FileCB->FileLock, NULL, NULL);
     ExInitializeFastMutex(&FileCB->HeaderMutex);
     FsRtlSetupAdvancedHeader(&FileCB->CommonFCBHeader, &FileCB->HeaderMutex);
-    FileCB->CommonFCBHeader.Resource = &FileCB->MainResource;
-    FileCB->CommonFCBHeader.PagingIoResource = &FileCB->PagingIoResource;
     FileCB->CommonFCBHeader.IsFastIoPossible = FastIoIsPossible;
     FileCB->CreateOptions = IrpSp->Parameters.Create.Options;
     FileCB->DesiredAccess = IrpSp->Parameters.Create.SecurityContext->DesiredAccess;
@@ -196,7 +195,9 @@ InitializeFcb:
         FileCB->CommonFCBHeader.ValidDataLength = VolumeSize;
         FileCB->IsVolume = TRUE;
         FileObject->Flags |= FO_NO_INTERMEDIATE_BUFFERING;
-        goto OpenFile;
+        Status = STATUS_SUCCESS;
+        Information = FILE_OPENED;
+        goto Done;
     }
 
     // Set file name
@@ -206,7 +207,12 @@ InitializeFcb:
                                                           FileNameLength * sizeof(WCHAR),
                                                           TAG_NTFS);
     if (!FileNameBuffer)
-        __debugbreak();
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        Information = FILE_DOES_NOT_EXIST;
+        NtfsDestroyFileContextBlock(Irp);
+        goto Done;
+    }
     RtlCopyMemory(FileNameBuffer,
                   IrpSp->FileObject->FileName.Buffer,
                   FileNameLength);
@@ -220,19 +226,12 @@ InitializeFcb:
                                         FileObject->FileName.Buffer,
                                         &FileCB->RequestedType,
                                         &FileCB->RequestedStream);
-
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Failed to get ADS preference! Aborting...\n");
-        FileObject->SectionObjectPointer = NULL;
-        ExFreePool(FileCB);
-        Irp->IoStatus.Status = Status;
-        Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
-        return Status;
+        Information = FILE_DOES_NOT_EXIST;
+        NtfsDestroyFileContextBlock(Irp);
+        goto Done;
     }
-
-    FileCB->FileRec = CurrentFile;
 
     /* Assume that this is the first file stream request.
      * For more details see:
@@ -244,22 +243,34 @@ InitializeFcb:
                                                                   sizeof(StreamContextBlock),
                                                                   TAG_NTFS);
     if (!FileCB->StreamCB)
-        __debugbreak();
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        Information = FILE_DOES_NOT_EXIST;
+        NtfsDestroyFileContextBlock(Irp);
+        goto Done;
+    }
 
     RtlZeroMemory(&FileCB->StreamCB->SectionObjectPointers,
                   sizeof(SECTION_OBJECT_POINTERS));
 
-    if (!!(NtfsFileRecordGetHeader(CurrentFile)->Flags & FR_IS_DIRECTORY))
+    if (NtfsFileRecordGetHeader(CurrentFile)->Flags & FR_IS_DIRECTORY)
     {
         // Set up btree for this file
         FileCB->FileDir = NtfsDirectoryCreate(DiskVolume);
-        Status = NtfsDirectoryLoadDirectory(FileCB->FileDir, FileCB->FileRec);
+        if (!FileCB->FileDir)
+        {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            Information = FILE_DOES_NOT_EXIST;
+            NtfsDestroyFileContextBlock(Irp);
+            goto Done;
+        }
 
+        Status = NtfsDirectoryLoadDirectory(FileCB->FileDir, FileCB->FileRec);
         if (!NT_SUCCESS(Status))
         {
-            DPRINT1("Failed to get directory!\n");
-            Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-            return Status;
+            Information = FILE_DOES_NOT_EXIST;
+            NtfsDestroyFileContextBlock(Irp);
+            goto Done;
         }
     }
 
@@ -312,9 +323,6 @@ InitializeFcb:
         }
     }
 
-OpenFile:
-    // Set FsContext to the file context block and open file.
-    FileObject->FsContext = FileCB;
     Status = STATUS_SUCCESS;
     Information = FILE_OPENED;
 

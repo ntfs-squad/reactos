@@ -17,11 +17,10 @@ void
 DumpBTreeKey(PBTreeKey Key,
              ULONG Depth)
 {
-    ULONG i;
-    for (i = 0; i < Depth; i++)
+    for (ULONG i = 0; i < Depth; i++)
         DbgPrint("    ");
 
-    if (!(Key->Entry->Flags & INDEX_ENTRY_END))
+    if (!Key->IsLastEntry())
     {
         UNICODE_STRING FileName;
         FileName.Length = GetFileName(Key)->NameLength * sizeof(WCHAR);
@@ -38,11 +37,8 @@ DumpBTreeKey(PBTreeKey Key,
     }
 
     // Is there a child node?
-    if (Key->Entry->Flags & INDEX_ENTRY_NODE)
-    {
-        ASSERT(Key->ChildNode);
+    if (Key->ChildNode)
         DumpBTreeNode(Key->ChildNode, (Depth + 1));
-    }
 }
 
 static
@@ -64,5 +60,5 @@ Directory::DumpFileTree()
 {
     // Print header
     DbgPrint("Index Root\n");
-    DumpBTreeNode(RootNode, 0);
+    DumpBTreeNode(&RootNode, 0);
 }

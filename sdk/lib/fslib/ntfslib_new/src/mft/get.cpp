@@ -215,9 +215,9 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
 {
     NTSTATUS Status;
     PWCHAR QueryElementPtr;
-    Directory* CurrentDirectory;
-    PFileRecord CurrentFile;
     ULONGLONG CurrentFRN;
+    PDirectory CurrentDirectory = NULL;
+    PFileRecord CurrentFile = NULL;
 
     if (!Query)
     {
@@ -236,16 +236,22 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
     if(!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to get root directory file!\n");
-        return STATUS_NOT_FOUND;
+        return Status;
     }
 
     CurrentDirectory = new(NtfsPagedPool, TAG_MFT) Directory(DiskVolume);
+    if(!CurrentDirectory)
+    {
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto Done;
+    }
 
     Status = CurrentDirectory->LoadDirectory(CurrentFile);
     if(!NT_SUCCESS(Status))
     {
         DPRINT1("Failed to get root directory!\n");
-        return STATUS_NOT_FOUND;
+        Status = STATUS_NOT_FOUND;
+        goto Done;
     }
 
     QueryElementPtr = Query;
@@ -262,9 +268,8 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
                                                 &CurrentFRN);
         if (!NT_SUCCESS(Status))
         {
-            delete CurrentDirectory;
-            delete CurrentFile;
-            return STATUS_NOT_FOUND;
+            Status = STATUS_NOT_FOUND;
+            goto Done;
         }
 
         delete CurrentDirectory;
@@ -274,8 +279,8 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("Failed to find file at MFT ID %ld!\n", CurrentFRN);
-            delete CurrentDirectory;
-            return STATUS_NOT_FOUND;
+            Status = STATUS_NOT_FOUND;
+            goto Done;
         }
 
         // Second condition is to check "//folder//target//"
@@ -284,13 +289,18 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
             wcschr(QueryElementPtr, L'\\')[1] != L'\0')
         {
             CurrentDirectory = new(NtfsPagedPool, TAG_MFT) Directory(DiskVolume);
+            if (!CurrentDirectory)
+            {
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+                goto Done;
+            }
+
             Status = CurrentDirectory->LoadDirectory(CurrentFile);
             if (!NT_SUCCESS(Status))
             {
                 DPRINT1("Failed to find directory for file at MFT ID %ld!\n", CurrentFRN);
-                delete CurrentDirectory;
-                delete CurrentFile;
-                return STATUS_NOT_FOUND;
+                Status = STATUS_NOT_FOUND;
+                goto Done;
             }
 
             // Set up next file
@@ -305,6 +315,20 @@ MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
     }
 
     // Current File should now point to the queried file.
-    *File = CurrentFile;
-    return STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
+
+Done:
+    if (!NT_SUCCESS(Status))
+    {
+        if (CurrentDirectory)
+            delete CurrentDirectory;
+        if (CurrentFile)
+            delete CurrentFile;
+    }
+    else
+    {
+        *File = CurrentFile;
+    }
+
+    return Status;
 }

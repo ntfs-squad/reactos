@@ -116,30 +116,6 @@ typedef struct
     UINT32 MFTRecordNumber;        // Offset 0x2C, Size 4
 } FileRecordHeader, *PFileRecordHeader;
 
-#define INDEX_ENTRY_NODE 1
-#define INDEX_ENTRY_END  2
-
-struct _BTreeNode;
-struct _BTreeKey;
-
-typedef struct _BTreeNode BTreeNode, *PBTreeNode;
-typedef struct _BTreeKey BTreeKey, *PBTreeKey;
-
-struct _BTreeNode
-{
-    ULONGLONG  VCN;
-    PBTreeKey  FirstKey;
-};
-
-struct _BTreeKey
-{
-    PBTreeKey   ParentNodeKey; // Used to get entries linearly.
-    PBTreeNode  ChildNode;
-    PBTreeKey   NextKey;
-    PIndexEntry Entry;
-    ULONG       Flags;
-};
-
 typedef struct
 {
     NTFSRecordHeader RecordHeader;
@@ -200,10 +176,9 @@ PNtfsDirectory
 NtfsDirectoryCreate(
     _In_ PNtfsVolume DiskVolume);
 
-PNtfsDirectory
-NtfsDirectoryCreateEx(
-    _In_ PNtfsVolume DiskVolume,
-    _In_ PNtfsFileRecord File);
+VOID
+NtfsDirectoryDestroy(
+    _In_opt_ PNtfsDirectory Dir);
 
 NTSTATUS
 NtfsDirectoryLoadDirectory(
@@ -293,6 +268,10 @@ NtfsFileRecordCommitFixup(
 NTSTATUS
 NtfsFileRecordApplyFixup(
     _In_ NtfsFileRecord *FileRecord);
+
+/* Format functions */
+// NTSTATUS
+// NtfsFormatPartition();
 
 /* LFS functions */
 VOID

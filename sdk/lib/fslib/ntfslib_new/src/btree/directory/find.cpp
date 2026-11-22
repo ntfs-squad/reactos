@@ -51,17 +51,17 @@ Directory::FindKeyInNode(PUNICODE_STRING FileName,
         }
 
         // We can skip this node if we're greater than the filename of the node
-        if (CurrentKey->Entry->Flags & INDEX_ENTRY_NODE &&
-            (WideStringCompare(FileName->Buffer,
+        if (CurrentKey->ChildNode &&
+            (CurrentKey->IsLastEntry() ||
+             WideStringCompare(FileName->Buffer,
                                GetFileName(CurrentKey)->Name,
-                               CompareLength(FileName, CurrentKey)) <= 0 ||
-            CurrentKey->Entry->Flags & INDEX_ENTRY_END))
+                               CompareLength(FileName, CurrentKey)) <= 0))
         {
             // If it's not in this node, it's not in here.
             return FindKeyInNode(FileName, CurrentKey->ChildNode->FirstKey);
         }
 
-        if (CurrentKey->Entry->Flags & INDEX_ENTRY_END)
+        if (CurrentKey->IsLastEntry())
         {
             // We've reached the end of this node and checked if it was an index node.
             return NULL;
@@ -86,7 +86,7 @@ Directory::FindNextFile(_In_  PWCHAR FileName,
     FileNameString.Length = (USHORT)((PathElementLength(FileName)) * sizeof(WCHAR));
 
     // For now, start scan at beginning.
-    FoundKey = FindKeyInNode(&FileNameString, RootNode->FirstKey);
+    FoundKey = FindKeyInNode(&FileNameString, RootNode.FirstKey);
 
     if (!FoundKey)
         return STATUS_NOT_FOUND;

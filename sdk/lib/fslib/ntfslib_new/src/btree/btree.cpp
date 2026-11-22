@@ -8,54 +8,29 @@
 
 #include "ntfslib_new_internal.h"
 
-NTSTATUS
-DestroyBTreeNode(PBTreeNode Node);
-
-NTSTATUS
-DestroyBTreeKey(PBTreeKey Key)
+BTreeKey::~BTreeKey()
 {
-    if (Key->Entry)
-        delete Key->Entry;
-
-    if (Key->ChildNode)
-        DestroyBTreeNode(Key->ChildNode);
-
-    delete Key;
-    return STATUS_SUCCESS;
+    delete ChildNode;
+    if (Entry)
+        NtfsFreePool(Entry);
 }
 
-NTSTATUS
-DestroyBTreeNode(PBTreeNode Node)
+BTreeNode::~BTreeNode()
 {
-    PBTreeKey NextKey;
-    PBTreeKey CurrentKey = Node->FirstKey;
-
-    while (CurrentKey)
+    for (BTreeKey* Key = FirstKey; Key;)
     {
-        NextKey = CurrentKey->NextKey;
-        DestroyBTreeKey(CurrentKey);
-        CurrentKey = NextKey;
-    }
-
-    ASSERT(NextKey == NULL);
-    delete Node;
-    return STATUS_SUCCESS;
-}
-
-BTree::~BTree()
-{
-    if (RootNode)
-    {
-        if (RootNode->FirstKey)
-            DestroyBTreeNode(RootNode);
-        else
-            delete RootNode;
+        BTreeKey* Next = Key->NextKey;
+        delete Key;
+        Key = Next;
     }
 }
 
-NTSTATUS
-BTree::ResetCurrentKey()
+BTreeKey*
+BTreeKey::NextInTree() const
 {
-    CurrentKey = RootNode->FirstKey;
-    return STATUS_SUCCESS;
+    if (ChildNode)
+        return ChildNode->FirstKey;
+    if (IsLastEntry())
+        return ParentNodeKey ? ParentNodeKey->NextKey : NULL;
+    return NextKey;
 }

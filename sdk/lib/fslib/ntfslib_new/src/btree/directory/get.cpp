@@ -87,7 +87,7 @@ Directory::IsEligibleForFileDir(PBTreeKey Key,
                                 PUNICODE_STRING FileNameFilter)
 {
     // Is this a dummy key?
-    if (IsLastEntry(Key))
+    if (Key->IsLastEntry())
         return FALSE;
 
     // Does this match the file name filter?
@@ -122,7 +122,7 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
     PreviousBuffer = NULL;
 
     if (!CurrentKey ||
-        IsEndOfNode(CurrentKey))
+        CurrentKey->IsEndOfNode())
     {
         // We reached the end of the directory listing.
         return STATUS_NO_MORE_FILES;
@@ -130,7 +130,7 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
 
     // Restart scan if requested.
     if (RestartScan)
-        ResetCurrentKey();
+        CurrentKey = RootNode.FirstKey;
 
     TotalBufferLength = *BufferLength;
 
@@ -167,7 +167,7 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
             if (ReturnSingleEntry)
             {
                 Buffer->NextEntryOffset = 0;
-                CurrentKey = GetNextKey(CurrentKey);
+                CurrentKey = CurrentKey->NextInTree();
                 break;
             }
 
@@ -176,7 +176,7 @@ Directory::GetFileBothDirInfo(_In_    BOOLEAN ReturnSingleEntry,
             Buffer = (PFILE_BOTH_DIR_INFORMATION)((ULONG_PTR)Buffer + EntrySize);
         }
 
-        CurrentKey = GetNextKey(CurrentKey);
+        CurrentKey = CurrentKey->NextInTree();
 
         if (!CurrentKey)
         {
