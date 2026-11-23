@@ -50,7 +50,7 @@ Volume::GetFreeClusters(_Out_ PLARGE_INTEGER FreeClusters)
     BytesToRead = GetAttributeDataSize(BitmapData) - BytesToRead;
     FreeClusters->QuadPart = 0;
 
-    for (int i = 0; i < BytesToRead; i++)
+    for (ULONG i = 0; i < BytesToRead; i++)
         FreeClusters->QuadPart += GetZerosFromByte(BitmapBuffer[i]);
 
     Status = STATUS_SUCCESS;

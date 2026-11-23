@@ -245,18 +245,12 @@ NtfsFsdSetVolumeInformation(_In_ PDEVICE_OBJECT VolumeDeviceObject,
      * See: https://learn.microsoft.com/en-us/windows-hardware/drivers/ifs/irp-mj-set-volume-information
      */
 
-    PIO_STACK_LOCATION IoStack;
-    FS_INFORMATION_CLASS FSInfoRequest;
-    PVolumeContextBlock VolCB;
     NTSTATUS Status;
-    PVOID SystemBuffer;
-    ULONG BufferLength;
-
-    IoStack = IoGetCurrentIrpStackLocation(Irp);
-    FSInfoRequest = IoStack->Parameters.QueryVolume.FsInformationClass;
-    VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
-    SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
-    BufferLength = IoStack->Parameters.QueryFile.Length;
+    PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+    FS_INFORMATION_CLASS FSInfoRequest = IoStack->Parameters.QueryVolume.FsInformationClass;
+    PVOID SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+    ULONG BufferLength = IoStack->Parameters.QueryFile.Length;
+    // PVolumeContextBlock VolCB = (PVolumeContextBlock)VolumeDeviceObject->DeviceExtension;
 
     switch (FSInfoRequest)
     {
@@ -292,7 +286,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     PNtfsVolume DiskVolume;
     NTSTATUS Status;
     PVolumeContextBlock VolCB;
-    LARGE_INTEGER FilesystemSize;
     DISK_GEOMETRY DiskGeometry;
     ULONG Size;
     NtfsConfiguration Configuration;
@@ -377,11 +370,6 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     // Create file stream object.
     VolCB->StreamFileObject = IoCreateStreamFileObject(NULL,
                                                        VolCB->StorageDevice);
-
-    // Set file system size information.
-    FilesystemSize.QuadPart = NtfsVolumeGetClustersInVolume(DiskVolume)
-                            * NtfsVolumeGetSectorsPerCluster(DiskVolume)
-                            * NtfsVolumeGetBytesPerSector(DiskVolume);
 
     // Get serial number.
     FSDeviceObject->Vpb->SerialNumber = NtfsVolumeGetSerialNumber(DiskVolume);

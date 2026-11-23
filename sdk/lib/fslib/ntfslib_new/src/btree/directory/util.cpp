@@ -19,7 +19,7 @@ Directory::IsLegalShortNameCharacterW(_In_ WCHAR Char)
     if ((Char >= L'0' && Char <= L'9') || (Char >= L'A' && Char <= L'Z'))
         return TRUE;
 
-    for (int i = 0; i < wcslen(AllowedCharacters); i++)
+    for (size_t i = 0; i < wcslen(AllowedCharacters); i++)
     {
         if (Char == AllowedCharacters[i])
             return TRUE;

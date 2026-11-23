@@ -12,8 +12,8 @@ typedef int BOOL;
 #endif
 
 #define ASSERT_FIELD_OFFSET_AND_LENGTH(_Struct, _Field, _Offset, _Length) \
-    static_assert(offsetof(_Struct, _Field)  == _Offset);                 \
-    static_assert(sizeof(((_Struct *)0)->_Field) == _Length)
+    C_ASSERT(offsetof(_Struct, _Field) == _Offset);                       \
+    C_ASSERT(sizeof(((_Struct *)0)->_Field) == _Length)
 
 #include "ntfsattribdef.h"
 
@@ -68,7 +68,7 @@ ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, SerialNumber,           0x48, 8);
 ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, Checksum,               0x50, 4);
 ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, BootStrap,              0x54, 426);
 ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, EndSector,              0x1FE, 2);
-static_assert(sizeof(BootSector) == 0x200);
+C_ASSERT(sizeof(BootSector) == 0x200);
 
 /* NTFS file record numbers */
 enum FileRecordNumbers
@@ -345,7 +345,7 @@ NtfsMasterFileTableGetFileRecord(
 NTSTATUS
 NtfsProbePartition(
     _In_opt_ PNtfsConfiguration Configuration,
-    _Out_opt_ void** VolumeOut,
+    _Out_opt_ PNtfsVolume* VolumeOut,
     _Out_opt_ PBootSector BootSectorOut);
 
 /* Volume functions */

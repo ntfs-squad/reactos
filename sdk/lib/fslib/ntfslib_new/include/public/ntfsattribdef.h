@@ -111,8 +111,8 @@ typedef struct
     (offsetof(Attribute, Resident) + sizeof(((Attribute *)0)->Resident))
 #define ATTR_NONRESIDENT_HEADER_SIZE \
     (offsetof(Attribute, NonResident) + sizeof(((Attribute *)0)->NonResident))
-static_assert(ATTR_RESIDENT_HEADER_SIZE == 0x18);
-static_assert(ATTR_NONRESIDENT_HEADER_SIZE == 0x40);
+C_ASSERT(ATTR_RESIDENT_HEADER_SIZE == 0x18);
+C_ASSERT(ATTR_NONRESIDENT_HEADER_SIZE == 0x40);
 ASSERT_FIELD_OFFSET_AND_LENGTH(Attribute, AttributeType,                   0x00, 4);
 ASSERT_FIELD_OFFSET_AND_LENGTH(Attribute, Length,                          0x04, 4);
 ASSERT_FIELD_OFFSET_AND_LENGTH(Attribute, IsNonResident,                   0x08, 1);
@@ -249,7 +249,7 @@ ASSERT_FIELD_OFFSET_AND_LENGTH(FileNameEx, Extended.EAInfo.Padding,      0x3E, 2
 ASSERT_FIELD_OFFSET_AND_LENGTH(FileNameEx, Extended.ReparseTag,          0x3C, 4);
 ASSERT_FIELD_OFFSET_AND_LENGTH(FileNameEx, NameLength,                   0x40, 1);
 ASSERT_FIELD_OFFSET_AND_LENGTH(FileNameEx, NameType,                     0x41, 1);
-static_assert(offsetof(FileNameEx, Name)  == 0x42);
+C_ASSERT(offsetof(FileNameEx, Name) == 0x42);
 
 // $OBJECT_ID (0x40)
 typedef struct _ObjectIdEx
@@ -350,7 +350,7 @@ ASSERT_FIELD_OFFSET_AND_LENGTH(IndexEntry, EntryLength,                0x08, 2);
 ASSERT_FIELD_OFFSET_AND_LENGTH(IndexEntry, StreamLength,               0x0A, 2);
 ASSERT_FIELD_OFFSET_AND_LENGTH(IndexEntry, Flags,                      0x0C, 1);
 ASSERT_FIELD_OFFSET_AND_LENGTH(IndexEntry, Reserved,                   0x0D, 3);
-static_assert(offsetof(IndexEntry, IndexStream)  == 0x10);
+C_ASSERT(offsetof(IndexEntry, IndexStream) == 0x10);
 
 // $REPARSE_POINT (0xC0)
 typedef struct _ReparsePointEx

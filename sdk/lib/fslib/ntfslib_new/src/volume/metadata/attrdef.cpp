@@ -16,7 +16,7 @@ Volume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
     PFileRecord AttrDefFile;
     PAttribute DataAttr;
     PAttrDefEntry TableEntry;
-    ULONG AttrDefEntryIndex, AttrDefDataSize, MaxIndex, NameCompareLength;
+    ULONG AttrDefDataSize, MaxIndex, NameCompareLength;
     PUCHAR Buffer = NULL;
 
     // NOTE: Lookup is case-insensitive.
@@ -43,12 +43,11 @@ Volume::GetAttributeTypeFromName(_In_  PWSTR AttributeTypeName,
                           &AttrDefDataSize,
                           0);
     AttrDefDataSize = DataAttr->NonResident.DataSize - AttrDefDataSize;
-    AttrDefEntryIndex = 0;
     MaxIndex = AttrDefDataSize / sizeof(AttrDefEntry);
     TableEntry = (PAttrDefEntry)Buffer;
     NameCompareLength = wcslen(AttributeTypeName) * sizeof(WCHAR);
 
-    for (int i = 0; i < MaxIndex; i++)
+    for (ULONG i = 0; i < MaxIndex; i++)
     {
         if ((wcslen(TableEntry->Label) * sizeof(WCHAR)) == NameCompareLength &&
             RtlCompareMemory(TableEntry->Label,

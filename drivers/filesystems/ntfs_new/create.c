@@ -32,7 +32,6 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     ULONG Information = 0;
     PIO_STACK_LOCATION IrpSp;
     PFILE_OBJECT FileObject;
-    BOOLEAN PerformAccessChecks;
     UINT8 Disposition;
     USHORT FileNameLength;
     BOOLEAN IsVolume;
@@ -81,12 +80,11 @@ NtfsFsdCreate(_In_ PDEVICE_OBJECT VolumeDeviceObject,
 
     Mft = NtfsVolumeGetMft(DiskVolume);
 
-    // Determine if we should check access rights
-    PerformAccessChecks = (Irp->RequestorMode == UserMode) ||
-                          (IrpSp->Flags & SL_FORCE_ACCESS_CHECK);
-
-    // TODO: Check if we have rights to access file.
-
+#if 0
+    // TODO: Check file access rights for user requests or SL_FORCE_ACCESS_CHECK.
+    BOOL PerformAccessChecks = (Irp->RequestorMode == UserMode) ||
+                               (IrpSp->Flags & SL_FORCE_ACCESS_CHECK);
+#endif
     // Try to find the requested file record.
     Status = NtfsMasterFileTableGetFileRecordFromQuery(Mft,
                                                        FileObject->FileName.Buffer,

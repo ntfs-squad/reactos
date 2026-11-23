@@ -42,7 +42,7 @@
 (VCN * (DiskVolume->BytesPerSector)) : \
 (VCN * BytesPerCluster(DiskVolume))
 
-#define IsLowercaseCharacterW(wchar) wchar >= L'a' && wchar <= L'z'
+#define IsLowercaseCharacterW(wchar) ((wchar) >= L'a' && (wchar) <= L'z')
 
 #define IsDotOrDotDotDirW(Buffer, Length) \
     Buffer[0] == L'.' \
@@ -174,7 +174,7 @@ public:
      * STATUS_SUCCESS if successful.
      */
     NTSTATUS
-    Volume::UpcaseUnicodeString(_Inout_ PUNICODE_STRING String);
+    UpcaseUnicodeString(_Inout_ PUNICODE_STRING String);
 
     /**
      * Converts a 16-bit string to uppercase using the code page stored on the volume.
@@ -283,7 +283,7 @@ public:
 
     // ./find.cpp
     PAttribute GetAttribute(_In_     AttributeType Type,
-                            _In_opt_ PWSTR Name);
+                            _In_opt_ PCWSTR Name);
     NTSTATUS GetAttributeData(_In_     AttributeType Type,
                               _In_opt_ PWSTR Name,
                               _Out_    PUCHAR *Data);

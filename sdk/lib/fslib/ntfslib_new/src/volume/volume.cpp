@@ -12,7 +12,7 @@ EXTERN_C
 NTSTATUS
 NtfsProbePartition(
     _In_opt_ PNtfsConfiguration Configuration,
-    _Out_opt_ void** VolumeOut,
+    _Out_opt_ PNtfsVolume* VolumeOut,
     _Out_opt_ PBootSector BootSectorOut)
 {
     NTSTATUS Status;
@@ -100,7 +100,7 @@ NtfsProbePartition(
             return Status;
         }
 
-        *VolumeOut = VolumeObject;
+        *VolumeOut = (PNtfsVolume)VolumeObject;
     }
 
     if (BootSectorOut)

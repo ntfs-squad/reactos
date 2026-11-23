@@ -27,6 +27,26 @@
 #include "include/ctxblks.h"
 #include "include/reg.h"
 
+/* HACK: This is only temporary as I refactor this out of the public API. */
+EXTERN_C
+NTSTATUS
+NtfsDirectoryGetFileBothDirInfo(
+    _In_    PNtfsDirectory Dir,
+    _In_    BOOLEAN ReturnSingleEntry,
+    _In_    BOOLEAN RestartScan,
+    _In_    PUNICODE_STRING FileNameFilter,
+    _Inout_ PFILE_BOTH_DIR_INFORMATION Buffer,
+    _Inout_ PULONG BufferLength);
+
+/* HACK: This is only temporary as I refactor this out of the public API. */
+EXTERN_C
+NTSTATUS
+NtfsVolumeGetADSPreference(
+    _In_ PNtfsVolume DiskVolume,
+    _In_opt_ PWSTR FileName,
+    _Out_ AttributeType* RequestedType,
+    _Out_ PWSTR* RequestedStream);
+
 #define GetUserBuffer(Irp) Irp->MdlAddress ?\
 MmGetSystemAddressForMdlSafe(Irp->MdlAddress, ((Irp->Flags & IRP_PAGING_IO) ? HighPagePriority : NormalPagePriority)) :\
 Irp->UserBuffer

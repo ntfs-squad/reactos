@@ -12,7 +12,7 @@
 /* Find Attribute Functions */
 PAttribute
 FileRecord::GetAttribute(_In_     AttributeType Type,
-                         _In_opt_ PWSTR Name)
+                         _In_opt_ PCWSTR Name)
 {
     ULONG DataPtr;
     PAttribute TestAttr;

@@ -453,7 +453,7 @@ NtfsFsdDirectoryControl(_In_ PDEVICE_OBJECT VolumeDeviceObject,
     ULONG Information = 0;
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     FILE_INFORMATION_CLASS FileInformationRequest;
-    PVolumeContextBlock VolCB = (PVolumeContextBlock)(VolumeDeviceObject->DeviceExtension);
+    // PVolumeContextBlock VolCB = (PVolumeContextBlock)(VolumeDeviceObject->DeviceExtension);
     PFileContextBlock FileCB = (PFileContextBlock)(IrpSp->FileObject->FsContext);
     PVOID SystemBuffer = GetBuffer(Irp);
     ULONG BufferLength = IrpSp->Parameters.QueryDirectory.Length;
