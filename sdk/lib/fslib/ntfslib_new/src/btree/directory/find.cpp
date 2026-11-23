@@ -8,90 +8,47 @@
 
 #include "ntfslib_new_internal.h"
 
-#define PathElementLength(FileName) \
-(wcschr(FileName, L'\\')) \
-? (wcschr(FileName, L'\\') - FileName) \
-: (wcschr(FileName, L':')) \
-? (wcschr(FileName, L':') - FileName) \
-: (wcslen(FileName))
-
-#define CompareLength(FileName, CurrentKey) \
-min(PathElementLength(FileName->Buffer), GetFileName(CurrentKey)->NameLength)
-
-LONG
-WideStringCompare(PWCHAR FirstString,
-                  PWCHAR SecondString,
-                  UINT Length)
+static LONG
+CompareName(PUNICODE_STRING FileName,
+            PFileNameEx IndexFileName)
 {
-    UNICODE_STRING String1, String2;
+    const USHORT Length = min(FileName->Length, IndexFileName->NameLength * sizeof(WCHAR));
+    UNICODE_STRING IndexName;
 
-    RtlInitEmptyUnicodeString(&String1, FirstString, Length);
-    RtlInitEmptyUnicodeString(&String2, SecondString, Length);
-    String1.Length = Length;
-    String2.Length = Length;
+    RtlInitEmptyUnicodeString(&IndexName, IndexFileName->Name, Length);
+    FileName->Length = Length;
+    IndexName.Length = Length;
 
-    return RtlCompareUnicodeString(&String1, &String2, TRUE);
+    return RtlCompareUnicodeString(FileName, &IndexName, TRUE);
 }
 
 PBTreeKey
 Directory::FindKeyInNode(PUNICODE_STRING FileName,
                          PBTreeKey Key)
 {
-    PBTreeKey CurrentKey;
-
-    // Start the search with the first key
-    CurrentKey = Key;
-
-    while(CurrentKey)
+    for (PBTreeKey CurrentKey = Key; CurrentKey; CurrentKey = CurrentKey->NextKey)
     {
         if (DoesFileNameMatch(FileName, CurrentKey))
-        {
-            // We found the key!
             return CurrentKey;
-        }
 
-        // We can skip this node if we're greater than the filename of the node
         if (CurrentKey->ChildNode &&
-            (CurrentKey->IsLastEntry() ||
-             WideStringCompare(FileName->Buffer,
-                               GetFileName(CurrentKey)->Name,
-                               CompareLength(FileName, CurrentKey)) <= 0))
+            (CurrentKey->IsLastEntry() || CompareName(FileName, GetFileName(CurrentKey)) <= 0))
         {
-            // If it's not in this node, it's not in here.
             return FindKeyInNode(FileName, CurrentKey->ChildNode->FirstKey);
         }
-
-        if (CurrentKey->IsLastEntry())
-        {
-            // We've reached the end of this node and checked if it was an index node.
-            return NULL;
-        }
-
-        // Go to the next key
-        CurrentKey = CurrentKey->NextKey;
     }
 
-    // We didn't find the key
     return NULL;
 }
 
 NTSTATUS
-Directory::FindNextFile(_In_  PWCHAR FileName,
-                        _Out_ PULONGLONG FileRecordNumber)
+Directory::FindFile(_Inout_ PUNICODE_STRING FileName,
+                    _Out_   PULONGLONG FileRecordNumber)
 {
-    UNICODE_STRING FileNameString;
-    PBTreeKey FoundKey;
-
-    RtlInitEmptyUnicodeString(&FileNameString, FileName, (USHORT)(wcslen(FileName) * sizeof(WCHAR)));
-    FileNameString.Length = (USHORT)((PathElementLength(FileName)) * sizeof(WCHAR));
-
-    // For now, start scan at beginning.
-    FoundKey = FindKeyInNode(&FileNameString, RootNode.FirstKey);
-
+    PBTreeKey FoundKey = FindKeyInNode(FileName, RootNode.FirstKey);
     if (!FoundKey)
         return STATUS_NOT_FOUND;
 
-    CurrentKey = FoundKey;
-    *FileRecordNumber = GetFRNFromFileRef(FoundKey->Entry->Data.Directory.IndexedFile);
+    *FileRecordNumber = GetFRNFromFileRef(FileRef(FoundKey));
     return STATUS_SUCCESS;
 }

@@ -195,7 +195,8 @@ Directory::LoadNodeEntries(_In_ PFileRecord File,
 }
 
 NTSTATUS
-Directory::LoadDirectory(_In_ PFileRecord File)
+Directory::LoadDirectory(_In_ PFileRecord File,
+                         _In_ BOOL SkipShortNameMarking)
 {
     if (!FileRecordIsDirectory(File))
         return STATUS_NOT_A_DIRECTORY;
@@ -211,8 +212,12 @@ Directory::LoadDirectory(_In_ PFileRecord File)
     NewRoot.FirstKey = OldFirstKey;
     CurrentKey = RootNode.FirstKey;
 
+    // Optimization: Skip marking short name aliases if requested.
+    // TODO: Also skip marking if short names are disabled for this volume
+    if (SkipShortNameMarking)
+       return STATUS_SUCCESS;
+
     // Mark short-name aliases so enumeration can skip them.
-    // TODO: If short name generation is disabled for this volume, we can skip this.
     for (PBTreeKey Key = CurrentKey; Key; Key = Key->NextInTree())
     {
         if (!Key->IsLastEntry() && !(Key->Flags & DIR_KEY_8DOT3))

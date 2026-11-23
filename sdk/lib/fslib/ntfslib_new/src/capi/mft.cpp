@@ -14,7 +14,7 @@ extern "C" {
 NTSTATUS
 NtfsMasterFileTableGetFileRecord(
     _In_  PNtfsMasterFileTable Mft,
-    _In_  ULONG FileRecordNumber,
+    _In_  ULONGLONG FileRecordNumber,
     _Out_ PNtfsFileRecord* File)
 {
     return reinterpret_cast<PMasterFileTable>(Mft)->GetFileRecord(FileRecordNumber, reinterpret_cast<PFileRecord*>(File));

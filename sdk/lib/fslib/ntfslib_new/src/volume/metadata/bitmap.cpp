@@ -12,7 +12,6 @@
 const UINT8 Zeros[16] = { 4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0 };
 #define GetZerosFromNibble(x) Zeros[(UINT8)x]
 #define GetZerosFromByte(x) GetZerosFromNibble(x & 0xF) + GetZerosFromNibble(x >> 4)
-
 #define IsBitSet(Byte, Bit) !!((Byte >> Bit) & 1)
 
 NTSTATUS

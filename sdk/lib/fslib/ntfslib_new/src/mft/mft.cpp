@@ -161,7 +161,7 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
 }
 
 NTSTATUS
-MasterFileTable::IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
+MasterFileTable::IsFileRecordNumberInUse(_In_  ULONGLONG FileRecordNumber,
                                          _Out_ PBOOLEAN InUse)
 {
 #if 0
@@ -192,6 +192,8 @@ MasterFileTable::IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
     *InUse = !!(BitmapSection & Bitmask);
     return STATUS_SUCCESS;
 #else
+    UNREFERENCED_PARAMETER(FileRecordNumber);
+
     *InUse = TRUE;
     return STATUS_SUCCESS;
 #endif

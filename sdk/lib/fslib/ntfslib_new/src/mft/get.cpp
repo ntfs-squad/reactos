@@ -10,7 +10,7 @@
 
 // NOTE: This function will search $MFTMirr automatically if needed.
 NTSTATUS
-MasterFileTable::GetFileRecord(_In_   ULONG FileRecordNumber,
+MasterFileTable::GetFileRecord(_In_   ULONGLONG FileRecordNumber,
                                _Out_  PFileRecord* File)
 {
     NTSTATUS Status;
@@ -101,7 +101,7 @@ Failed:
 }
 
 NTSTATUS
-MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONG FileRecordNumber,
+MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONGLONG FileRecordNumber,
                                           _Out_  PFileRecord* File)
 {
     NTSTATUS Status;
@@ -174,7 +174,7 @@ Failed:
 NTSTATUS
 MasterFileTable::GetFileAttributeFromFileRecordNumber(_In_  AttributeType Type,
                                                       _In_  PWSTR Name,
-                                                      _In_  ULONG FileRecordNumber,
+                                                      _In_  ULONGLONG FileRecordNumber,
                                                       _Out_ PFileRecord* TargetFile,
                                                       _Out_ PAttribute* TargetAttribute)
 {
@@ -211,124 +211,71 @@ MasterFileTable::GetFileAttributeFromFileRecordNumber(_In_  AttributeType Type,
 
 NTSTATUS
 MasterFileTable::GetFileRecordFromQuery(_In_ PWCHAR Query,
-                                        _Out_ PFileRecord* File)
+                                       _Out_ PFileRecord* File)
 {
     NTSTATUS Status;
-    PWCHAR QueryElementPtr;
-    ULONGLONG CurrentFRN;
-    PDirectory CurrentDirectory = NULL;
-    PFileRecord CurrentFile = NULL;
+    PFileRecord Record;
 
     if (!Query)
-    {
-        DPRINT1("INVESTIGATE ME: GetFileRecordFromQuery() called with NULL Query!\n");
         return STATUS_INVALID_PARAMETER;
-    }
 
-    // Let's start with the root directory, which is hardcoded.
-    if (IsRootFile(Query))
-        return GetFileRecord(_Root, File);
+    if (*Query == L'\\')
+        ++Query;
 
-    /* Every other file will be inside of the root directory.
-     * Parse the query to find the file record.
-     */
-    Status = GetFileRecord(_Root, &CurrentFile);
-    if(!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to get root directory file!\n");
-        return Status;
-    }
-
-    CurrentDirectory = new(NtfsPagedPool, TAG_MFT) Directory(DiskVolume);
-    if(!CurrentDirectory)
-    {
-        Status = STATUS_INSUFFICIENT_RESOURCES;
-        goto Done;
-    }
-
-    Status = CurrentDirectory->LoadDirectory(CurrentFile);
-    if(!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to get root directory!\n");
-        Status = STATUS_NOT_FOUND;
-        goto Done;
-    }
-
-    QueryElementPtr = Query;
-    QueryElementPtr = wcschr(QueryElementPtr, L'\\');
-    if (QueryElementPtr)
-        QueryElementPtr++;
-    else
-        QueryElementPtr = Query;
-
-    while(QueryElementPtr)
-    {
-        // Find the directory pointed to by the path
-        Status = CurrentDirectory->FindNextFile(QueryElementPtr,
-                                                &CurrentFRN);
-        if (!NT_SUCCESS(Status))
-        {
-            Status = STATUS_NOT_FOUND;
-            goto Done;
-        }
-
-        delete CurrentDirectory;
-        delete CurrentFile;
-
-        Status = GetFileRecord(CurrentFRN, &CurrentFile);
-        if (!NT_SUCCESS(Status))
-        {
-            DPRINT1("Failed to find file at MFT ID %ld!\n", CurrentFRN);
-            Status = STATUS_NOT_FOUND;
-            goto Done;
-        }
-
-        // Second condition is to check "//folder//target//"
-        // Is this a hack or fix?
-        if (wcschr(QueryElementPtr, L'\\') &&
-            wcschr(QueryElementPtr, L'\\')[1] != L'\0')
-        {
-            CurrentDirectory = new(NtfsPagedPool, TAG_MFT) Directory(DiskVolume);
-            if (!CurrentDirectory)
-            {
-                Status = STATUS_INSUFFICIENT_RESOURCES;
-                goto Done;
-            }
-
-            Status = CurrentDirectory->LoadDirectory(CurrentFile);
-            if (!NT_SUCCESS(Status))
-            {
-                DPRINT1("Failed to find directory for file at MFT ID %ld!\n", CurrentFRN);
-                Status = STATUS_NOT_FOUND;
-                goto Done;
-            }
-
-            // Set up next file
-            QueryElementPtr = wcschr(QueryElementPtr, L'\\');
-            QueryElementPtr++;
-        }
-
-        else
-        {
-            break;
-        }
-    }
-
-    // Current File should now point to the queried file.
-    Status = STATUS_SUCCESS;
-
-Done:
+    Status = GetFileRecord(_Root, &Record);
     if (!NT_SUCCESS(Status))
+        return Status;
+
+    while (*Query)
     {
-        if (CurrentDirectory)
-            delete CurrentDirectory;
-        if (CurrentFile)
-            delete CurrentFile;
-    }
-    else
-    {
-        *File = CurrentFile;
+        // Find the next separator to get to the end of the current file path token.
+        PWCHAR End = Query;
+        while (*End && *End != L'\\' && *End != L':')
+            ++End;
+
+        // Determine string length for current file path token.
+        USHORT Length = (End - Query) * sizeof(WCHAR);
+        if (!Length)
+        {
+            delete Record;
+            return STATUS_NOT_FOUND;
+        }
+
+        UNICODE_STRING Component;
+        RtlInitEmptyUnicodeString(&Component, Query, Length);
+        Component.Length = Component.MaximumLength;
+
+        // Find the file record that represents the current file path token.
+        ULONGLONG FileRecordNumber;
+        {
+            // Optimization: We don't need to worry about short name keys for this lookup.
+            Directory Index(DiskVolume);
+            Status = Index.LoadDirectory(Record, TRUE);
+            delete Record;
+            if (!NT_SUCCESS(Status))
+                return STATUS_NOT_FOUND;
+
+            Status = Index.FindFile(&Component, &FileRecordNumber);
+        }
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        // Get the file record from the file record number
+        Status = GetFileRecord(FileRecordNumber, &Record);
+        if (!NT_SUCCESS(Status))
+            return Status;
+
+        /* If the next separator is not a backslash, break.
+         * Either, the path is already at its end;
+         * Or it's on the ADS operator ':', which all use the same file record.
+         */
+        if (*End != L'\\')
+            break;
+
+        // Advance Query to after the last separator
+        Query = End + 1;
     }
 
-    return Status;
+    *File = Record;
+    return STATUS_SUCCESS;
 }

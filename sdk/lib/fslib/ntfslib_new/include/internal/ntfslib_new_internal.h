@@ -19,8 +19,6 @@
     (Number << ((sizeof(LONGLONG) - Bytes) * 8)) >> ((sizeof(LONGLONG) - Bytes) * 8)
 #define BytesPerIndexRecord(DiskVolume) \
     (BytesPerCluster(DiskVolume) * DiskVolume->ClustersPerIndexRecord)
-#define IsRootFile(Path) \
-    Path[0] == L'\0' || (Path[0] == L'\\' && Path[1] == L'\0')
 
 #define MFTDiskOffset (MFTLCN * BytesPerCluster(DiskVolume))
 #define MFTMirrDiskOffset (MFTMirrLCN * BytesPerCluster(DiskVolume))
@@ -371,12 +369,13 @@ public:
     // ./directory.cpp
     Directory(_In_ PVolume DiskVolume);
     NTSTATUS
-    LoadDirectory(_In_ PFileRecord File);
+    LoadDirectory(_In_ PFileRecord File,
+                  _In_ BOOL SkipShortNameMarking = FALSE);
 
     // ./find.cpp
     NTSTATUS
-    FindNextFile(_In_  PWCHAR FileName,
-                 _Out_ PULONGLONG FileRecordNumber);
+    FindFile(_Inout_ PUNICODE_STRING FileName,
+             _Out_   PULONGLONG FileRecordNumber);
 
     // ./get.cpp
     NTSTATUS
@@ -463,16 +462,16 @@ public:
     WriteFileRecordToMFT(_In_ PFileRecord File);
 
     NTSTATUS
-    IsFileRecordNumberInUse(_In_  ULONG FileRecordNumber,
+    IsFileRecordNumberInUse(_In_  ULONGLONG FileRecordNumber,
                             _Out_ PBOOLEAN InUse);
 
     // ./get.cpp
     NTSTATUS
-    GetFileRecord(_In_   ULONG FileRecordNumber,
+    GetFileRecord(_In_   ULONGLONG FileRecordNumber,
                   _Out_  PFileRecord* File);
 
     NTSTATUS
-    GetFileRecordFromMFTMirr(_In_  ULONG FileRecordNumber,
+    GetFileRecordFromMFTMirr(_In_  ULONGLONG FileRecordNumber,
                              _Out_ PFileRecord* File);
 
     NTSTATUS
@@ -482,7 +481,7 @@ public:
     NTSTATUS
     GetFileAttributeFromFileRecordNumber(_In_  AttributeType Type,
                                          _In_  PWSTR Name,
-                                         _In_  ULONG FileRecordNumber,
+                                         _In_  ULONGLONG FileRecordNumber,
                                          _Out_ PFileRecord* TargetFile,
                                          _Out_ PAttribute* TargetAttribute);
 

@@ -338,7 +338,7 @@ NtfsMasterFileTableGetFileRecordFromQuery(
 NTSTATUS
 NtfsMasterFileTableGetFileRecord(
     _In_  PNtfsMasterFileTable Mft,
-    _In_  ULONG FileRecordNumber,
+    _In_  ULONGLONG FileRecordNumber,
     _Out_ PNtfsFileRecord* File);
 
 /* Probe functions */
