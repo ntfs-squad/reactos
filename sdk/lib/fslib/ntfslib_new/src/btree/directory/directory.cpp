@@ -11,28 +11,32 @@
 NTSTATUS
 Directory::VerifyUpdateSequenceArray(PNTFSRecordHeader Record)
 {
+    const ULONG BytesPerSector = DiskVolume->BytesPerSector;
     const ULONG RecordSize = BytesPerIndexRecord(DiskVolume);
-    const ULONG SectorSize = DiskVolume->BytesPerSector;
-    const ULONG Count = Record->SizeOfUpdateSequence;
-    const ULONG Offset = Record->UpdateSequenceOffset;
+    const ULONG UsaOffset = Record->UpdateSequenceOffset;
+    const ULONG UsaCount = Record->SizeOfUpdateSequence;
+    const PUSHORT UpdateSequenceArray = (PUSHORT)((PUCHAR)Record + UsaOffset);
+    const USHORT UpdateSequenceNumber = UpdateSequenceArray[0];
+    PUSHORT SectorEnd;
 
-    if (SectorSize < sizeof(USHORT) ||
-        Count == 0 ||
-        Count - 1 > RecordSize / SectorSize ||
-        Offset > RecordSize ||
-        Count > (RecordSize - Offset) / sizeof(USHORT))
+    /* Check for corruption based on incompatible Usa data. */
+    if (UsaCount == 0 ||
+        UsaCount - 1 > RecordSize / BytesPerSector ||
+        UsaOffset > RecordSize ||
+        UsaCount > (RecordSize - UsaOffset) / sizeof(USHORT))
     {
         return STATUS_FILE_CORRUPT_ERROR;
     }
 
-    PUCHAR Bytes = reinterpret_cast<PUCHAR>(Record);
-    PUSHORT Sequence = reinterpret_cast<PUSHORT>(Bytes + Offset);
-    for (ULONG Index = 1; Index < Count; ++Index)
+    /* The end of a sector in a file record should always be the
+     * Update Sequence Number (USN).
+     */
+    for (ULONG Index = 1; Index < UsaCount; ++Index)
     {
-        PUSHORT SectorEnd = reinterpret_cast<PUSHORT>(Bytes + Index * SectorSize - sizeof(USHORT));
-        if (*SectorEnd != Sequence[0])
+        SectorEnd = (PUSHORT)((PUCHAR)Record + (Index * BytesPerSector) - sizeof(USHORT));
+        if (*SectorEnd != UpdateSequenceNumber)
             return STATUS_FILE_CORRUPT_ERROR;
-        *SectorEnd = Sequence[Index];
+        *SectorEnd = UpdateSequenceArray[Index];
     }
 
     return STATUS_SUCCESS;
@@ -44,14 +48,11 @@ Directory::CreateNode(_In_ PFileRecord File,
                       _Inout_ PBTreeKey ParentKey)
 {
     NTSTATUS Status;
+    const ULONG RecordSize = BytesPerIndexRecord(DiskVolume);
     ULONGLONG Vcn;
     RtlCopyMemory(&Vcn,
                   reinterpret_cast<PUCHAR>(ParentKey->Entry) + ParentKey->Entry->EntryLength - sizeof(Vcn),
                   sizeof(Vcn));
-
-    const ULONG RecordSize = BytesPerIndexRecord(DiskVolume);
-    if (RecordSize < sizeof(IndexBuffer))
-        return STATUS_FILE_CORRUPT_ERROR;
 
     PIndexBuffer Buffer = static_cast<PIndexBuffer>(NtfsAllocatePoolWithTag(NtfsPagedPool, RecordSize, TAG_BTREE));
     if (!Buffer)
@@ -104,7 +105,7 @@ Directory::LoadRootNode(_In_ PFileRecord File,
     PAttribute Root = File->GetAttribute(TypeIndexRoot, NULL);
     if (!Root ||
         Root->IsNonResident ||
-        Root->Resident.DataOffset < 0x18 ||
+        Root->Resident.DataOffset < ATTR_RESIDENT_HEADER_SIZE ||
         Root->Resident.DataOffset > Root->Length ||
         Root->Resident.DataLength > Root->Length - Root->Resident.DataOffset ||
         Root->Resident.DataLength < sizeof(IndexRootEx))

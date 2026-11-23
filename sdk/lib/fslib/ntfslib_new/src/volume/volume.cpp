@@ -20,6 +20,8 @@ NtfsProbePartition(
     ULONG BytesPerSector = NtfsGetBytesPerSector();
     PVolume VolumeObject = NULL;
 
+    // TODO: Check backup boot sector in failure states
+
     // Check bytes per sector.
     if (BytesPerSector != 512 && BytesPerSector != 4096)
     {
@@ -144,6 +146,14 @@ Volume::Initialize(
     ClustersInVolume = (PartitionBootSector->SectorsInVolume) / (PartitionBootSector->SectorsPerCluster);
     ClustersPerIndexRecord = PartitionBootSector->ClustersPerIndexRecord;
     SerialNumber = PartitionBootSector->SerialNumber;
+
+    // Check for signs of corruption based on invalid boot sector information.
+    if ((BytesPerSector != 512 && BytesPerSector != 4096)
+        || BytesPerIndexRecord(this) < sizeof(IndexBuffer))
+    {
+        // TODO: Check backup boot sector and try to continue.
+        __debugbreak();
+    }
 
     // Initialize Master File Table
     MFT = new(NtfsPagedPool, TAG_MFT) MasterFileTable(this,

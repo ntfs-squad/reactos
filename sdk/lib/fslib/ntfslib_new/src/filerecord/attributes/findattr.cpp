@@ -48,7 +48,7 @@ FileRecord::GetAttribute(_In_     AttributeType Type,
             return NULL;
 
         // Validate attribute length (resident: >= 0x18, nonresident: >= 0x40)
-        const ULONG minHeader = TestAttr->IsNonResident ? 0x40 : 0x18;
+        const ULONG minHeader = TestAttr->IsNonResident ? ATTR_NONRESIDENT_HEADER_SIZE : ATTR_RESIDENT_HEADER_SIZE;
         if (TestAttr->Length < minHeader ||
             (TestAttr->Length & 7) != 0 ||
             DataPtr + TestAttr->Length > Header->ActualSize)
@@ -126,7 +126,7 @@ FileRecord::GetAttributeData(_In_     AttributeType Type,
 
     // Test for invalid resident data window for $STANDARD_INFORMATION.
     if (Type == TypeStandardInformation
-        && (Attr->Resident.DataOffset < 0x18 ||
+        && (Attr->Resident.DataOffset < ATTR_RESIDENT_HEADER_SIZE ||
             (Attr->Resident.DataOffset + Attr->Resident.DataLength) > Attr->Length))
     {
         return STATUS_FILE_CORRUPT_ERROR;

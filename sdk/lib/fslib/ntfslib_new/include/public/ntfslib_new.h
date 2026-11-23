@@ -11,10 +11,14 @@ typedef unsigned int UINT;
 typedef int BOOL;
 #endif
 
+#define ASSERT_FIELD_OFFSET_AND_LENGTH(_Struct, _Field, _Offset, _Length) \
+    static_assert(offsetof(_Struct, _Field)  == _Offset);                 \
+    static_assert(sizeof(((_Struct *)0)->_Field) == _Length)
+
 #include "ntfsattribdef.h"
 
 #pragma pack(push, 1)
-struct BootSector
+typedef struct _BootSector
 {
     UCHAR  JumpInstruction[3];     // Offset 0x00, Size 3
     UCHAR  OEM_ID[8];              // Offset 0x03, Size 8
@@ -31,18 +35,40 @@ struct BootSector
     UINT64 SectorsInVolume;        // Offset 0x28, Size 8
     UINT64 MFTLCN;                 // Offset 0x30, Size 8
     UINT64 MFTMirrLCN;             // Offset 0x38, Size 8
-    INT8   ClustersPerFileRecord;  // Offset 0x40, Size 4
-    UCHAR  Reserved4[3];
-    INT8   ClustersPerIndexRecord; // Offset 0x44, Size 4
-    UCHAR  Reserved5[3];
+    INT8   ClustersPerFileRecord;  // Offset 0x40, Size 1
+    UCHAR  Reserved4[3];           // Offset 0x41, Size 3
+    INT8   ClustersPerIndexRecord; // Offset 0x44, Size 1
+    UCHAR  Reserved5[3];           // Offset 0x45, Size 3
     UINT64 SerialNumber;           // Offset 0x48, Size 8
     UINT32 Checksum;               // Offset 0x50, Size 4
-    UCHAR  BootStrap[426];
-    USHORT EndSector;
-};
+    UCHAR  BootStrap[426];         // Offset 0x54, Size 426
+    USHORT EndSector;              // Offset 0x1FE, Size 2
+} BootSector, *PBootSector;
 #pragma pack(pop)
-typedef struct BootSector BootSector;
-typedef struct BootSector* PBootSector;
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, JumpInstruction,        0x00, 3);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, OEM_ID,                 0x03, 8);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, BytesPerSector,         0x0B, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, SectorsPerCluster,      0x0D, 1);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, Reserved0,              0x0E, 7);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, MediaDescriptor,        0x15, 1);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, Reserved1,              0x16, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, SectorsPerTrack,        0x18, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, NumberOfHeads,          0x1A, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, Reserved2,              0x1C, 4);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, Reserved3,              0x20, 4);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, Unknown,                0x24, 4);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, SectorsInVolume,        0x28, 8);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, MFTLCN,                 0x30, 8);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, MFTMirrLCN,             0x38, 8);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, ClustersPerFileRecord,  0x40, 1);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, Reserved4,              0x41, 3);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, ClustersPerIndexRecord, 0x44, 1);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, Reserved5,              0x45, 3);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, SerialNumber,           0x48, 8);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, Checksum,               0x50, 4);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, BootStrap,              0x54, 426);
+ASSERT_FIELD_OFFSET_AND_LENGTH(BootSector, EndSector,              0x1FE, 2);
+static_assert(sizeof(BootSector) == 0x200);
 
 /* NTFS file record numbers */
 enum FileRecordNumbers
@@ -93,15 +119,19 @@ struct DataRun
     ULONGLONG Length; // In clusters
 };
 
-typedef struct
+typedef struct _NTFSRecordHeader
 {
     UCHAR  TypeID[4];              // Offset 0x00, Size 4 ('FILE' or 'INDX')
     UINT16 UpdateSequenceOffset;   // Offset 0x04, Size 2
     UINT16 SizeOfUpdateSequence;   // Offset 0x06, Size 2
     UINT64 LogFileSequenceNumber;  // Offset 0x08, Size 8
 } NTFSRecordHeader, *PNTFSRecordHeader;
+ASSERT_FIELD_OFFSET_AND_LENGTH(NTFSRecordHeader, TypeID,                0x00, 4);
+ASSERT_FIELD_OFFSET_AND_LENGTH(NTFSRecordHeader, UpdateSequenceOffset,  0x04, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(NTFSRecordHeader, SizeOfUpdateSequence,  0x06, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(NTFSRecordHeader, LogFileSequenceNumber, 0x08, 8);
 
-typedef struct
+typedef struct _FileRecordHeader
 {
     NTFSRecordHeader Header;       // Offset 0x00, Size 16
     UINT16 SequenceNumber;         // Offset 0x10, Size 2
@@ -112,16 +142,30 @@ typedef struct
     UINT32 AllocatedSize;          // Offset 0x1C, Size 4
     UINT64 BaseFileRecord;         // Offset 0x20, Size 8
     UINT16 NextAttributeID;        // Offset 0x28, Size 2
-    UINT16 Padding;
+    UINT16 Padding;                // Offset 0x2A, Size 2
     UINT32 MFTRecordNumber;        // Offset 0x2C, Size 4
 } FileRecordHeader, *PFileRecordHeader;
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, Header,          0x00, 16);
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, SequenceNumber,  0x10, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, HardLinkCount,   0x12, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, AttributeOffset, 0x14, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, Flags,           0x16, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, ActualSize,      0x18, 4);
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, AllocatedSize,   0x1C, 4);
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, BaseFileRecord,  0x20, 8);
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, NextAttributeID, 0x28, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, Padding,         0x2A, 2);
+ASSERT_FIELD_OFFSET_AND_LENGTH(FileRecordHeader, MFTRecordNumber, 0x2C, 4);
 
-typedef struct
+typedef struct _IndexBuffer
 {
-    NTFSRecordHeader RecordHeader;
-    ULONGLONG VCN;
-    IndexNodeHeader IndexHeader;
+    NTFSRecordHeader RecordHeader; // Offset 0x00, Size 16
+    ULONGLONG VCN;                 // Offset 0x10, Size 8
+    IndexNodeHeader IndexHeader;   // Offset 0x18, Size 16
 } IndexBuffer, *PIndexBuffer;
+ASSERT_FIELD_OFFSET_AND_LENGTH(IndexBuffer, RecordHeader, 0x00, 16);
+ASSERT_FIELD_OFFSET_AND_LENGTH(IndexBuffer, VCN,          0x10, 8);
+ASSERT_FIELD_OFFSET_AND_LENGTH(IndexBuffer, IndexHeader,  0x18, 16);
 
 typedef struct _NtfsMasterFileTableInfo
 {

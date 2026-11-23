@@ -23,7 +23,7 @@ FileRecord::CopyData(_In_    AttributeType Type,
     {
         const ULONG dataStart = Attr->Resident.DataOffset;
         const ULONG dataEnd = dataStart + Attr->Resident.DataLength;
-        if (dataStart < 0x18 || dataEnd > Attr->Length)
+        if (dataStart < ATTR_RESIDENT_HEADER_SIZE || dataEnd > Attr->Length)
             return STATUS_FILE_CORRUPT_ERROR;
     }
     return CopyData(Attr, Buffer, Length, Offset);
