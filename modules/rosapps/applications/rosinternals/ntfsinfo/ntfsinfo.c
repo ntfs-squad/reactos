@@ -69,15 +69,15 @@ char* FormatSize(ULONGLONG size)
 {
     static char buffer[50];
     if (size < 1024)
-        sprintf(buffer, "%llu B", size);
+        sprintf(buffer, "%I64u B", size);
     else if (size < 1024 * 1024)
-        sprintf(buffer, "%llu KB", size / 1024);
+        sprintf(buffer, "%I64u KB", size / 1024);
     else if (size < 1024ull * 1024 * 1024)
-        sprintf(buffer, "%llu MB", size / (1024 * 1024));
+        sprintf(buffer, "%I64u MB", size / (1024 * 1024));
     else if (size < 1024ull * 1024 * 1024 * 1024)
-        sprintf(buffer, "%llu GB", size / (1024 * 1024 * 1024));
+        sprintf(buffer, "%I64u GB", size / (1024 * 1024 * 1024));
     else
-        sprintf(buffer, "%llu TB", size / (1024ull * 1024 * 1024 * 1024));
+        sprintf(buffer, "%I64u TB", size / (1024ull * 1024 * 1024 * 1024));
     return buffer;
 }
 
@@ -97,13 +97,13 @@ char* FormatNumberEx(ULONGLONG Number, const char* Format)
 
 char* FormatNumber(ULONGLONG Number)
 {
-    return FormatNumberEx(Number, "%llu");
+    return FormatNumberEx(Number, "%I64u");
 }
 
 char* FormatRange(ULONGLONG Number1, ULONGLONG Number2)
 {
     static char buffer[50];
-    sprintf(buffer, "%llu - %llu", Number1, Number2);
+    sprintf(buffer, "%I64u - %I64u", Number1, Number2);
     return buffer;
 }
 
@@ -206,14 +206,12 @@ ULONGLONG NtfsInfoGetFileSize(PNtfsMasterFileTable Mft, ULONG Frn)
     Status = NtfsFileRecordGetAttributeData(FileRecord, TypeFileName, NULL, (PUCHAR*)(&FileNameAttrib));
     if (!NT_SUCCESS(Status))
     {
-        free(FileRecord);
+        NtfsFileRecordDestroy(FileRecord);
         return 0;
     }
 
     FileSize = FileNameAttrib->AllocatedSize;
-
-    free(FileRecord);
-
+    NtfsFileRecordDestroy(FileRecord);
     return FileSize;
 }
 
@@ -344,7 +342,6 @@ int wmain(int argc, wchar_t* argv[])
     NtfsInformation._BootSize =    NtfsInfoGetFileSize(Mft, _Boot);
     NtfsInformation._BadClusSize = NtfsInfoGetFileSize(Mft, _BadClus);
     NtfsInformation._UpCaseSize =  NtfsInfoGetFileSize(Mft, _UpCase);
-
     PrintNtfsInformation(&NtfsInformation);
 
     return 0;

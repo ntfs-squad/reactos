@@ -76,7 +76,7 @@ FileCheck:
     if (!NT_SUCCESS(Status) ||
         !(RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) == 4))
     {
-        DPRINT1("Failed to get file %ld from MFT!\n", FileRecordNumber);
+        DPRINT1("Failed to get file %I64u from MFT!\n", FileRecordNumber);
         delete *File;
         if (FileRecordNumber != _MFT && FileRecordNumber != _MFTMirr)
             return GetFileRecordFromMFTMirr(FileRecordNumber, File);
@@ -150,7 +150,7 @@ MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONGLONG FileRecordNumber,
     if (!NT_SUCCESS(Status) ||
         !(RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) == 4))
     {
-        DPRINT1("Failed to get file %ld from MFT Mirror!\n", FileRecordNumber);
+        DPRINT1("Failed to get file %I64u from MFT Mirror!\n", FileRecordNumber);
         goto Failed;
     }
 

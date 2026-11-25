@@ -54,7 +54,7 @@ FileRecord::CopyData(_In_    PAttribute Attr,
         {
             // Don't read past the file data.
             DPRINT1("Offset is greater than or equal to the data size!\n");
-            DPRINT1("Offset: %ld, Data Size: %ld\n", Offset, Attr->Resident.DataLength);
+            DPRINT1("Offset: %I64u, Data Size: %lu\n", Offset, Attr->Resident.DataLength);
             return STATUS_END_OF_FILE;
         }
 
@@ -74,7 +74,9 @@ FileRecord::CopyData(_In_    PAttribute Attr,
         if (Offset >= Attr->NonResident.DataSize)
         {
             // Don't read past the file data.
-            DPRINT1("Offset >= DataSize! (%ld >= %ld)\n", Offset, Attr->NonResident.DataSize);
+            DPRINT1("Offset >= DataSize! (%I64u >= %I64u, attribute type 0x%lx, first VCN %I64u)\n",
+                    Offset, Attr->NonResident.DataSize, (ULONG)Attr->AttributeType,
+                    Attr->NonResident.FirstVCN);
             return STATUS_END_OF_FILE;
         }
 

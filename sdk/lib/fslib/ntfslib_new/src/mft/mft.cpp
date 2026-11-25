@@ -68,7 +68,8 @@ MasterFileTable::CalculateMftZoneEndLCN()
      */
 
     ULONGLONG RequestedMftZoneEndLCN;
-    ULONGLONG VolumeSize = DiskVolume->ClustersInVolume * DiskVolume->SectorsPerCluster * DiskVolume->BytesPerSector;
+    const ULONGLONG ClustersInVolume = DiskVolume->ClustersInVolume;
+    const ULONGLONG VolumeSize = ClusterCount * BytesPerCluster(DiskVolume);
 
     // MftZoneReservation values are limited to 1-100
     DiskVolume->Configuration.MftZoneReservation = clamp(DiskVolume->Configuration.MftZoneReservation, 1, 100);
@@ -80,8 +81,8 @@ MasterFileTable::CalculateMftZoneEndLCN()
         /* Technically, MFTZoneReservation values greater than 4 are ignored
          * for legacy MFT zone scaling. I don't think that's worth preserving.
          */
-        RequestedMftZoneEndLCN = min((DiskVolume->ClustersInVolume * DiskVolume->Configuration.MftZoneReservation) >> 3 /* 1/8 * MftZoneReservation of volume */,
-                                      (DiskVolume->ClustersInVolume << 1) / 3 /* 2/3 of volume */);
+        RequestedMftZoneEndLCN = min((ClustersInVolume * DiskVolume->Configuration.MftZoneReservation) >> 3 /* 1/8 * MftZoneReservation of volume */,
+                                      (ClustersInVolume << 1) / 3 /* 2/3 of volume */);
     }
 
     else
@@ -94,7 +95,7 @@ MasterFileTable::CalculateMftZoneEndLCN()
     RequestedMftZoneEndLCN += MFTLCN;
 
     // Don't return an MFTZoneEndLCN that's larger than the volume
-    return min(RequestedMftZoneEndLCN, DiskVolume->ClustersInVolume);
+    return min(RequestedMftZoneEndLCN, ClustersInVolume);
 }
 
 NTSTATUS

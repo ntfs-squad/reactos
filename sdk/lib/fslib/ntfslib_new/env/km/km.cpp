@@ -14,12 +14,31 @@
 #define TAG_NTFS 'NTFS'
 #endif
 
-/* Space available for MDL payload */
+/* We can only transfer what can be represented in one MDL at a time. The
+ * maximum size that can be represented in one MDL varies by NT version and
+ * architecture.
+ *
+ * The calculation for Windows XP/Windows Server 2003/NT5.2 and older is:
+ *     PAGE_SIZE * (MaxMDLPayloadSize / sizeof(PFN_NUMBER)), where:
+ *         - MaxMDLPayloadSize = MAXUSHORT - sizeof(MDL)
+ *     Note: MAXUSHORT is 65535, and PFN_NUMBER is a typedef of ULONG_PTR.
+ *
+ * The calculation for Windows Vista/Server 2008/NT6.0 is:
+ *     2 GiB - PAGE_SIZE
+ *
+ * The calculation for Windows 7/Server 2008 R2/NT 6.1 and newer is:
+ *     4 GiB - PAGE_SIZE
+ *
+ * See also: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-ioallocatemdl#remarks
+ */
+#if NTDDI_VERSION <= NTDDI_WS03SP4 || defined(__REACTOS__) // TODO: Get rid of this pin when ReactOS can support larger MDLs.
 #define MDL_MAX_PAYLOAD_SIZE (MAXUSHORT - sizeof(MDL))
-/* MDL payload is an array of PFN_NUMBER */
-#define MDL_MAX_PAGES (MDL_MAX_PAYLOAD_SIZE / sizeof(PFN_NUMBER))
-/* Max space that can be represented per MDL, assuming the buffer is page aligned */
-#define MAX_BYTES_PER_MDL ((ULONG)(MDL_MAX_PAGES * PAGE_SIZE))
+#define MAX_BYTES_PER_MDL ((ULONG)(PAGE_SIZE * (MDL_MAX_PAYLOAD_SIZE / sizeof(PFN_NUMBER))))
+#elif NTDDI_VERSION <= NTDDI_VISTASP4
+#define MAX_BYTES_PER_MDL ((ULONG)((1ULL << 31) - PAGE_SIZE))
+#else
+#define MAX_BYTES_PER_MDL ((ULONG)((1ULL << 32) - PAGE_SIZE))
+#endif
 
 PDEVICE_OBJECT PartDeviceObj = NULL;
 ULONG BytesPerSector = 0;
@@ -83,11 +102,11 @@ BypassCompletion(_In_ PDEVICE_OBJECT DeviceObject,
 }
 
 NTSTATUS
-AccessDisk(_In_ ULONG MajorFunction,
-           _In_ PDEVICE_OBJECT DeviceObject,
-           _In_ ULONGLONG Offset,
-           _In_ ULONG Length,
-           _Inout_ PUCHAR Buffer)
+AccessVolumeAligned(_In_ ULONG MajorFunction,
+                    _In_ PDEVICE_OBJECT DeviceObject,
+                    _In_ ULONGLONG Offset,
+                    _In_ ULONG Length,
+                    _Inout_ PUCHAR Buffer)
 {
     PAGED_CODE();
     ASSERT(Offset % BytesPerSector == 0); /* Offset is sector aligned */
@@ -191,11 +210,11 @@ AccessVolume(_In_ ULONG MajorFunction,
         && AlignedLength == Length
         && BYTE_OFFSET(Buffer) == 0)
     {
-        return AccessDisk(MajorFunction,
-                          PartDeviceObj,
-                          AlignedOffset,
-                          AlignedLength,
-                          Buffer);
+        return AccessVolumeAligned(MajorFunction,
+                                   PartDeviceObj,
+                                   AlignedOffset,
+                                   AlignedLength,
+                                   Buffer);
     }
 
     /* Allocations of at least PAGE_SIZE are page-aligned.
@@ -217,11 +236,11 @@ AccessVolume(_In_ ULONG MajorFunction,
     }
 
     // Fill the temporary buffer with an aligned read.
-    Status = AccessDisk(IRP_MJ_READ,
-                        PartDeviceObj,
-                        AlignedOffset,
-                        AlignedLength,
-                        TemporaryBuffer);
+    Status = AccessVolumeAligned(IRP_MJ_READ,
+                                 PartDeviceObj,
+                                 AlignedOffset,
+                                 AlignedLength,
+                                 TemporaryBuffer);
 
     if (!NT_SUCCESS(Status))
         goto Done;
@@ -240,11 +259,11 @@ Complete:
                       Buffer,
                       Length);
 
-        Status = AccessDisk(MajorFunction,
-                            PartDeviceObj,
-                            AlignedOffset,
-                            AlignedLength,
-                            TemporaryBuffer);
+        Status = AccessVolumeAligned(MajorFunction,
+                                     PartDeviceObj,
+                                     AlignedOffset,
+                                     AlignedLength,
+                                     TemporaryBuffer);
     }
 
 Done:
