@@ -4,4 +4,5 @@ add_dependencies(ntfslib_new_km psdk)
 
 target_include_directories(ntfslib_new_km
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+    PRIVATE ../../include/internal ../../include/public
 )

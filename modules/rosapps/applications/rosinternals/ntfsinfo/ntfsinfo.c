@@ -252,8 +252,8 @@ int wmain(int argc, wchar_t* argv[])
     NTSTATUS Status;
     NTFS_INFORMATION NtfsInformation;
     HANDLE VolumeHandle;
+    NtfsDevice Device;
     const BOOL NoBanner = (argc > 1) && (_wcsicmp(argv[1], L"-nobanner") == 0);
-    ULONG BytesPerSector;
     PNtfsVolume VolumeObject;
     PNtfsMasterFileTable Mft;
     NtfsMasterFileTableInfo MftInfo;
@@ -283,8 +283,7 @@ int wmain(int argc, wchar_t* argv[])
     }
 
     // We now have a file handle to the volume. Let's get the NTFS information.
-    Status = NtfsDiskInitializeUm(VolumeHandle,
-                                  &BytesPerSector);
+    Status = NtfsDiskInitializeUm(VolumeHandle, &Device);
     if (!NT_SUCCESS(Status))
     {
         PrintLastError("Error initializing disk routines");
@@ -294,7 +293,8 @@ int wmain(int argc, wchar_t* argv[])
     // Get NTFS Configuration
     GetNtfsConfiguration(&NtfsConfiguration);
 
-    Status = NtfsProbePartition(&NtfsConfiguration,
+    Status = NtfsProbePartition(&Device,
+                                &NtfsConfiguration,
                                 &VolumeObject,
                                 &PartitionBootSector);
 
@@ -320,12 +320,12 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
-    NtfsInformation.VolumeSize = PartitionBootSector.SectorsInVolume * BytesPerSector;
+    NtfsInformation.VolumeSize = PartitionBootSector.SectorsInVolume * Device.BytesPerSector;
     NtfsInformation.SectorsPerCluster = PartitionBootSector.SectorsPerCluster;
     NtfsInformation.TotalClusters = PartitionBootSector.SectorsInVolume / PartitionBootSector.SectorsPerCluster;
     NtfsVolumeGetFreeClusters(VolumeObject, &NtfsInformation.FreeClusters);
-    NtfsInformation.BytesPerSector = BytesPerSector;
-    NtfsInformation.BytesPerCluster = BytesPerSector * PartitionBootSector.SectorsPerCluster;
+    NtfsInformation.BytesPerSector = Device.BytesPerSector;
+    NtfsInformation.BytesPerCluster = Device.BytesPerSector * PartitionBootSector.SectorsPerCluster;
     NtfsInformation.ClustersPerMftRecord = PartitionBootSector.ClustersPerFileRecord;
     NtfsInformation.MftSize = NtfsInfoGetFileSize(Mft, _MFT);
     NtfsInformation.MftStartCluster = MftInfo.MFTLCN;

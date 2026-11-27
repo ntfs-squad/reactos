@@ -7,8 +7,9 @@
  */
 
 #include <ntifs.h>
+#include <ntdddisk.h>
 #include <ntfs_km.h>
-#include "../../include/internal/ntfslib_new_internal_alloc.h"
+#include "ntfslib_new_internal.h"
 
 #ifndef TAG_NTFS
 #define TAG_NTFS 'NTFS'
@@ -40,9 +41,6 @@
 #define MAX_BYTES_PER_MDL ((ULONG)((1ULL << 32) - PAGE_SIZE))
 #endif
 
-PDEVICE_OBJECT PartDeviceObj = NULL;
-ULONG BytesPerSector = 0;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -73,15 +71,48 @@ NtfsFillMemory(_In_ PVOID Buffer,
 NTSTATUS
 NtfsDiskInitializeKm(
     _In_ PDEVICE_OBJECT DeviceObject,
-    _In_ ULONG SectorBytes)
+    _Out_ PNtfsDevice DeviceOut)
 {
-    if (!DeviceObject || SectorBytes == 0)
+    NTSTATUS Status;
+    DISK_GEOMETRY DiskGeometry;
+
+    if (!DeviceObject || !DeviceOut)
         return STATUS_INVALID_PARAMETER;
 
-    PartDeviceObj = DeviceObject;
-    BytesPerSector = SectorBytes;
+    /* Get disk geometry information */
+    KEVENT Event;
+    PIRP Irp;
+    IO_STATUS_BLOCK IoStatus;
 
-    return STATUS_SUCCESS;
+    // Build IRP to receive disk geometry information
+    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    Irp = IoBuildDeviceIoControlRequest(IOCTL_DISK_GET_DRIVE_GEOMETRY,
+                                        DeviceObject,
+                                        NULL,
+                                        0,
+                                        &DiskGeometry,
+                                        sizeof(DISK_GEOMETRY),
+                                        FALSE,
+                                        &Event,
+                                        &IoStatus);
+    if (Irp == NULL)
+        return STATUS_INSUFFICIENT_RESOURCES;
+    IoGetNextIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
+
+    // Call driver with our IRP
+    Status = IoCallDriver(DeviceObject, Irp);
+    if (Status == STATUS_PENDING)
+    {
+        KeWaitForSingleObject(&Event, Suspended, KernelMode, FALSE, NULL);
+        Status = IoStatus.Status;
+    }
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    *DeviceOut = NtfsDevice();
+    DeviceOut->BytesPerSector = DiskGeometry.BytesPerSector;
+    DeviceOut->Internal = reinterpret_cast<PVOID*>(DeviceObject);
+    return Status;
 }
 
 static
@@ -101,18 +132,19 @@ BypassCompletion(_In_ PDEVICE_OBJECT DeviceObject,
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-NTSTATUS
+static NTSTATUS
 AccessVolumeAligned(_In_ ULONG MajorFunction,
-                    _In_ PDEVICE_OBJECT DeviceObject,
+                    _In_ PNtfsDevice Device,
                     _In_ ULONGLONG Offset,
                     _In_ ULONG Length,
                     _Inout_ PUCHAR Buffer)
 {
     PAGED_CODE();
-    ASSERT(Offset % BytesPerSector == 0); /* Offset is sector aligned */
-    ASSERT(Length % BytesPerSector == 0); /* Length is sector aligned */
+    ASSERT(Offset % Device->BytesPerSector == 0); /* Offset is sector aligned */
+    ASSERT(Length % Device->BytesPerSector == 0); /* Length is sector aligned */
     ASSERT(BYTE_OFFSET(Buffer) == 0);     /* Buffer is page aligned */
     ASSERT(MajorFunction == IRP_MJ_READ || MajorFunction == IRP_MJ_WRITE);
+    PDEVICE_OBJECT DeviceObject = reinterpret_cast<PDEVICE_OBJECT>(Device->Internal);
 
     while (Length)
     {
@@ -186,8 +218,9 @@ Cleanup:
     return STATUS_SUCCESS;
 }
 
-NTSTATUS
+static NTSTATUS
 AccessVolume(_In_ ULONG MajorFunction,
+             _In_ PNtfsDevice Device,
              _In_ ULONGLONG Offset,
              _In_ ULONG Length,
              _Inout_ PUCHAR Buffer)
@@ -195,6 +228,7 @@ AccessVolume(_In_ ULONG MajorFunction,
     NTSTATUS Status;
     PUCHAR TemporaryBuffer;
     ULONGLONG AlignedOffset, AlignedLength;
+    const ULONG BytesPerSector = Device->BytesPerSector;
 
     ASSERT(MajorFunction == IRP_MJ_READ || MajorFunction == IRP_MJ_WRITE);
 
@@ -211,7 +245,7 @@ AccessVolume(_In_ ULONG MajorFunction,
         && BYTE_OFFSET(Buffer) == 0)
     {
         return AccessVolumeAligned(MajorFunction,
-                                   PartDeviceObj,
+                                   Device,
                                    AlignedOffset,
                                    AlignedLength,
                                    Buffer);
@@ -237,7 +271,7 @@ AccessVolume(_In_ ULONG MajorFunction,
 
     // Fill the temporary buffer with an aligned read.
     Status = AccessVolumeAligned(IRP_MJ_READ,
-                                 PartDeviceObj,
+                                 Device,
                                  AlignedOffset,
                                  AlignedLength,
                                  TemporaryBuffer);
@@ -260,7 +294,7 @@ Complete:
                       Length);
 
         Status = AccessVolumeAligned(MajorFunction,
-                                     PartDeviceObj,
+                                     Device,
                                      AlignedOffset,
                                      AlignedLength,
                                      TemporaryBuffer);
@@ -281,26 +315,22 @@ NtfsAssertPagedCode(VOID)
     PAGED_CODE();
 }
 
-ULONG
-NtfsGetBytesPerSector(VOID)
-{
-    return BytesPerSector;
-}
-
 NTSTATUS
-NtfsReadVolume(_In_    ULONGLONG Offset,
+NtfsReadVolume(_In_    PNtfsDevice Device,
+               _In_    ULONGLONG Offset,
                _In_    ULONG Length,
                _Inout_ PUCHAR Buffer)
 {
-    return AccessVolume(IRP_MJ_READ, Offset, Length, Buffer);
+    return AccessVolume(IRP_MJ_READ, Device, Offset, Length, Buffer);
 }
 
 NTSTATUS
-NtfsWriteVolume(_In_    ULONGLONG Offset,
+NtfsWriteVolume(_In_    PNtfsDevice Device,
+                _In_    ULONGLONG Offset,
                 _In_    ULONG Length,
                 _Inout_ PUCHAR Buffer)
 {
-    return AccessVolume(IRP_MJ_WRITE, Offset, Length, Buffer);
+    return AccessVolume(IRP_MJ_WRITE, Device, Offset, Length, Buffer);
 }
 
 BOOLEAN

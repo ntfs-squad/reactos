@@ -69,7 +69,7 @@ MasterFileTable::CalculateMftZoneEndLCN()
 
     ULONGLONG RequestedMftZoneEndLCN;
     const ULONGLONG ClustersInVolume = DiskVolume->ClustersInVolume;
-    const ULONGLONG VolumeSize = ClusterCount * BytesPerCluster(DiskVolume);
+    const ULONGLONG VolumeSize = ClustersInVolume * BytesPerCluster(DiskVolume);
 
     // MftZoneReservation values are limited to 1-100
     DiskVolume->Configuration.MftZoneReservation = clamp(DiskVolume->Configuration.MftZoneReservation, 1, 100);

@@ -282,33 +282,16 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
                 IN PVPB Vpb,
                 IN PDEVICE_OBJECT FsDeviceObject)
 {
-    PDEVICE_OBJECT FSDeviceObject;
-    PNtfsVolume DiskVolume;
     NTSTATUS Status;
+    PDEVICE_OBJECT FSDeviceObject;
     PVolumeContextBlock VolCB;
-    DISK_GEOMETRY DiskGeometry;
-    ULONG Size;
+    PNtfsVolume DiskVolume;
+    NtfsDevice Device;
     NtfsConfiguration Configuration;
-
-    // Get disk geometry.
-    Size = sizeof(DISK_GEOMETRY);
-    Status = DeviceIoControl(TargetDeviceObject,
-                             IOCTL_DISK_GET_DRIVE_GEOMETRY,
-                             NULL,
-                             0,
-                             &DiskGeometry,
-                             &Size,
-                             TRUE);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("NtfsDeviceIoControl() failed (Status %lx)\n", Status);
-        return Status;
-    }
 
     // Set up NTFS library to use disk routines.
     Status = NtfsDiskInitializeKm(TargetDeviceObject,
-                                  DiskGeometry.BytesPerSector);
-
+                                  &Device);
     if (!NT_SUCCESS(Status))
         return Status;
 
@@ -320,12 +303,10 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     /* Check if we're really NTFS. It's OK if we're not.
      * We're a boot driver, NT will try every possible filesystem.
      */
-    Status = NtfsProbePartition(&Configuration,
+    Status = NtfsProbePartition(&Device,
+                                &Configuration,
                                 &DiskVolume,
                                 NULL);
-
-    DPRINT1("LoadNTFSDevice() returned %lx\n", Status);
-
     if (!NT_SUCCESS(Status))
         return Status;
 

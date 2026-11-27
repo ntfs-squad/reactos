@@ -80,16 +80,15 @@ extern "C" {
 VOID
 NtfsAssertPagedCode(VOID);
 
-ULONG
-NtfsGetBytesPerSector(VOID);
-
 NTSTATUS
-NtfsReadVolume(_In_    ULONGLONG Offset,
+NtfsReadVolume(_In_    PNtfsDevice Device,
+               _In_    ULONGLONG Offset,
                _In_    ULONG Length,
                _Inout_ PUCHAR Buffer);
 
 NTSTATUS
-NtfsWriteVolume(_In_    ULONGLONG Offset,
+NtfsWriteVolume(_In_    PNtfsDevice Device,
+                _In_    ULONGLONG Offset,
                 _In_    ULONG Length,
                 _Inout_ PUCHAR Buffer);
 
@@ -141,6 +140,7 @@ public:
     class MasterFileTable* MFT;
     class LogFileService* LFS;
     NtfsConfiguration Configuration;
+    NtfsDevice Device;
 
     ~Volume();
 

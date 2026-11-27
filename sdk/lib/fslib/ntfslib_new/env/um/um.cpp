@@ -11,7 +11,7 @@
 #include <ndk/mmtypes.h>
 #include <ntfs_um.h>
 #include <debug.h>
-#include "../../include/internal/ntfslib_new_internal_alloc.h"
+#include "ntfslib_new_internal.h"
 
 /* In theory, as documented, we can call ReadFile() and WriteFile() with any
  * length. In practice, if the length is larger than what can be represented
@@ -50,8 +50,6 @@ typedef BOOLEAN (NTAPI *PRtlIsNameInExpression)(
     _In_opt_ PWCH            UpcaseTable
 );
 
-HANDLE VolumeHandle = NULL;
-ULONG SectorSize = 0;
 static PRtlIsNameInExpression pRtlIsNameInExpression;
 
 static BOOLEAN NTAPI
@@ -73,34 +71,17 @@ NtfsIsNameInExpressionStub(_In_     PUNICODE_STRING Expression,
 
 NTSTATUS
 NtfsDiskInitializeUm(
-    _In_      HANDLE FileHandle,
-    _Out_opt_ ULONG* BytesPerSector)
+    _In_  HANDLE FileHandle,
+    _Out_ PNtfsDevice DeviceOut)
 {
     BOOL Result;
     DISK_GEOMETRY DiskGeometry;
     ULONG BytesReturned;
 
-    if (!FileHandle || FileHandle == INVALID_HANDLE_VALUE)
+    if (!DeviceOut || !FileHandle || FileHandle == INVALID_HANDLE_VALUE)
         return STATUS_INVALID_PARAMETER;
 
-    Result = DeviceIoControl(FileHandle,
-                             IOCTL_DISK_GET_DRIVE_GEOMETRY,
-                             NULL,
-                             0,
-                             &DiskGeometry,
-                             sizeof(DiskGeometry),
-                             &BytesReturned,
-                             NULL);
-
-    if (!Result)
-        return STATUS_INVALID_DEVICE_REQUEST;
-
-    VolumeHandle = FileHandle;
-    SectorSize = DiskGeometry.BytesPerSector;
-
-    if (BytesPerSector)
-        *BytesPerSector = SectorSize;
-
+    /* Get an implementation for RtlIsNameInExpression */
     pRtlIsNameInExpression = reinterpret_cast<PRtlIsNameInExpression>(
         GetProcAddress(GetModuleHandleA("ntdll.dll"),
                        "RtlIsNameInExpression"));
@@ -123,6 +104,23 @@ NtfsDiskInitializeUm(
         pRtlIsNameInExpression = NtfsIsNameInExpressionStub;
 
     ASSERT(pRtlIsNameInExpression);
+
+    /* Get disk geometry */
+    Result = DeviceIoControl(FileHandle,
+                             IOCTL_DISK_GET_DRIVE_GEOMETRY,
+                             NULL,
+                             0,
+                             &DiskGeometry,
+                             sizeof(DiskGeometry),
+                             &BytesReturned,
+                             NULL);
+
+    if (!Result)
+        return STATUS_INVALID_DEVICE_REQUEST;
+
+    *DeviceOut = NtfsDevice();
+    DeviceOut->BytesPerSector = DiskGeometry.BytesPerSector;
+    DeviceOut->Internal = static_cast<PVOID*>(FileHandle);
     return STATUS_SUCCESS;
 }
 
@@ -157,14 +155,13 @@ NtfsAssertPagedCode(VOID)
 {
 }
 
-ULONG
-NtfsGetBytesPerSector(VOID)
-{
-    return SectorSize;
+#ifdef __cplusplus
 }
+#endif
 
 static NTSTATUS
-AccessVolumeAligned(_In_    ULONGLONG Offset,
+AccessVolumeAligned(_In_    HANDLE VolumeHandle,
+                    _In_    ULONGLONG Offset,
                     _In_    ULONG Length,
                     _Inout_ PUCHAR Buffer,
                     _In_    BOOLEAN Write)
@@ -199,7 +196,8 @@ AccessVolumeAligned(_In_    ULONGLONG Offset,
 }
 
 static NTSTATUS
-AccessVolume(_In_    ULONGLONG Offset,
+AccessVolume(_In_    HANDLE VolumeHandle,
+             _In_    ULONGLONG Offset,
              _In_    ULONG Length,
              _Inout_ PUCHAR Buffer,
              _In_    BOOLEAN Write)
@@ -216,7 +214,7 @@ AccessVolume(_In_    ULONGLONG Offset,
     // Optimization: if the buffer is already page aligned, we can call AccessVolumeAligned directly
     if (reinterpret_cast<ULONG_PTR>(Buffer) % PAGE_SIZE == 0)
     {
-        return AccessVolumeAligned(Offset, Length, Buffer, Write);
+        return AccessVolumeAligned(VolumeHandle, Offset, Length, Buffer, Write);
     }
 
     // Buffer is not page aligned, create a temporary buffer that is page aligned.
@@ -232,7 +230,7 @@ AccessVolume(_In_    ULONGLONG Offset,
         CopyMemory(TemporaryBuffer, Buffer, Length);
 
     // Perform the aligned volume operation.
-    Status = AccessVolumeAligned(Offset, Length, TemporaryBuffer, Write);
+    Status = AccessVolumeAligned(VolumeHandle, Offset, Length, TemporaryBuffer, Write);
     if (!NT_SUCCESS(Status))
         goto Done;
 
@@ -247,20 +245,26 @@ Done:
     return Status;
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 NTSTATUS
-NtfsReadVolume(_In_    ULONGLONG Offset,
+NtfsReadVolume(_In_    PNtfsDevice Device,
+               _In_    ULONGLONG Offset,
                _In_    ULONG Length,
                _Inout_ PUCHAR Buffer)
 {
-    return AccessVolume(Offset, Length, Buffer, FALSE);
+    return AccessVolume(static_cast<HANDLE>(Device->Internal), Offset, Length, Buffer, FALSE);
 }
 
 NTSTATUS
-NtfsWriteVolume(_In_    ULONGLONG Offset,
+NtfsWriteVolume(_In_    PNtfsDevice Device,
+                _In_    ULONGLONG Offset,
                 _In_    ULONG Length,
                 _Inout_ PUCHAR Buffer)
 {
-    return AccessVolume(Offset, Length, Buffer, TRUE);
+    return AccessVolume(static_cast<HANDLE>(Device->Internal), Offset, Length, Buffer, TRUE);
 }
 
 BOOLEAN

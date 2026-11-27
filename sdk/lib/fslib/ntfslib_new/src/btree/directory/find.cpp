@@ -9,15 +9,11 @@
 #include "ntfslib_new_internal.h"
 
 static LONG
-CompareName(PUNICODE_STRING FileName,
+CompareName(const PUNICODE_STRING FileName,
             PFileNameEx IndexFileName)
 {
-    const USHORT Length = min(FileName->Length, IndexFileName->NameLength * sizeof(WCHAR));
-    UNICODE_STRING IndexName;
-
-    RtlInitEmptyUnicodeString(&IndexName, IndexFileName->Name, Length);
-    FileName->Length = Length;
-    IndexName.Length = Length;
+    const USHORT Length = IndexFileName->NameLength * sizeof(WCHAR);
+    const UNICODE_STRING IndexName = {Length, Length, IndexFileName->Name};
 
     return RtlCompareUnicodeString(FileName, &IndexName, TRUE);
 }

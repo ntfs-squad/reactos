@@ -1,3 +1,5 @@
+typedef struct _NtfsDevice NtfsDevice, *PNtfsDevice;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -5,8 +7,8 @@ extern "C" {
 /* FileHandle must be opened for synchronous I/O. */
 NTSTATUS
 NtfsDiskInitializeUm(
-    _In_      HANDLE FileHandle,
-    _Out_opt_ ULONG* BytesPerSector);
+    _In_ HANDLE FileHandle,
+    _Out_ PNtfsDevice DeviceOut);
 
 #ifdef __cplusplus
 }

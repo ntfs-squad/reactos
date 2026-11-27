@@ -13,7 +13,7 @@ Volume::ReadVolume(_In_    ULONGLONG Offset,
                    _In_    ULONG Length,
                    _Inout_ PUCHAR Buffer)
 {
-    return NtfsReadVolume(Offset, Length, Buffer);
+    return NtfsReadVolume(&Device, Offset, Length, Buffer);
 }
 
 NTSTATUS
@@ -21,5 +21,5 @@ Volume::WriteVolume(_In_    ULONGLONG Offset,
                     _In_    ULONG Length,
                     _Inout_ PUCHAR Buffer)
 {
-    return NtfsWriteVolume(Offset, Length, Buffer);
+    return NtfsWriteVolume(&Device, Offset, Length, Buffer);
 }

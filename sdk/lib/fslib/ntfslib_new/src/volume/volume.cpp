@@ -11,14 +11,18 @@
 EXTERN_C
 NTSTATUS
 NtfsProbePartition(
-    _In_opt_ PNtfsConfiguration Configuration,
+    _In_      PNtfsDevice Device,
+    _In_opt_  PNtfsConfiguration Configuration,
     _Out_opt_ PNtfsVolume* VolumeOut,
     _Out_opt_ PBootSector BootSectorOut)
 {
     NTSTATUS Status;
     BootSector PartitionBootSector;
-    ULONG BytesPerSector = NtfsGetBytesPerSector();
-    PVolume VolumeObject = NULL;
+
+    if (!Device)
+        return STATUS_INVALID_PARAMETER;
+
+    const ULONG BytesPerSector = Device->BytesPerSector;
 
     // TODO: Check backup boot sector in failure states
 
@@ -33,7 +37,7 @@ NtfsProbePartition(
     }
 
     // Get partition boot sector
-    Status = NtfsReadVolume(0, sizeof(PartitionBootSector), (PUCHAR)&PartitionBootSector);
+    Status = NtfsReadVolume(Device, 0, sizeof(PartitionBootSector), (PUCHAR)&PartitionBootSector);
     if (!NT_SUCCESS(Status))
         return Status;
 
@@ -67,7 +71,7 @@ NtfsProbePartition(
 #endif
 
     // Check cluster size.
-    ULONG ClusterSize = PartitionBootSector.BytesPerSector * PartitionBootSector.SectorsPerCluster;
+    const ULONG ClusterSize = PartitionBootSector.BytesPerSector * PartitionBootSector.SectorsPerCluster;
     if (ClusterSize != 512 && ClusterSize != 1024 &&
         ClusterSize != 2048 && ClusterSize != 4096 &&
         ClusterSize != 8192 && ClusterSize != 16384 &&
@@ -88,10 +92,11 @@ NtfsProbePartition(
 
     if (VolumeOut)
     {
-        VolumeObject = new(NtfsNonPagedPool) Volume();
+        PVolume VolumeObject = new(NtfsNonPagedPool) Volume();
         if (!VolumeObject)
             return STATUS_INSUFFICIENT_RESOURCES;
 
+        VolumeObject->Device = *Device;
         Status = VolumeObject->Initialize(&PartitionBootSector, Configuration);
         if (!NT_SUCCESS(Status))
         {

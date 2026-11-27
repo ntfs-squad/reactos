@@ -341,10 +341,16 @@ NtfsMasterFileTableGetFileRecord(
     _In_  ULONGLONG FileRecordNumber,
     _Out_ PNtfsFileRecord* File);
 
-/* Probe functions */
+typedef struct _NtfsDevice
+{
+    ULONG BytesPerSector;
+    PVOID* Internal;
+} NtfsDevice, *PNtfsDevice;
+
 NTSTATUS
 NtfsProbePartition(
-    _In_opt_ PNtfsConfiguration Configuration,
+    _In_      PNtfsDevice Device,
+    _In_opt_  PNtfsConfiguration Configuration,
     _Out_opt_ PNtfsVolume* VolumeOut,
     _Out_opt_ PBootSector BootSectorOut);
 
