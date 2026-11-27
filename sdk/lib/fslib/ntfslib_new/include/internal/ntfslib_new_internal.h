@@ -1046,7 +1046,6 @@ private:
     PVolume DiskVolume;
     PFileRecord LogFile;
     PUCHAR LogFileData;
-
     PLfsRestartPage RestartPage1;
     PLfsRestartPage RestartPage2;
 
@@ -1064,7 +1063,6 @@ private:
                 && ClientVersion.MinorVersion == SupportedLfsClientVer.MinorVersion)
                 return TRUE;
         }
-
         return FALSE;
     }
 } *PLogFileService;

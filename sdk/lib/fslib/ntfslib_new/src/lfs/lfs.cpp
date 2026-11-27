@@ -26,7 +26,9 @@ LogFileService::InitializeLFS()
 {
     NTSTATUS Status;
     PAttribute FileDataAttr;
-    ULONG LogFileSize;
+
+    // We don't need to initialize Lfs if the volume is readonly.
+    ASSERT(!DiskVolume->Configuration.IsReadOnly);
 
     // Find the Log File.
     Status = DiskVolume->MFT->GetFileRecord(_LogFile, &LogFile);
@@ -45,7 +47,7 @@ LogFileService::InitializeLFS()
         return STATUS_NOT_FOUND;
     }
 
-    LogFileSize = GetAttributeDataSize(FileDataAttr);
+    ULONG LogFileSize = GetAttributeDataSize(FileDataAttr);
     LogFileData = new(NtfsPagedPool) UCHAR[LogFileSize];
     if (!LogFileData)
     {
@@ -61,7 +63,7 @@ LogFileService::InitializeLFS()
         goto Done;
 
     // Set the restart page pointers.
-    RestartPage1 = (PLfsRestartPage)LogFileData;
+    RestartPage1 = (PLfsRestartPage)(LogFileData);
     RestartPage2 = (PLfsRestartPage)(LogFileData + RESTART_PAGE_2_OFFSET);
 
     // TODO: Pick a best restart page based on corruption and recency.
@@ -73,19 +75,21 @@ LogFileService::InitializeLFS()
         DPRINT1("Client version not supported! (%ld.%ld)\n", ClientVersion.MajorVersion, ClientVersion.MinorVersion);
         RestartPage1 = NULL;
         RestartPage2 = NULL;
-        delete LogFileData;
         Status = STATUS_LOG_BLOCK_VERSION;
         goto Done;
     }
 
     // Perform file system recovery.
     Status = PerformFileSystemRecovery();
-
     if (!NT_SUCCESS(Status))
         DPRINT1("Failed to perform self-healing!\n");
 
 Done:
-    delete LogFile;
+    if (!NT_SUCCESS(Status))
+    {
+        delete LogFileData;
+        delete LogFile;
+    }
     return Status;
 }
 

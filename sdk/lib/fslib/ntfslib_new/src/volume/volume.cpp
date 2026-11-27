@@ -184,26 +184,28 @@ Volume::Initialize(
     Version.MinorVersion = VolumeInfo->MinorVersion;
     DPRINT1("NTFS Version %ld.%ld\n", Version.MajorVersion, Version.MinorVersion);
 
+    // Attempt to load the Upcase Table
+    UpcaseStatus = LoadUpcaseTable();
+
+    // Optimization: if we are read only, we are done
+    if (this->Configuration.IsReadOnly)
+        return Status;
+
     // Initialize Log File Service
     LFS = new(NtfsPagedPool, TAG_LOG_FILE_SERVICE) LogFileService(this);
-
     if (!LFS)
         return STATUS_INSUFFICIENT_RESOURCES;
 
     Status = LFS->InitializeLFS();
-
     if (Status == STATUS_LOG_BLOCK_VERSION)
     {
-        /* The version of LFS is incompatible with our LFS.
+        /* The version of LFS on the volume is incompatible with our LFS.
         * Open volume as readonly.
         */
         DPRINT1("LFS version is incompatible. Opening disk as readonly.\n");
         this->Configuration.IsReadOnly = TRUE;
         Status = STATUS_SUCCESS;
     }
-
-    // Attempt to load the Upcase Table
-    UpcaseStatus = LoadUpcaseTable();
 
     return Status;
 }

@@ -73,46 +73,73 @@ NtfsGetAttributeInfo(PNtfsVolume DiskVolume,
     NTSTATUS Status;
     size_t BytesToWrite;
 
-    if (gShowVersionInfo)
+    if (!gShowVersionInfo)
+        goto Fallback;
+
+    UNICODE_STRING NTFSVer;
+    NtfsVersion Version;
+    NtfsVolumeGetVersion(DiskVolume, &Version);
+
+    // ShowVersionInfo doesn't account for versions with 2+ digits
+    if (Version.MajorVersion > 9 || Version.MinorVersion > 9)
+        goto Fallback;
+
+    if (NtfsVolumeIsReadOnly(DiskVolume))
     {
-        // Report "NTFS x.x, Client x.x"
-        NtfsVersion Version;
-        NtfsLfsClientVersion LfsClientVersion;
-        PNtfsLogFileService Lfs = NtfsVolumeGetLFS(DiskVolume);
-        LPCWSTR NTFSVerFormat;
-        UNICODE_STRING NTFSVer;
-        BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 38;
+        // Report "NTFS x.x"
+        const UNICODE_STRING Format = RTL_CONSTANT_STRING(L"NTFS %c.%c");
+        const ULONG FsNameSize = Format.Length - (2 * sizeof(WCHAR));
+        BytesToWrite = FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName) + FsNameSize;
         if (*Length < BytesToWrite)
-            goto fallback;
-        NtfsVolumeGetVersion(DiskVolume, &Version);
-        NtfsLogFileServiceGetClientVersion(Lfs, &LfsClientVersion);
-        Buffer->FileSystemNameLength = 40;
-        NTFSVerFormat = L"NTFS %1ld.%1ld, Client %1ld.%1ld";
+            goto Fallback;
         RtlInitEmptyUnicodeString(&NTFSVer,
                                   Buffer->FileSystemName,
-                                  40);
+                                  FsNameSize);
         Status = RtlUnicodeStringPrintf(&NTFSVer,
-                                        NTFSVerFormat,
-                                        Version.MajorVersion,
-                                        Version.MinorVersion,
-                                        LfsClientVersion.MajorVersion,
-                                        LfsClientVersion.MinorVersion);
+                                        Format.Buffer,
+                                        (WCHAR)(L'0' + Version.MajorVersion),
+                                        (WCHAR)(L'0' + Version.MinorVersion));
         if (!NT_SUCCESS(Status))
-            goto fallback;
+            goto Fallback;
+        Buffer->FileSystemNameLength = FsNameSize;
     }
-
     else
     {
-fallback:
-        // Report "NTFS"
-        BytesToWrite = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + 6;
+        // Report "NTFS x.x, Client x.x"
+        const UNICODE_STRING Format = RTL_CONSTANT_STRING(L"NTFS %c.%c, Client %c.%c");
+        const ULONG FsNameSize = Format.Length - (4 * sizeof(WCHAR));
+        NtfsLfsClientVersion LfsClientVersion;
+        PNtfsLogFileService Lfs = NtfsVolumeGetLFS(DiskVolume);
+        NtfsLogFileServiceGetClientVersion(Lfs, &LfsClientVersion);
+        BytesToWrite = FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName) + FsNameSize;
         if (*Length < BytesToWrite)
-            return STATUS_BUFFER_TOO_SMALL;
-        Buffer->FileSystemNameLength = 8;
-        RtlCopyMemory(Buffer->FileSystemName, L"NTFS", 8);
-        *Length -= BytesToWrite;
+            goto Fallback;
+        RtlInitEmptyUnicodeString(&NTFSVer,
+                                  Buffer->FileSystemName,
+                                  FsNameSize);
+        Status = RtlUnicodeStringPrintf(&NTFSVer,
+                                        Format.Buffer,
+                                        (WCHAR)(L'0' + Version.MajorVersion),
+                                        (WCHAR)(L'0' + Version.MinorVersion),
+                                        (WCHAR)(L'0' + LfsClientVersion.MajorVersion),
+                                        (WCHAR)(L'0' + LfsClientVersion.MinorVersion));
+        if (!NT_SUCCESS(Status))
+            goto Fallback;
+        Buffer->FileSystemNameLength = FsNameSize;
     }
+    goto Complete;
 
+Fallback: ;
+    // Report "NTFS"
+    const ULONG FsNameSize = 8;
+    BytesToWrite = FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName) + FsNameSize;
+    if (*Length < BytesToWrite)
+        return STATUS_BUFFER_TOO_SMALL;
+    Buffer->FileSystemNameLength = FsNameSize;
+    RtlCopyMemory(Buffer->FileSystemName, L"NTFS", FsNameSize);
+    *Length -= BytesToWrite;
+
+Complete:
     /* For more information on FileSystemAttributes:
      * https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb/3065351b-0b78-4976-9a5a-11657d8857c7
      *
@@ -129,7 +156,7 @@ fallback:
     *Length -= BytesToWrite;
     return STATUS_SUCCESS;
 }
- 
+
 static
 NTSTATUS
 NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
@@ -147,7 +174,7 @@ NtfsSetVolumeLabel(_In_ PDEVICE_OBJECT DeviceObject,
     Status = NtfsVolumeSetVolumeLabel(DiskVolume,
                                       NewLabel->VolumeLabel,
                                       NewLabel->VolumeLabelLength);
-    
+
     if (!NT_SUCCESS(Status))
         return Status;
 
