@@ -8,16 +8,21 @@
 
 #include "ntfslib_new_internal.h"
 
-// NOTE: This function will search $MFTMirr automatically if needed.
 NTSTATUS
-MasterFileTable::GetFileRecord(_In_   ULONGLONG FileRecordNumber,
-                               _Out_  PFileRecord* File)
+MasterFileTable::GetFileRecord(
+    _In_ ULONGLONG FileRecordNumber,
+    _Out_ PFileRecord* File,
+    _In_ BOOL MftMirrorPass)
 {
     NTSTATUS Status;
     ULONG BytesToRead;
     BOOLEAN IsRecordInUse;
 
     NtfsAssertPagedCode();
+
+    if (MftMirrorPass && !IsFileRecordInMFTMirr(FileRecordNumber))
+        return STATUS_INVALID_PARAMETER;
+
     *File = new(NtfsPagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
     BytesToRead = FileRecordSize;
 
@@ -29,7 +34,6 @@ MasterFileTable::GetFileRecord(_In_   ULONGLONG FileRecordNumber,
                                         (*File)->Data);
         goto FileCheck;
     }
-
     else if (FileRecordNumber == _MFTMirr)
     {
         // The $MFTMirr file is calculated from the MFTMirr LCN.
@@ -46,27 +50,32 @@ MasterFileTable::GetFileRecord(_In_   ULONGLONG FileRecordNumber,
     // If the file record is not in use, fail.
     Status = IsFileRecordNumberInUse(FileRecordNumber,
                                      &IsRecordInUse);
-
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status) || !IsRecordInUse)
     {
-        DPRINT1("Failed to determine if file record number is in use!\n");
-        goto Failed;
+        delete *File;
+        *File = nullptr;
+        return !NT_SUCCESS(Status) ? Status : STATUS_FILE_CORRUPT_ERROR;
     }
 
-    if (!IsRecordInUse)
+    // Grab file from $MFT or $MFTMirr
+    if (!MftMirrorPass)
     {
-        DPRINT1("File record is not in use!\n");
-        goto Failed;
+        ASSERT(MFTFile);
+        Status = MFTFile->CopyData(TypeData,
+                                   NULL,
+                                   (*File)->Data,
+                                   &BytesToRead,
+                                   FileRecordOffset(FileRecordNumber));
     }
-
-    // Grab file from $MFT
-    Status = MFTFile ?
-             MFTFile->CopyData(TypeData,
-                               NULL,
-                               (*File)->Data,
-                               &BytesToRead,
-                               FileRecordOffset(FileRecordNumber))
-             : STATUS_NOT_FOUND;
+    else
+    {
+        ASSERT(MFTMirrFile);
+        Status = MFTMirrFile->CopyData(TypeData,
+                                       NULL,
+                                       (*File)->Data,
+                                       &BytesToRead,
+                                       FileRecordOffset(FileRecordNumber));
+    }
 
 FileCheck:
     /* TODO: More extensive checking needed to pass file check here.
@@ -76,98 +85,27 @@ FileCheck:
     if (!NT_SUCCESS(Status) ||
         !(RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) == 4))
     {
-        DPRINT1("Failed to get file %I64u from MFT!\n", FileRecordNumber);
+        DPRINT1("Failed to get file %I64u from $MFT%s!\n", FileRecordNumber, MftMirrorPass ? "Mirr" : "");
         delete *File;
-        if (FileRecordNumber != _MFT && FileRecordNumber != _MFTMirr)
-            return GetFileRecordFromMFTMirr(FileRecordNumber, File);
-        else
-            return STATUS_NOT_FOUND;
+        *File = nullptr;
+        if (IsFileRecordInMFTMirr(FileRecordNumber)
+            && MftMirrorPass == FALSE
+            && FileRecordNumber != _MFT
+            && FileRecordNumber != _MFTMirr)
+            return GetFileRecord(FileRecordNumber, File, TRUE);
+        return STATUS_FILE_CORRUPT_ERROR;
     }
 
     // Apply fixup for the file.
     Status = (*File)->ApplyFixup();
-
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("File corruption detected!\n");
-        goto Failed;
+        delete *File;
+        *File = nullptr;
     }
 
     return Status;
-
-Failed:
-    delete *File;
-    return NT_SUCCESS(Status) ? STATUS_FILE_CORRUPT_ERROR : Status;
-}
-
-NTSTATUS
-MasterFileTable::GetFileRecordFromMFTMirr(_In_   ULONGLONG FileRecordNumber,
-                                          _Out_  PFileRecord* File)
-{
-    NTSTATUS Status;
-    BOOLEAN IsRecordInUse;
-    ULONG BytesToRead;
-
-    if (!IsFileRecordInMFTMirr(FileRecordNumber))
-        return STATUS_NOT_FOUND;
-
-    if (FileRecordNumber == _MFT ||
-        FileRecordNumber == _MFTMirr)
-    {
-        // Logic for finding MFT and MFTMirr is in GetFileRecord()
-        return GetFileRecord(FileRecordNumber, File);
-    }
-
-    // If the file record is not in use, fail.
-    Status = IsFileRecordNumberInUse(FileRecordNumber,
-                                     &IsRecordInUse);
-
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to determine if file record number is in use!\n");
-        return Status;
-    }
-
-    if (!IsRecordInUse)
-    {
-        DPRINT1("File record is not in use!\n");
-        return Status;
-    }
-
-    // File is in MFTMirr. Let's try to get it from there.
-    *File = new(NtfsPagedPool, TAG_MFT) FileRecord(DiskVolume, FileRecordSize);
-    BytesToRead = FileRecordSize;
-
-    // Grab file from $MFTMirr
-    Status = MFTMirrFile ?
-             MFTMirrFile->CopyData(TypeData,
-                                   NULL,
-                                   (*File)->Data,
-                                   &BytesToRead,
-                                   FileRecordOffset(FileRecordNumber))
-             : STATUS_NOT_FOUND;
-
-    if (!NT_SUCCESS(Status) ||
-        !(RtlCompareMemory((*File)->Header->Header.TypeID, "FILE", 4) == 4))
-    {
-        DPRINT1("Failed to get file %I64u from MFT Mirror!\n", FileRecordNumber);
-        goto Failed;
-    }
-
-    // Apply fixup for the file.
-    Status = (*File)->ApplyFixup();
-
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to apply fixup!\n");
-        goto Failed;
-    }
-
-    return Status;
-
-Failed:
-    delete *File;
-    return NT_SUCCESS(Status) ? STATUS_FILE_CORRUPT_ERROR : Status;
 }
 
 // Utilizes MFTMirr to find an attribute if the MFT version doesn't have it.
@@ -187,21 +125,26 @@ MasterFileTable::GetFileAttributeFromFileRecordNumber(_In_  AttributeType Type,
 
     *TargetAttribute = (*TargetFile)->GetAttribute(Type, Name);
 
-    if (!TargetAttribute)
+    if (!*TargetAttribute)
     {
         // Free current target file.
         delete *TargetFile;
+        *TargetFile = nullptr;
 
-        // Try getting the attribute using the file from MFTMirr.
-        Status = GetFileRecordFromMFTMirr(FileRecordNumber, TargetFile);
+        // Try getting the attribute using the file record from $MFTMirr.
+        if (!IsFileRecordInMFTMirr(FileRecordNumber))
+            return STATUS_NOT_FOUND;
+
+        Status = GetFileRecord(FileRecordNumber, TargetFile, TRUE);
         if (!NT_SUCCESS(Status))
             return Status;
 
         *TargetAttribute = (*TargetFile)->GetAttribute(Type, Name);
-        if (!TargetAttribute)
+        if (!*TargetAttribute)
         {
             // We still don't have the attribute.
             delete *TargetFile;
+            *TargetFile = nullptr;
             return STATUS_NOT_FOUND;
         }
     }

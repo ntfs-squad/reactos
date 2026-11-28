@@ -16,8 +16,6 @@ MasterFileTable::MasterFileTable(
     _In_ UINT64 MFTMirrLCN,
     _In_ INT8 ClustersPerFileRecord)
 {
-    NTSTATUS Status;
-
     DiskVolume = TargetVolume;
     this->MFTLCN = MFTLCN;
     this->MFTMirrLCN = MFTMirrLCN;
@@ -30,17 +28,60 @@ MasterFileTable::MasterFileTable(
                      1 << (-(ClustersPerFileRecord))
                      : ClustersPerFileRecord * BytesPerCluster(DiskVolume);
 
+    MFTZoneEndLCN = CalculateMftZoneEndLCN();
+}
+
+MasterFileTable::~MasterFileTable()
+{
+    delete MFTFile;
+    delete MFTMirrFile;
+}
+
+NTSTATUS
+MasterFileTable::InitializeMft(_In_ BOOL AttemptedMftRecovery)
+{
+    NTSTATUS Status;
+
     // Initialize $MFT
     Status = GetFileRecord(_MFT, &MFTFile);
     if (!NT_SUCCESS(Status))
+    {
         DPRINT1("Failed to get $MFT!\n");
+        goto Done;
+    }
 
     // Initialize $MFTMirr
     Status = GetFileRecord(_MFTMirr, &MFTMirrFile);
     if (!NT_SUCCESS(Status))
+    {
         DPRINT1("Failed to get $MFTMirr!\n");
+        goto Done;
+    }
 
-    MFTZoneEndLCN = CalculateMftZoneEndLCN();
+Done:
+    if (NT_SUCCESS(Status))
+        return Status;
+
+    delete MFTFile;
+    MFTFile = nullptr;
+    delete MFTMirrFile;
+    MFTMirrFile = nullptr;
+    if (!AttemptedMftRecovery)
+    {
+        Status = AttemptMftRecovery();
+        if (!NT_SUCCESS(Status))
+            return Status;
+        return InitializeMft(TRUE);
+    }
+    return Status;
+}
+
+NTSTATUS
+MasterFileTable::AttemptMftRecovery()
+{
+    // This was called because either $MFT or $MFTMirr is corrupt.
+    __debugbreak();
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 ULONGLONG
@@ -124,7 +165,6 @@ MasterFileTable::WriteFileRecordToMFT(_In_ PFileRecord File)
                                     File->Data,
                                     &FRSize,
                                     &FileRecordOffset);
-
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("Unable to write to disk! (Status: 0x%X)\n", Status);

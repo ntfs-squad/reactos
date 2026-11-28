@@ -49,7 +49,6 @@ FileRecord::WriteFileData(_In_     AttributeType AttrType,
                                     Buffer,
                                     Length,
                                     Offset->QuadPart);
-
         if (Status == STATUS_BUFFER_TOO_SMALL)
         {
             /* Unable to write data as resident. Promote to non-resident
@@ -58,7 +57,6 @@ FileRecord::WriteFileData(_In_     AttributeType AttrType,
             DPRINT1("Promoting to non-resident not supported yet!\n");
             return Status;
         }
-
         else if (!NT_SUCCESS(Status))
         {
             DPRINT1("Unable to write file data!\n");
@@ -81,7 +79,6 @@ FileRecord::WriteFileData(_In_     AttributeType AttrType,
                                        Buffer,
                                        Length,
                                        Offset->QuadPart);
-
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("Failed to write to non resident data!\n");

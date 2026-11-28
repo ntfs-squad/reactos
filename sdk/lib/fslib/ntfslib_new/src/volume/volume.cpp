@@ -98,13 +98,12 @@ NtfsProbePartition(
 
         VolumeObject->Device = *Device;
         Status = VolumeObject->Initialize(&PartitionBootSector, Configuration);
-        if (!NT_SUCCESS(Status))
+        if (!NT_SUCCESS(Status) && Status != STATUS_LOG_BLOCK_VERSION)
         {
             DPRINT1("Failed to initialize volume object! (Status %lx)\n", Status);
             delete VolumeObject;
             return Status;
         }
-
         *VolumeOut = (PNtfsVolume)VolumeObject;
     }
 
@@ -116,8 +115,8 @@ NtfsProbePartition(
 
 Volume::~Volume()
 {
-    delete[] UpcaseTable;
     delete MFT;
+    delete[] UpcaseTable;
     delete LFS;
 }
 
@@ -168,13 +167,16 @@ Volume::Initialize(
     if (!MFT)
         return STATUS_INSUFFICIENT_RESOURCES;
 
+    Status = MFT->InitializeMft();
+    if (!NT_SUCCESS(Status))
+        return Status;
+
     // Get the NTFS Major and Minor versions from $Volume.
     Status = MFT->GetFileAttributeFromFileRecordNumber(TypeVolumeInformation,
                                                        NULL,
                                                        _Volume,
                                                        &VolumeFile,
                                                        &VolumeInfoAttribute);
-
     if (!NT_SUCCESS(Status))
         return Status;
 
@@ -197,14 +199,12 @@ Volume::Initialize(
         return STATUS_INSUFFICIENT_RESOURCES;
 
     Status = LFS->InitializeLFS();
-    if (Status == STATUS_LOG_BLOCK_VERSION)
+    if (!NT_SUCCESS(Status))
     {
-        /* The version of LFS on the volume is incompatible with our LFS.
-        * Open volume as readonly.
-        */
-        DPRINT1("LFS version is incompatible. Opening disk as readonly.\n");
+        DPRINT1("There was an issue initializing LFS. Opening disk as readonly.\n");
+        delete LFS;
+        LFS = nullptr;
         this->Configuration.IsReadOnly = TRUE;
-        Status = STATUS_SUCCESS;
     }
 
     return Status;

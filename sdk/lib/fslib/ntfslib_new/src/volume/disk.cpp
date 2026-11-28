@@ -21,5 +21,8 @@ Volume::WriteVolume(_In_    ULONGLONG Offset,
                     _In_    ULONG Length,
                     _Inout_ PUCHAR Buffer)
 {
+    if (Configuration.IsReadOnly)
+        return STATUS_MEDIA_WRITE_PROTECTED;
+
     return NtfsWriteVolume(&Device, Offset, Length, Buffer);
 }

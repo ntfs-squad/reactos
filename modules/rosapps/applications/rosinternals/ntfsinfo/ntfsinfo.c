@@ -220,6 +220,9 @@ void GetNtfsConfiguration(PNtfsConfiguration NtfsConfig)
     LSTATUS Status;
     DWORD MftZoneReservationValue, UseLegacyMftZoneScaling, RegSize;
 
+    NtfsConfig->IsReadOnly = TRUE;
+    NtfsConfig->ShowHiddenMetadataFiles = FALSE;
+
     Status = RegGetValueA(HKEY_LOCAL_MACHINE,
                           "SYSTEM\\CurrentControlSet\\Control\\FileSystem",
                           "NtfsMftZoneReservation",
@@ -227,7 +230,6 @@ void GetNtfsConfiguration(PNtfsConfiguration NtfsConfig)
                           NULL,
                           &MftZoneReservationValue,
                           &RegSize);
-
     if (Status == ERROR_SUCCESS)
         NtfsConfig->MftZoneReservation = MftZoneReservationValue;
     else
@@ -240,7 +242,6 @@ void GetNtfsConfiguration(PNtfsConfiguration NtfsConfig)
                           NULL,
                           &UseLegacyMftZoneScaling,
                           &RegSize);
-
     if (Status == ERROR_SUCCESS)
         NtfsConfig->UseLegacyMftZoneScaling = !!(UseLegacyMftZoneScaling);
     else
@@ -272,7 +273,6 @@ int wmain(int argc, wchar_t* argv[])
 
     if (iswalpha(argv[NoBanner ? 2 : 1][0]))
         VolumeHandle = OpenFromDriveLetter(argv[NoBanner ? 2 : 1]);
-
     else
         VolumeHandle = OpenFromNtNativePath(argv[NoBanner ? 2 : 1]);
 
@@ -297,9 +297,7 @@ int wmain(int argc, wchar_t* argv[])
                                 &NtfsConfiguration,
                                 &VolumeObject,
                                 &PartitionBootSector);
-
-    // If the specificed volume is not NTFS, print an error and exit.
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status) && Status != STATUS_LOG_BLOCK_VERSION)
     {
         PrintLastError("Error obtaining NTFS information");
         return 1;

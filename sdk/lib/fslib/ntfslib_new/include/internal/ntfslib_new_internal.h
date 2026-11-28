@@ -137,8 +137,8 @@ public:
     UINT64 SerialNumber;
     ULONG Flags;
     ULONG OpenHandleCount;
-    class MasterFileTable* MFT;
-    class LogFileService* LFS;
+    class MasterFileTable* MFT = nullptr;
+    class LogFileService* LFS = nullptr;
     NtfsConfiguration Configuration;
     NtfsDevice Device;
 
@@ -263,7 +263,7 @@ public:
 private:
     NTSTATUS UpcaseStatus = STATUS_NOT_FOUND;
     NTSTATUS LoadUpcaseTable();
-    PWCHAR UpcaseTable = NULL;
+    PWCHAR UpcaseTable = nullptr;
 
 } *PVolume;
 
@@ -458,6 +458,11 @@ public:
                     _In_ UINT64  MFTMirrLCN,
                     _In_ INT8    ClustersPerFileRecord);
 
+    ~MasterFileTable();
+
+    NTSTATUS
+    InitializeMft(_In_ BOOL AttemptedMftRecovery = FALSE);
+
     NTSTATUS
     WriteFileRecordToMFT(_In_ PFileRecord File);
 
@@ -467,12 +472,9 @@ public:
 
     // ./get.cpp
     NTSTATUS
-    GetFileRecord(_In_   ULONGLONG FileRecordNumber,
-                  _Out_  PFileRecord* File);
-
-    NTSTATUS
-    GetFileRecordFromMFTMirr(_In_  ULONGLONG FileRecordNumber,
-                             _Out_ PFileRecord* File);
+    GetFileRecord(_In_ ULONGLONG FileRecordNumber,
+                  _Out_ PFileRecord* File,
+                  _In_ BOOL MftMirrorPass = FALSE);
 
     NTSTATUS
     GetFileRecordFromQuery(_In_  PWCHAR Query,
@@ -486,12 +488,12 @@ public:
                                          _Out_ PAttribute* TargetAttribute);
 
 private:
-    ULONGLONG
-    CalculateMftZoneEndLCN();
+    NTSTATUS AttemptMftRecovery();
+    ULONGLONG CalculateMftZoneEndLCN();
 
     PVolume DiskVolume;
-    PFileRecord MFTFile = NULL;
-    PFileRecord MFTMirrFile = NULL;
+    PFileRecord MFTFile = nullptr;
+    PFileRecord MFTMirrFile = nullptr;
 } *PMasterFileTable;
 #endif // __cplusplus
 
@@ -1044,10 +1046,10 @@ public:
     NTSTATUS ShutdownLFS();
 private:
     PVolume DiskVolume;
-    PFileRecord LogFile;
-    PUCHAR LogFileData;
-    PLfsRestartPage RestartPage1;
-    PLfsRestartPage RestartPage2;
+    PFileRecord LogFile = nullptr;
+    PUCHAR LogFileData = nullptr;
+    PLfsRestartPage RestartPage1 = nullptr;
+    PLfsRestartPage RestartPage2 = nullptr;
 
     // Call when creating LFS Object
     NTSTATUS PerformFileSystemRecovery();

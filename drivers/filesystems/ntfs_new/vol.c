@@ -323,18 +323,23 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
         return Status;
 
     // Populate NTFS configuration settings
+    Configuration.IsReadOnly = FALSE; // TODO: add reg key to set NTFS FSD to readonly
     Configuration.MftZoneReservation = gMftZoneReservation;
-    Configuration.UseLegacyMftZoneScaling = gUseLegacyMftZoneScaling;
     Configuration.ShowHiddenMetadataFiles = gShowHiddenMetadataFiles;
+    Configuration.UseLegacyMftZoneScaling = gUseLegacyMftZoneScaling;
 
-    /* Check if we're really NTFS. It's OK if we're not.
-     * We're a boot driver, NT will try every possible filesystem.
+    /* Check if we're really NTFS. It's OK if we're not. We're a boot driver,
+     * NT will try every possible filesystem.
+     *
+     * If the client version is not compatible with our Ntfslib, it will return
+     * STATUS_LOG_BLOCK_VERSION and set configuration to readonly. Do not exit
+     * on this failure. Continue to open the volume as readonly.
      */
     Status = NtfsProbePartition(&Device,
                                 &Configuration,
                                 &DiskVolume,
                                 NULL);
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status) && Status != STATUS_LOG_BLOCK_VERSION)
         return Status;
 
     // Currently used for debugging output.
@@ -362,10 +367,7 @@ NtfsMountVolume(IN PDEVICE_OBJECT TargetDeviceObject,
     RtlZeroMemory(VolCB, sizeof(VolumeContextBlock));
     FSDeviceObject->Vpb = TargetDeviceObject->Vpb;
 
-    // Give VolCB access to Ntfs Partition object
     VolCB->DiskVolume = DiskVolume;
-
-    // Set up storage device in VolCB.
     VolCB->StorageDevice = TargetDeviceObject;
     VolCB->StorageDevice->Vpb->DeviceObject = FSDeviceObject;
     VolCB->StorageDevice->Vpb->RealDevice = VolCB->StorageDevice;

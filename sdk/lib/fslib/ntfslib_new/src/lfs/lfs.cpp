@@ -18,7 +18,8 @@ LogFileService::LogFileService(_In_ PVolume TargetVolume)
 
 LogFileService::~LogFileService()
 {
-    delete LogFileData;
+    delete[] LogFileData;
+    delete LogFile;
 }
 
 NTSTATUS
@@ -26,6 +27,7 @@ LogFileService::InitializeLFS()
 {
     NTSTATUS Status;
     PAttribute FileDataAttr;
+    ULONG LogFileSize;
 
     // We don't need to initialize Lfs if the volume is readonly.
     ASSERT(!DiskVolume->Configuration.IsReadOnly);
@@ -33,21 +35,17 @@ LogFileService::InitializeLFS()
     // Find the Log File.
     Status = DiskVolume->MFT->GetFileRecord(_LogFile, &LogFile);
     if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to find $LogFile!\n");
         return Status;
-    }
 
     // Initialize the logfile data buffer
     FileDataAttr = LogFile->GetAttribute(TypeData, NULL);
     if (!FileDataAttr)
     {
-        DPRINT1("Failed to find $DATA attribute!\n");
-        delete LogFile;
-        return STATUS_NOT_FOUND;
+        Status = STATUS_FILE_CORRUPT_ERROR;
+        goto Done;
     }
 
-    ULONG LogFileSize = GetAttributeDataSize(FileDataAttr);
+    LogFileSize = GetAttributeDataSize(FileDataAttr);
     LogFileData = new(NtfsPagedPool) UCHAR[LogFileSize];
     if (!LogFileData)
     {
@@ -73,8 +71,6 @@ LogFileService::InitializeLFS()
     if (!IsSupportedClientVersion())
     {
         DPRINT1("Client version not supported! (%ld.%ld)\n", ClientVersion.MajorVersion, ClientVersion.MinorVersion);
-        RestartPage1 = NULL;
-        RestartPage2 = NULL;
         Status = STATUS_LOG_BLOCK_VERSION;
         goto Done;
     }
@@ -87,8 +83,12 @@ LogFileService::InitializeLFS()
 Done:
     if (!NT_SUCCESS(Status))
     {
-        delete LogFileData;
+        RestartPage1 = nullptr;
+        RestartPage2 = nullptr;
+        delete[] LogFileData;
+        LogFileData = nullptr;
         delete LogFile;
+        LogFile = nullptr;
     }
     return Status;
 }
